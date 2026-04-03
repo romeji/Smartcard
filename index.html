@@ -159,9 +159,9 @@ svg{display:block;flex-shrink:0;}
 .ob-ni{display:flex;gap:11px;max-width:520px;margin:0 auto;}
 
 /* ══ APP ══ */
-#app{display:none;flex-direction:column;}
-#app.on{display:flex;}
-.topbar{display:flex;align-items:center;gap:10px;padding:14px 18px;padding-top:calc(14px + env(safe-area-inset-top));background:var(--bg);flex-shrink:0;}
+#app{display:none;}
+#app.on{display:block;}
+.topbar{display:flex;align-items:center;gap:10px;padding:14px 18px;padding-top:calc(14px + env(safe-area-inset-top));background:var(--bg);position:fixed;top:0;left:0;right:0;z-index:200;}
 .tb-logo{display:flex;align-items:center;gap:9px;}
 .tb-logo-ic{width:36px;height:36px;border-radius:12px;background:var(--bg);box-shadow:var(--so);display:flex;align-items:center;justify-content:center;}
 .tb-logo-tx{font-size:1.05rem;font-weight:900;color:var(--tx);}
@@ -184,16 +184,16 @@ svg{display:block;flex-shrink:0;}
 .sync-pulse.syncing{background:var(--yl);}
 
 /* ══ VIEWS ══ */
-.vwrap{flex:1;overflow:hidden;display:flex;flex-direction:column;}
-.view{display:none;flex-direction:column;flex:1;overflow:hidden;}
+.vwrap{position:fixed;top:calc(58px + env(safe-area-inset-top));bottom:calc(66px + env(safe-area-inset-bottom));left:0;right:0;display:flex;flex-direction:column;overflow:hidden;}
+.view{display:none;flex-direction:column;flex:1;overflow:hidden;height:100%;}
 .view.on{display:flex;}
-.vb{flex:1;overflow-y:auto;overflow-x:hidden;padding:14px 18px calc(80px + env(safe-area-inset-bottom));scrollbar-width:none;-webkit-overflow-scrolling:touch;}
+.vb{flex:1;overflow-y:auto;overflow-x:hidden;padding:14px 18px 20px;scrollbar-width:none;-webkit-overflow-scrolling:touch;}
 .vb::-webkit-scrollbar{display:none;}
-@media(min-width:600px){.vb{padding:18px 26px calc(88px + env(safe-area-inset-bottom));}}
+@media(min-width:600px){.vb{padding:18px 26px 20px;}}
 @media(min-width:900px){.vb{max-width:740px;margin:0 auto;width:100%;}}
 
 /* ══ TABBAR ══ */
-.tabbar{background:var(--bg);padding:8px 14px calc(8px + env(safe-area-inset-bottom));flex-shrink:0;display:flex;justify-content:center;position:relative;z-index:100;}
+.tabbar{background:var(--bg);padding:8px 14px calc(8px + env(safe-area-inset-bottom));display:flex;justify-content:center;position:fixed;bottom:0;left:0;right:0;z-index:200;box-shadow:0 -2px 12px rgba(0,0,0,.06);}
 .tb-inner{display:flex;gap:3px;background:var(--bg);border-radius:var(--rp);box-shadow:var(--so);padding:4px;max-width:380px;width:100%;}
 .tab{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 4px;border-radius:var(--rp);cursor:pointer;transition:all .22s;color:var(--tx3);}
 .tab.on{background:var(--bg);box-shadow:var(--so);color:var(--ac);}
@@ -2445,9 +2445,10 @@ async function renameOrDeleteList(id) {
 function openHistoryPanel() {
   renderHistory();
   const p = document.getElementById("historyPanel");
+  const bd = document.getElementById("histBackdrop");
   if(!p) return;
+  if(bd) bd.style.display = "block";
   p.style.display = "flex";
-  // Animate in
   p.style.transform = "translateY(100%)";
   requestAnimationFrame(() => {
     p.style.transition = "transform .3s cubic-bezier(.25,.46,.45,.94)";
@@ -2456,7 +2457,9 @@ function openHistoryPanel() {
 }
 function closeHistoryPanel() {
   const p = document.getElementById("historyPanel");
+  const bd = document.getElementById("histBackdrop");
   if(!p) return;
+  if(bd) bd.style.display = "none";
   p.style.transition = "transform .25s ease";
   p.style.transform = "translateY(100%)";
   setTimeout(() => { p.style.display = "none"; p.style.transform = ""; }, 260);
@@ -3606,6 +3609,9 @@ function rmT(id) {
   setTimeout(() => el.remove(), 280);
 }
 </script>
+
+<!-- HISTORY BACKDROP -->
+<div id="histBackdrop" onclick="closeHistoryPanel()" style="display:none;position:fixed;inset:0;z-index:599;background:rgba(0,0,0,.4);backdrop-filter:blur(2px);"></div>
 
 <!-- HISTORY PANEL — body level, position:fixed, outside all flex layouts -->
 <div id="historyPanel" style="

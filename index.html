@@ -184,7 +184,7 @@ svg{display:block;flex-shrink:0;}
 .sync-pulse.syncing{background:var(--yl);}
 
 /* ══ VIEWS ══ */
-.vwrap{position:fixed;top:calc(58px + env(safe-area-inset-top));bottom:calc(66px + env(safe-area-inset-bottom));left:0;right:0;display:flex;flex-direction:column;overflow:hidden;}
+.vwrap{position:fixed;top:calc(64px + env(safe-area-inset-top));bottom:calc(66px + env(safe-area-inset-bottom));left:0;right:0;display:flex;flex-direction:column;overflow:hidden;}
 .view{display:none;flex-direction:column;flex:1;overflow:hidden;height:100%;}
 .view.on{display:flex;}
 .vb{flex:1;overflow-y:auto;overflow-x:hidden;padding:14px 18px 20px;scrollbar-width:none;-webkit-overflow-scrolling:touch;}
@@ -194,6 +194,8 @@ svg{display:block;flex-shrink:0;}
 
 /* ══ TABBAR ══ */
 .tabbar{background:var(--bg);padding:8px 14px calc(8px + env(safe-area-inset-bottom));display:flex;justify-content:center;position:fixed;bottom:0;left:0;right:0;z-index:200;box-shadow:0 -2px 12px rgba(0,0,0,.06);}
+body:not(.app-active) .tabbar{display:none !important;}
+body:not(.app-active) .vwrap{display:none !important;}
 .tb-inner{display:flex;gap:3px;background:var(--bg);border-radius:var(--rp);box-shadow:var(--so);padding:4px;max-width:380px;width:100%;}
 .tab{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 4px;border-radius:var(--rp);cursor:pointer;transition:all .22s;color:var(--tx3);}
 .tab.on{background:var(--bg);box-shadow:var(--so);color:var(--ac);}
@@ -645,8 +647,8 @@ body.is-swiping{overflow:hidden;}
         <svg width="19" height="19" viewBox="0 0 24 24"><path fill="#4285F4" d="M23.745 12.27c0-.79-.07-1.54-.19-2.27h-11.3v4.51h6.47c-.29 1.48-1.14 2.73-2.4 3.58v3h3.86c2.26-2.09 3.56-5.17 3.56-8.82z"/><path fill="#34A853" d="M12.255 24c3.24 0 5.95-1.08 7.93-2.91l-3.86-3c-1.08.72-2.45 1.16-4.07 1.16-3.13 0-5.78-2.11-6.73-4.96h-3.98v3.09C3.515 21.3 7.615 24 12.255 24z"/><path fill="#FBBC05" d="M5.525 14.29c-.25-.72-.38-1.49-.38-2.29s.14-1.57.38-2.29V6.62h-3.98a11.86 11.86 0 000 10.76l3.98-3.09z"/><path fill="#EA4335" d="M12.255 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C18.205 1.19 15.495 0 12.255 0c-4.64 0-8.74 2.7-10.71 6.62l3.98 3.09c.95-2.85 3.6-4.96 6.73-4.96z"/></svg>
         Continuer avec Google
       </button>
-      <button class="soc" onclick="loginApple()">
-        <svg width="19" height="19" viewBox="0 0 24 24" fill="#555"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
+      <button class="soc" onclick="loginApple()" style="background:var(--bg);">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
         Continuer avec Apple
       </button>
       <div class="a-div">ou par email</div>
@@ -1006,7 +1008,7 @@ body.is-swiping{overflow:hidden;}
       </div>
       
       <div class="psec mb12">
-        <div class="tgrow"><div><div class="tgrow-l">🤖 IA Anthropic</div><div class="tgrow-sl" id="anthropicKeyStatus">Clé intégrée — analyse active</div></div></div>
+        
         <div class="tgrow"><div><div class="tgrow-l">✏️ Modifier mon nom</div></div><button class="btn sm rnd" onclick="editNameInline()" style="margin-left:auto;">Modifier</button></div>
       </div>
 <div style="text-align:center;font-size:.65rem;color:var(--tx3);margin-bottom:10px;font-weight:600;" id="versionLbl">SmartCart v1.4.0</div>
@@ -1193,16 +1195,6 @@ body.is-swiping{overflow:hidden;}
 
 </div>
 
-<!-- ANTHROPIC KEY SETUP -->
-<div class="overlay" id="anthropicOv">
-  <div class="modal">
-    <div class="mhdl"></div>
-    <div class="modal-ti">🤖 Clé API Anthropic</div>
-    <div class="modal-su">Pour analyser les photos (frigo, ticket), entrez votre clé API Anthropic. Obtenez-la sur <a href="https://console.anthropic.com" target="_blank" style="color:var(--ac);">console.anthropic.com</a>. Elle est stockée localement sur votre appareil.</div>
-    <input class="inp mb12" id="anthropicKeyInp" type="password" placeholder="sk-ant-api03-..." style="font-family:monospace;">
-    <button class="btn acc" style="width:100%;padding:12px;border-radius:var(--rs);" onclick="saveAnthropicKey()">💾 Enregistrer</button>
-    <button class="btn" style="width:100%;margin-top:8px;padding:11px;border-radius:var(--rs);" onclick="closeOv('anthropicOv')">Annuler</button>
-  </div>
 </div>
 
 <!-- FRIDGE DETECTION MODAL -->
@@ -1241,6 +1233,7 @@ body.is-swiping{overflow:hidden;}
 // FIREBASE CONFIG + INIT
 // ════════════════════════════════════════
 let auth, db, currentUser = null;
+let redirectHandled = false;
 let houseUnsub = null; // Firestore realtime listener
 
 // ══ CONFIG ANTHROPIC (pour l'analyse d'images en production) ══
@@ -1461,6 +1454,7 @@ const MEALS = [
 function show(id) {
   document.querySelectorAll(".screen").forEach(s => { s.classList.remove("on"); s.style.display = "none"; });
   const s = document.getElementById(id);
+  if(id === "app") { document.body.classList.add("app-active"); } else { document.body.classList.remove("app-active"); }
   s.style.display = "flex"; s.classList.add("on");
 }
 
@@ -1472,40 +1466,60 @@ window.addEventListener("load", () => {
 
   setTimeout(() => {
     if(!initFirebase()) {
-      // Config is hardcoded — if init fails show error toast and auth screen
       toast("⚠️","Firebase","Erreur d'initialisation. Vérifiez votre connexion internet.");
       show("auth");
       return;
     }
-    // Handle redirect result (PWA mode) — MUST be called before onAuthStateChanged
+
+    // ── GOOGLE REDIRECT RESULT ──
+    // Must be handled BEFORE onAuthStateChanged to avoid showing auth screen
+    // when returning from Google redirect
     auth.getRedirectResult().then(result => {
-      if(result && result.user) console.log("Redirect OK:", result.user.displayName);
+      if(result && result.user) {
+        // User just came back from Google/Apple redirect — log them in
+        localStorage.removeItem("sc_pending_login");
+        currentUser = result.user;
+        loadUserProfile(result.user);
+        // Don't let onAuthStateChanged show auth screen
+        redirectHandled = true;
+      }
     }).catch(e => {
       const code = e.code || "";
       if(code === "auth/unauthorized-domain") {
-        // Most common PWA issue — domain not in Firebase authorized list
-        setTimeout(() => {
-          showAuthErr("authErr",
-            "Domaine non autorisé. Ajoutez l'URL de cette page dans Firebase Console → Authentication → Domains autorisés. URL actuelle : " + window.location.hostname
-          );
-        }, 2000);
-      } else if(code !== "auth/no-auth-event" && code !== "auth/null-user") {
-        console.error("Redirect result error:", e.code, e.message);
+        setTimeout(() => showAuthErr("authErr",
+          "⚠️ Domaine non autorisé. Ajoutez '" + window.location.hostname + "' dans Firebase → Authentication → Authorized domains."
+        ), 500);
+      } else if(code !== "auth/no-auth-event" && code !== "auth/null-user" && code !== "") {
+        console.warn("Redirect result:", code);
       }
     });
 
+    // ── AUTH STATE CHANGE ──
     auth.onAuthStateChanged(user => {
+      if(redirectHandled) return; // Already handled by getRedirectResult
       if(user) {
         currentUser = user;
         loadUserProfile(user);
       } else {
-        show("auth");
-        // Show iOS PWA hint if needed
-        const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
-        const isStandalone = window.navigator.standalone === true || window.matchMedia("(display-mode:standalone)").matches;
-        if(isIOS && isStandalone) {
-          const hint = document.getElementById("iosPwaHint");
-          if(hint) hint.style.display = "block";
+        // Only show auth if redirect is not pending
+        const pending = localStorage.getItem("sc_pending_login");
+        if(pending) {
+          // Still waiting for redirect — show loading briefly
+          setTimeout(() => {
+            if(!redirectHandled) {
+              localStorage.removeItem("sc_pending_login");
+              show("auth");
+              showAuthErr("authErr", "La connexion " + pending + " a échoué. Réessayez ou utilisez Email.");
+            }
+          }, 3000);
+        } else {
+          show("auth");
+          const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+          const isStandalone = window.navigator.standalone === true || window.matchMedia("(display-mode:standalone)").matches;
+          if(isIOS && isStandalone) {
+            const hint = document.getElementById("iosPwaHint");
+            if(hint) hint.style.display = "block";
+          }
         }
       }
     });
@@ -1556,13 +1570,19 @@ async function loginGoogle() {
   }
 
   try {
-    if(isStandalone || isMobileOrPWA()) {
-      // Android PWA / PWA desktop: use redirect (works well)
+    // On ALL mobile (not just PWA): use redirect for reliability
+    if(isMobileOrPWA()) {
       localStorage.setItem("sc_pending_login","google");
+      redirectHandled = false; // Reset flag before redirect
       await auth.signInWithRedirect(provider);
+      // Page will reload — getRedirectResult() handles the rest
     } else {
-      // Browser: popup
-      await auth.signInWithPopup(provider);
+      // Desktop browser: popup is faster
+      const result = await auth.signInWithPopup(provider);
+      if(result.user) {
+        currentUser = result.user;
+        loadUserProfile(result.user);
+      }
     }
   } catch(e) {
     localStorage.removeItem("sc_pending_login");
@@ -1592,6 +1612,7 @@ async function loginApple() {
   } catch(e) {
     const msgs = {
       "auth/popup-closed-by-user": "Connexion Apple annulée.",
+      "auth/internal-error": "Apple Sign-In non configuré. Vérifiez Firebase Console → Authentication → Apple.",
       "auth/operation-not-supported-in-this-environment": "Apple Sign-In nécessite HTTPS.",
       "auth/cancelled-popup-request": "Popup annulée."
     };

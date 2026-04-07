@@ -186,8 +186,9 @@ svg{display:block;flex-shrink:0;}
 /* ══ VIEWS ══ */
 .vwrap{position:fixed;top:calc(64px + env(safe-area-inset-top));bottom:calc(66px + env(safe-area-inset-bottom));left:0;right:0;display:flex;flex-direction:column;overflow:hidden;}
 .view{display:none;flex-direction:column;flex:1;overflow:hidden;height:100%;}
+.view.on > .vb{scroll-behavior:auto;}
 .view.on{display:flex;}
-.vb{flex:1;overflow-y:auto;overflow-x:hidden;padding:14px 18px 20px;scrollbar-width:none;-webkit-overflow-scrolling:touch;}
+.vb{flex:1;overflow-y:auto;overflow-x:hidden;padding:14px 18px 20px;scrollbar-width:none;}
 .vb::-webkit-scrollbar{display:none;}
 @media(min-width:600px){.vb{padding:18px 26px 20px;}}
 @media(min-width:900px){.vb{max-width:740px;margin:0 auto;width:100%;}}
@@ -1461,58 +1462,72 @@ window.addEventListener("load", () => {
   document.getElementById(t === "dark" ? "thD" : "thL")?.classList.add("on");
   document.getElementById(t === "dark" ? "thL" : "thD")?.classList.remove("on");
 
-  // ── INIT FIREBASE IMMEDIATELY (no delay) ──
+  // ── INIT FIREBASE IMMEDIATELY ──
   if(!initFirebase()) {
     show("auth");
     return;
   }
 
-  // ── HANDLE GOOGLE REDIRECT (must be first, before onAuthStateChanged) ──
+  const hasPendingRedirect = !!localStorage.getItem("sc_pending_login");
+
+  // ── GOOGLE REDIRECT RESULT ──
+  // On iOS, this can take several seconds. We wait for it before doing anything.
   auth.getRedirectResult().then(result => {
+    redirectHandled = true;
     if(result && result.user) {
-      redirectHandled = true;
-      currentUser = result.user;
+      // ✅ Redirect login success
       localStorage.removeItem("sc_pending_login");
+      currentUser = result.user;
       loadUserProfile(result.user);
+    } else if(!currentUser) {
+      // No redirect result and no user → show auth
+      show("auth");
     }
+    // If currentUser was already set by onAuthStateChanged, do nothing
   }).catch(e => {
+    redirectHandled = true;
     localStorage.removeItem("sc_pending_login");
     const code = e.code || "";
     if(code === "auth/unauthorized-domain") {
       show("auth");
-      showAuthErr("authErr", "Domaine non autorisé Firebase. Ajoutez '" + window.location.hostname + "' dans Firebase → Authentication → Authorized domains.");
+      showAuthErr("authErr", "Domaine non autorisé. Ajoutez '" + window.location.hostname + "' dans Firebase Console → Authentication → Authorized domains.");
     } else if(code !== "auth/no-auth-event" && code !== "auth/null-user" && code !== "") {
-      console.warn("Redirect error:", code, e.message);
+      // Real error
       show("auth");
-      showAuthErr("authErr", "Erreur de connexion Google (" + code + "). Réessayez ou utilisez Email.");
-    }
-  });
-
-  // ── AUTH STATE (single source of truth) ──
-  auth.onAuthStateChanged(user => {
-    if(redirectHandled) return;
-    if(user) {
-      currentUser = user;
-      loadUserProfile(user);
+      showAuthErr("authErr", "Erreur connexion Google : " + code + ". Essayez avec Email.");
     } else {
-      // Wait a bit for getRedirectResult to fire first (it's async)
-      setTimeout(() => {
-        if(!redirectHandled) {
-          localStorage.removeItem("sc_pending_login");
-          show("auth");
-        }
-      }, 500);
+      // No redirect result - normal case
+      if(!currentUser) show("auth");
     }
   });
 
-  // ── SPLASH (cosmetic only, doesn't block auth) ──
+  // ── AUTH STATE CHANGE ──
+  auth.onAuthStateChanged(user => {
+    if(user) {
+      // User already logged in (persistent session)
+      currentUser = user;
+      if(!redirectHandled) {
+        // Fast path: session was persisted, no redirect needed
+        redirectHandled = true;
+        loadUserProfile(user);
+      }
+    } else {
+      // Not logged in — but ONLY show auth if no pending redirect
+      if(!hasPendingRedirect && redirectHandled) {
+        show("auth");
+      }
+      // If hasPendingRedirect: wait for getRedirectResult above
+      // If !redirectHandled: getRedirectResult hasn't fired yet, wait
+    }
+  });
+
+  // ── SAFETY: show splash for 1.5s minimum, then show auth if still stuck ──
   setTimeout(() => {
-    // If still on splash after 2s, something is wrong
-    const splash = document.getElementById("splash");
-    if(splash && splash.classList.contains("on")) {
+    if(!redirectHandled && !currentUser) {
+      redirectHandled = true;
       show("auth");
     }
-  }, 2500);;
+  }, 6000); // 6 seconds max wait for redirect on slow mobile;
 });
 
 // ════════════════════════════════════════
@@ -1559,17 +1574,21 @@ async function loginGoogle() {
   }
 
   try {
-    // On ALL mobile (not just PWA): use redirect for reliability
     if(isMobileOrPWA()) {
+      // Mobile: use redirect (most reliable on iOS Safari)
       localStorage.setItem("sc_pending_login","google");
-      redirectHandled = false; // Reset flag before redirect
+      redirectHandled = false;
+      // Show loading indicator
+      const btn = document.querySelector(".soc");
+      if(btn) { btn.textContent = "⏳ Redirection Google…"; btn.disabled = true; }
       await auth.signInWithRedirect(provider);
-      // Page will reload — getRedirectResult() handles the rest
+      // → page reloads, getRedirectResult() in boot handles the result
     } else {
-      // Desktop browser: popup is faster
+      // Desktop: popup is instant
       const result = await auth.signInWithPopup(provider);
-      if(result.user) {
+      if(result && result.user) {
         currentUser = result.user;
+        redirectHandled = true;
         loadUserProfile(result.user);
       }
     }
@@ -3570,9 +3589,16 @@ function goTab(i) {
   document.querySelectorAll(".view").forEach(v => v.classList.remove("on"));
   const view = document.getElementById(VIEWS[i]);
   view.classList.add("on");
-  // Scroll to top
+  // Scroll to top (iOS needs this pattern)
   const vb = view.querySelector(".vb");
-  if(vb) vb.scrollTop = 0;
+  if(vb) {
+    vb.scrollTop = 0;
+    // iOS -webkit-overflow-scrolling fix
+    requestAnimationFrame(() => {
+      vb.scrollTop = 0;
+      vb.scrollTo({ top: 0, behavior: "instant" });
+    });
+  }
   document.querySelectorAll(".tab").forEach((t, j) => t.classList.toggle("on", j === i));
 }
 
@@ -3629,7 +3655,7 @@ function rmT(id) {
     </div>
     <div style="font-size:.72rem;color:var(--tx2);margin-bottom:10px;">Appuyez sur + pour remettre dans la liste</div>
   </div>
-  <div id="historyWrap" style="overflow-y:auto;flex:1;padding:0 14px 14px;display:flex;flex-direction:column;gap:6px;-webkit-overflow-scrolling:touch;"></div>
+  <div id="historyWrap" style="overflow-y:auto;flex:1;padding:0 14px 14px;display:flex;flex-direction:column;gap:6px;"></div>
 </div>
 </body>
 </html>

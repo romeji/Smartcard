@@ -184,11 +184,11 @@ svg{display:block;flex-shrink:0;}
 .sync-pulse.syncing{background:var(--yl);}
 
 /* ══ VIEWS ══ */
-.vwrap{position:fixed;top:calc(64px + env(safe-area-inset-top));bottom:calc(66px + env(safe-area-inset-bottom));left:0;right:0;display:flex;flex-direction:column;overflow:hidden;}
+.vwrap{position:fixed;top:calc(65px + env(safe-area-inset-top));bottom:calc(66px + env(safe-area-inset-bottom));left:0;right:0;display:flex;flex-direction:column;overflow:hidden;}
 .view{display:none;flex-direction:column;flex:1;overflow:hidden;height:100%;}
 .view.on > .vb{scroll-behavior:auto;}
 .view.on{display:flex;}
-.vb{flex:1;overflow-y:auto;overflow-x:hidden;padding:14px 18px 20px;scrollbar-width:none;}
+.vb{flex:1;overflow-y:auto;overflow-x:hidden;padding:14px 18px 20px;scrollbar-width:none;overflow-anchor:none;}
 .vb::-webkit-scrollbar{display:none;}
 @media(min-width:600px){.vb{padding:18px 26px 20px;}}
 @media(min-width:900px){.vb{max-width:740px;margin:0 auto;width:100%;}}
@@ -640,9 +640,7 @@ body.is-swiping{overflow:hidden;}
     <div id="aLogin">
       <h1 class="a-h">Bonjour 👋</h1>
       <p class="a-sub">Connectez-vous pour accéder à votre liste intelligente et partagée.</p>
-      <div id="iosPwaHint" style="display:none;background:rgba(0,181,184,.1);border-left:3px solid var(--tl);border-radius:var(--rx);padding:10px 13px;font-size:.74rem;color:var(--tx2);line-height:1.55;margin-bottom:14px;">
-        📱 <strong>Sur iOS</strong> : utilisez <strong>Email/Mot de passe</strong> ou ouvrez d'abord dans Safari pour Google.
-      </div>
+      <div id="iosPwaHint" style="display:none;background:rgba(0,181,184,.1);border-left:3px solid var(--tl);border-radius:var(--rx);padding:10px 13px;font-size:.74rem;color:var(--tx2);line-height:1.55;margin-bottom:14px;">📱 <strong>iOS PWA</strong> : utilisez Email/Mot de passe depuis l'icône. Pour Google, ouvrez d'abord dans <strong>Safari</strong>.</div>
       <div class="auth-err" id="authErr"></div>
       <button class="soc" onclick="loginGoogle()">
         <svg width="19" height="19" viewBox="0 0 24 24"><path fill="#4285F4" d="M23.745 12.27c0-.79-.07-1.54-.19-2.27h-11.3v4.51h6.47c-.29 1.48-1.14 2.73-2.4 3.58v3h3.86c2.26-2.09 3.56-5.17 3.56-8.82z"/><path fill="#34A853" d="M12.255 24c3.24 0 5.95-1.08 7.93-2.91l-3.86-3c-1.08.72-2.45 1.16-4.07 1.16-3.13 0-5.78-2.11-6.73-4.96h-3.98v3.09C3.515 21.3 7.615 24 12.255 24z"/><path fill="#FBBC05" d="M5.525 14.29c-.25-.72-.38-1.49-.38-2.29s.14-1.57.38-2.29V6.62h-3.98a11.86 11.86 0 000 10.76l3.98-3.09z"/><path fill="#EA4335" d="M12.255 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C18.205 1.19 15.495 0 12.255 0c-4.64 0-8.74 2.7-10.71 6.62l3.98 3.09c.95-2.85 3.6-4.96 6.73-4.96z"/></svg>
@@ -1560,35 +1558,46 @@ async function loginGoogle() {
   provider.addScope("email");
   provider.addScope("profile");
 
-  // iOS PWA detection: can't use redirect (Safari ≠ PWA session)
   const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
   const isStandalone = window.navigator.standalone === true || window.matchMedia("(display-mode:standalone)").matches;
 
   if(isIOS && isStandalone) {
-    // iOS PWA: redirect doesn't work, popup is the only option
-    // But popups are blocked in iOS PWA too. Show clear instructions.
-    showAuthErr("authErr",
-      "⚠️ Sur iOS, ouvrez cette page dans Safari (pas depuis l'icône), connectez-vous avec Google, puis ajoutez à l'écran d'accueil. Ou utilisez Email/Mot de passe."
-    );
+    // iOS PWA: impossible — popups bloquées, redirect bloque sessionStorage
+    showAuthErr("authErr", "⚠️ Sur iOS, ouvrez l'app dans Safari (pas depuis l'icône), connectez-vous, puis ajoutez à l'écran d'accueil. Ou utilisez Email/Mot de passe.");
     return;
   }
 
-  try {
-    if(isMobileOrPWA()) {
-      // Mobile: use redirect (most reliable on iOS Safari)
-      localStorage.setItem("sc_pending_login","google");
-      redirectHandled = false;
-      // Show loading indicator
-      const btn = document.querySelector(".soc");
-      if(btn) { btn.textContent = "⏳ Redirection Google…"; btn.disabled = true; }
-      await auth.signInWithRedirect(provider);
-      // → page reloads, getRedirectResult() in boot handles the result
-    } else {
-      // Desktop: popup is instant
+  if(isIOS) {
+    // iOS Safari (browser): use popup — redirect blocked by ITP (sessionStorage cross-origin)
+    try {
       const result = await auth.signInWithPopup(provider);
       if(result && result.user) {
-        currentUser = result.user;
         redirectHandled = true;
+        currentUser = result.user;
+        loadUserProfile(result.user);
+      }
+    } catch(e) {
+      const msgs = {
+        "auth/popup-closed-by-user": "Connexion annulée.",
+        "auth/popup-blocked": "Popup bloquée. Utilisez Email/Mot de passe.",
+        "auth/cancelled-popup-request": "Connexion annulée."
+      };
+      showAuthErr("authErr", msgs[e.code] || "Erreur : " + e.message);
+    }
+    return;
+  }
+
+  // Android / Desktop: redirect is fine
+  try {
+    if(isMobileOrPWA()) {
+      localStorage.setItem("sc_pending_login", "google");
+      redirectHandled = false;
+      await auth.signInWithRedirect(provider);
+    } else {
+      const result = await auth.signInWithPopup(provider);
+      if(result && result.user) {
+        redirectHandled = true;
+        currentUser = result.user;
         loadUserProfile(result.user);
       }
     }
@@ -1596,15 +1605,13 @@ async function loginGoogle() {
     localStorage.removeItem("sc_pending_login");
     const msgs = {
       "auth/popup-closed-by-user": "Connexion annulée.",
-      "auth/popup-blocked": "Popup bloquée. Essayez Email/Mot de passe.",
-      "auth/unauthorized-domain": "Domaine non autorisé Firebase. Ajoutez '" + window.location.hostname + "' dans Firebase → Auth → Domaines autorisés.",
-      "auth/network-request-failed": "Erreur réseau.",
-      "auth/cancelled-popup-request": "Connexion annulée."
+      "auth/unauthorized-domain": "Domaine non autorisé Firebase : " + window.location.hostname,
+      "auth/network-request-failed": "Erreur réseau."
     };
-    showAuthErr("authErr", msgs[e.code] || "Erreur : " + e.message);
-    toast("⚠️","Erreur Google", msgs[e.code] || e.message);
+    showAuthErr("authErr", msgs[e.code] || "Erreur Google : " + e.message);
   }
 }
+
 
 async function loginEmail() {
   const email = document.getElementById("lE").value.trim();
@@ -3589,14 +3596,15 @@ function goTab(i) {
   document.querySelectorAll(".view").forEach(v => v.classList.remove("on"));
   const view = document.getElementById(VIEWS[i]);
   view.classList.add("on");
-  // Scroll to top (iOS needs this pattern)
+  // Force scroll to top AFTER browser renders the view
   const vb = view.querySelector(".vb");
   if(vb) {
     vb.scrollTop = 0;
-    // iOS -webkit-overflow-scrolling fix
     requestAnimationFrame(() => {
-      vb.scrollTop = 0;
-      vb.scrollTo({ top: 0, behavior: "instant" });
+      requestAnimationFrame(() => {   // double rAF = after actual paint
+        vb.scrollTop = 0;
+        try { vb.scrollTo({ top: 0, behavior: "instant" }); } catch(e) {}
+      });
     });
   }
   document.querySelectorAll(".tab").forEach((t, j) => t.classList.toggle("on", j === i));

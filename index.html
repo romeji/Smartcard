@@ -189,6 +189,7 @@ svg{display:block;flex-shrink:0;}
 .view.on > .vb{scroll-behavior:auto;}
 .view.on{display:flex;}
 .vb{flex:1;overflow-y:auto;overflow-x:hidden;padding:14px 18px 20px;scrollbar-width:none;overflow-anchor:none;}
+.vb > *:first-child{scroll-margin-top:0;}
 .vb::-webkit-scrollbar{display:none;}
 @media(min-width:600px){.vb{padding:18px 26px 20px;}}
 @media(min-width:900px){.vb{max-width:740px;margin:0 auto;width:100%;}}
@@ -640,6 +641,10 @@ body.is-swiping{overflow:hidden;}
     <div id="aLogin">
       <h1 class="a-h">Bonjour 👋</h1>
       <p class="a-sub">Connectez-vous pour accéder à votre liste intelligente et partagée.</p>
+      <div id="debugPanel" style="background:#0a0a0a;border-radius:10px;padding:10px 12px;margin-bottom:14px;font-family:monospace;font-size:.68rem;color:#00ff88;max-height:180px;overflow-y:auto;display:none;">
+        <div style="color:#888;margin-bottom:6px;">🔍 Debug Log — <button onclick="document.getElementById('debugPanel').style.display='none'" style="color:#888;background:none;border:none;cursor:pointer;font-size:.65rem;">fermer</button></div>
+        <div id="debugLog"></div>
+      </div>
       <div id="iosPwaHint" style="display:none;background:rgba(0,181,184,.1);border-left:3px solid var(--tl);border-radius:var(--rx);padding:10px 13px;font-size:.74rem;color:var(--tx2);line-height:1.55;margin-bottom:14px;">📱 <strong>iOS PWA</strong> : utilisez Email/Mot de passe depuis l'icône. Pour Google, ouvrez d'abord dans <strong>Safari</strong>.</div>
       <div class="auth-err" id="authErr"></div>
       <button class="soc" onclick="loginGoogle()">
@@ -1230,6 +1235,21 @@ body.is-swiping{overflow:hidden;}
 // ════════════════════════════════════════
 let auth, db, currentUser = null;
 let redirectHandled = false;
+
+function dbg(msg, color) {
+  const panel = document.getElementById("debugPanel");
+  const log = document.getElementById("debugLog");
+  if(!panel || !log) { console.log("[DBG]", msg); return; }
+  panel.style.display = "block";
+  const line = document.createElement("div");
+  line.style.color = color || "#00ff88";
+  line.style.borderBottom = "1px solid #1a1a1a";
+  line.style.paddingBottom = "3px";
+  line.style.marginBottom = "3px";
+  line.textContent = new Date().toLocaleTimeString("fr") + " " + msg;
+  log.insertBefore(line, log.firstChild);
+  console.log("[DBG]", msg);
+}
 let houseUnsub = null; // Firestore realtime listener
 
 // ══ CONFIG ANTHROPIC (pour l'analyse d'images en production) ══
@@ -1467,10 +1487,12 @@ window.addEventListener("load", () => {
   }
 
   const hasPendingRedirect = !!localStorage.getItem("sc_pending_login");
+  dbg("Boot: hasPendingRedirect=" + hasPendingRedirect + " | url=" + window.location.hostname);
 
   // ── GOOGLE REDIRECT RESULT ──
   // On iOS, this can take several seconds. We wait for it before doing anything.
   auth.getRedirectResult().then(result => {
+    dbg("getRedirectResult → " + (result&&result.user ? "✅ "+result.user.email : "pas de user"));
     redirectHandled = true;
     if(result && result.user) {
       // ✅ Redirect login success
@@ -1483,6 +1505,7 @@ window.addEventListener("load", () => {
     }
     // If currentUser was already set by onAuthStateChanged, do nothing
   }).catch(e => {
+    dbg("getRedirectResult ERROR: " + (e.code || e.message), "#ff4444");
     redirectHandled = true;
     localStorage.removeItem("sc_pending_login");
     const code = e.code || "";
@@ -1501,8 +1524,8 @@ window.addEventListener("load", () => {
 
   // ── AUTH STATE CHANGE ──
   auth.onAuthStateChanged(user => {
+    dbg("onAuthStateChanged: user=" + (user ? user.email : "null") + " redirectHandled=" + redirectHandled);
     if(user) {
-      // User already logged in (persistent session)
       currentUser = user;
       if(!redirectHandled) {
         // Fast path: session was persisted, no redirect needed
@@ -1568,7 +1591,7 @@ async function loginGoogle() {
   }
 
   if(isIOS) {
-    // iOS Safari (browser): use popup — redirect blocked by ITP (sessionStorage cross-origin)
+    dbg("iOS detected — using signInWithPopup");
     try {
       const result = await auth.signInWithPopup(provider);
       if(result && result.user) {
@@ -1577,6 +1600,7 @@ async function loginGoogle() {
         loadUserProfile(result.user);
       }
     } catch(e) {
+      dbg("iOS popup ERROR: " + e.code + " " + e.message, "#ff4444");
       const msgs = {
         "auth/popup-closed-by-user": "Connexion annulée.",
         "auth/popup-blocked": "Popup bloquée. Utilisez Email/Mot de passe.",
@@ -3596,16 +3620,27 @@ function goTab(i) {
   document.querySelectorAll(".view").forEach(v => v.classList.remove("on"));
   const view = document.getElementById(VIEWS[i]);
   view.classList.add("on");
-  // Force scroll to top AFTER browser renders the view
+  // iOS scroll fix: force top using multiple strategies
   const vb = view.querySelector(".vb");
   if(vb) {
+    // Strategy 1: immediate
     vb.scrollTop = 0;
+    // Strategy 2: after paint
     requestAnimationFrame(() => {
-      requestAnimationFrame(() => {   // double rAF = after actual paint
+      vb.scrollTop = 0;
+      requestAnimationFrame(() => {
         vb.scrollTop = 0;
-        try { vb.scrollTo({ top: 0, behavior: "instant" }); } catch(e) {}
+        // Strategy 3: scrollTo
+        try { vb.scrollTo(0, 0); } catch(e2) {}
+        // Strategy 4: first child into view if still wrong
+        if(vb.scrollTop > 10) {
+          const first = vb.firstElementChild;
+          if(first) first.scrollIntoView({ block: "start", behavior: "instant" });
+        }
       });
     });
+    // Strategy 5: 100ms fallback
+    setTimeout(() => { vb.scrollTop = 0; }, 100);
   }
   document.querySelectorAll(".tab").forEach((t, j) => t.classList.toggle("on", j === i));
 }

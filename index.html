@@ -2,7 +2,7 @@
 <html lang="fr" data-theme="light">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <title>SmartCart</title>
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -647,10 +647,7 @@ body.is-swiping{overflow:hidden;}
         <svg width="19" height="19" viewBox="0 0 24 24"><path fill="#4285F4" d="M23.745 12.27c0-.79-.07-1.54-.19-2.27h-11.3v4.51h6.47c-.29 1.48-1.14 2.73-2.4 3.58v3h3.86c2.26-2.09 3.56-5.17 3.56-8.82z"/><path fill="#34A853" d="M12.255 24c3.24 0 5.95-1.08 7.93-2.91l-3.86-3c-1.08.72-2.45 1.16-4.07 1.16-3.13 0-5.78-2.11-6.73-4.96h-3.98v3.09C3.515 21.3 7.615 24 12.255 24z"/><path fill="#FBBC05" d="M5.525 14.29c-.25-.72-.38-1.49-.38-2.29s.14-1.57.38-2.29V6.62h-3.98a11.86 11.86 0 000 10.76l3.98-3.09z"/><path fill="#EA4335" d="M12.255 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C18.205 1.19 15.495 0 12.255 0c-4.64 0-8.74 2.7-10.71 6.62l3.98 3.09c.95-2.85 3.6-4.96 6.73-4.96z"/></svg>
         Continuer avec Google
       </button>
-      <button class="soc" onclick="loginApple()" style="background:var(--bg);">
-        <svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
-        Continuer avec Apple
-      </button>
+
       <div class="a-div">ou par email</div>
       <div class="fg"><label class="flb">Email</label><input class="inp" type="email" placeholder="vous@email.com" id="lE" onkeydown="if(event.key==='Enter')document.getElementById('lP').focus()"></div>
       <div class="fg"><label class="flb">Mot de passe</label><input class="inp" type="password" placeholder="••••••••" id="lP" onkeydown="if(event.key==='Enter')loginEmail()"></div>
@@ -1464,66 +1461,58 @@ window.addEventListener("load", () => {
   document.getElementById(t === "dark" ? "thD" : "thL")?.classList.add("on");
   document.getElementById(t === "dark" ? "thL" : "thD")?.classList.remove("on");
 
-  setTimeout(() => {
-    if(!initFirebase()) {
-      toast("⚠️","Firebase","Erreur d'initialisation. Vérifiez votre connexion internet.");
-      show("auth");
-      return;
+  // ── INIT FIREBASE IMMEDIATELY (no delay) ──
+  if(!initFirebase()) {
+    show("auth");
+    return;
+  }
+
+  // ── HANDLE GOOGLE REDIRECT (must be first, before onAuthStateChanged) ──
+  auth.getRedirectResult().then(result => {
+    if(result && result.user) {
+      redirectHandled = true;
+      currentUser = result.user;
+      localStorage.removeItem("sc_pending_login");
+      loadUserProfile(result.user);
     }
+  }).catch(e => {
+    localStorage.removeItem("sc_pending_login");
+    const code = e.code || "";
+    if(code === "auth/unauthorized-domain") {
+      show("auth");
+      showAuthErr("authErr", "Domaine non autorisé Firebase. Ajoutez '" + window.location.hostname + "' dans Firebase → Authentication → Authorized domains.");
+    } else if(code !== "auth/no-auth-event" && code !== "auth/null-user" && code !== "") {
+      console.warn("Redirect error:", code, e.message);
+      show("auth");
+      showAuthErr("authErr", "Erreur de connexion Google (" + code + "). Réessayez ou utilisez Email.");
+    }
+  });
 
-    // ── GOOGLE REDIRECT RESULT ──
-    // Must be handled BEFORE onAuthStateChanged to avoid showing auth screen
-    // when returning from Google redirect
-    auth.getRedirectResult().then(result => {
-      if(result && result.user) {
-        // User just came back from Google/Apple redirect — log them in
-        localStorage.removeItem("sc_pending_login");
-        currentUser = result.user;
-        loadUserProfile(result.user);
-        // Don't let onAuthStateChanged show auth screen
-        redirectHandled = true;
-      }
-    }).catch(e => {
-      const code = e.code || "";
-      if(code === "auth/unauthorized-domain") {
-        setTimeout(() => showAuthErr("authErr",
-          "⚠️ Domaine non autorisé. Ajoutez '" + window.location.hostname + "' dans Firebase → Authentication → Authorized domains."
-        ), 500);
-      } else if(code !== "auth/no-auth-event" && code !== "auth/null-user" && code !== "") {
-        console.warn("Redirect result:", code);
-      }
-    });
-
-    // ── AUTH STATE CHANGE ──
-    auth.onAuthStateChanged(user => {
-      if(redirectHandled) return; // Already handled by getRedirectResult
-      if(user) {
-        currentUser = user;
-        loadUserProfile(user);
-      } else {
-        // Only show auth if redirect is not pending
-        const pending = localStorage.getItem("sc_pending_login");
-        if(pending) {
-          // Still waiting for redirect — show loading briefly
-          setTimeout(() => {
-            if(!redirectHandled) {
-              localStorage.removeItem("sc_pending_login");
-              show("auth");
-              showAuthErr("authErr", "La connexion " + pending + " a échoué. Réessayez ou utilisez Email.");
-            }
-          }, 3000);
-        } else {
+  // ── AUTH STATE (single source of truth) ──
+  auth.onAuthStateChanged(user => {
+    if(redirectHandled) return;
+    if(user) {
+      currentUser = user;
+      loadUserProfile(user);
+    } else {
+      // Wait a bit for getRedirectResult to fire first (it's async)
+      setTimeout(() => {
+        if(!redirectHandled) {
+          localStorage.removeItem("sc_pending_login");
           show("auth");
-          const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
-          const isStandalone = window.navigator.standalone === true || window.matchMedia("(display-mode:standalone)").matches;
-          if(isIOS && isStandalone) {
-            const hint = document.getElementById("iosPwaHint");
-            if(hint) hint.style.display = "block";
-          }
         }
-      }
-    });
-  }, 1600);
+      }, 500);
+    }
+  });
+
+  // ── SPLASH (cosmetic only, doesn't block auth) ──
+  setTimeout(() => {
+    // If still on splash after 2s, something is wrong
+    const splash = document.getElementById("splash");
+    if(splash && splash.classList.contains("on")) {
+      show("auth");
+    }
+  }, 2500);;
 });
 
 // ════════════════════════════════════════
@@ -1595,29 +1584,6 @@ async function loginGoogle() {
     };
     showAuthErr("authErr", msgs[e.code] || "Erreur : " + e.message);
     toast("⚠️","Erreur Google", msgs[e.code] || e.message);
-  }
-}
-
-async function loginApple() {
-  try {
-    const provider = new firebase.auth.OAuthProvider("apple.com");
-    provider.addScope("email");
-    provider.addScope("name");
-    if(isMobileOrPWA()) {
-      localStorage.setItem("sc_pending_login","apple");
-      await auth.signInWithRedirect(provider);
-    } else {
-      await auth.signInWithPopup(provider);
-    }
-  } catch(e) {
-    const msgs = {
-      "auth/popup-closed-by-user": "Connexion Apple annulée.",
-      "auth/internal-error": "Apple Sign-In non configuré. Vérifiez Firebase Console → Authentication → Apple.",
-      "auth/operation-not-supported-in-this-environment": "Apple Sign-In nécessite HTTPS.",
-      "auth/cancelled-popup-request": "Popup annulée."
-    };
-    showAuthErr("authErr", msgs[e.code] || "Erreur Apple : " + e.message);
-    toast("⚠️","Erreur Apple", msgs[e.code] || e.message);
   }
 }
 
@@ -3602,7 +3568,11 @@ function hideProc() {
 const VIEWS = ["vList","vScan","vFridge","vMeals","vProfile","vHouse"];
 function goTab(i) {
   document.querySelectorAll(".view").forEach(v => v.classList.remove("on"));
-  document.getElementById(VIEWS[i]).classList.add("on");
+  const view = document.getElementById(VIEWS[i]);
+  view.classList.add("on");
+  // Scroll to top
+  const vb = view.querySelector(".vb");
+  if(vb) vb.scrollTop = 0;
   document.querySelectorAll(".tab").forEach((t, j) => t.classList.toggle("on", j === i));
 }
 

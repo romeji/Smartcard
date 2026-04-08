@@ -1508,136 +1508,156 @@ window.addEventListener("load", () => {
   document.getElementById(t === "dark" ? "thD" : "thL")?.classList.add("on");
   document.getElementById(t === "dark" ? "thL" : "thD")?.classList.remove("on");
 
-  // ── INIT FIREBASE IMMEDIATELY ──
-  if(!initFirebase()) {
-    show("auth");
-    return;
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>SmartCard PWA</title>
+  <!-- Firebase JS SDK -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js"></script>
+</head>
+<body>
+
+<!-- Login / Register -->
+<div id="aLogin">Connexion Google<button onclick="loginGoogle()">Se connecter</button></div>
+<div id="aReg" style="display:none">Inscription…</div>
+<div id="authErr" style="display:none;color:red"></div>
+
+<script>
+  // ── INIT FIREBASE ──
+  const firebaseConfig = {
+    apiKey: "API_KEY",
+    authDomain: "smartcard-4c62c.firebaseapp.com",
+    projectId: "smartcard-4c62c",
+    // autres configs
+  };
+  const app = firebase.initializeApp(firebaseConfig);
+  const auth = firebase.auth();
+
+  // ── UTILS ──
+  function show(id) { document.getElementById(id).style.display='block'; }
+  function hide(id) { document.getElementById(id).style.display='none'; }
+  function showAuthErr(id,msg) {
+    const el = document.getElementById(id);
+    el.textContent = msg; el.style.display = "block";
+    setTimeout(() => { el.style.display="none"; },5000);
+  }
+  function dbg(msg,color){console.log(msg);} // simple debug placeholder
+
+  // ── SERVICE WORKER ──
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/service-worker.js')
+      .then(reg => console.log('SW enregistré:', reg.scope))
+      .catch(err => console.error('Erreur SW:', err));
+    });
   }
 
+  // ── VARIABLES ──
+  let redirectHandled = false;
+  let currentUser = null;
   const hasPendingRedirect = !!localStorage.getItem("sc_pending_login");
-  dbg("Boot: hasPendingRedirect=" + hasPendingRedirect + " | url=" + window.location.hostname);
 
-  // ── GOOGLE REDIRECT RESULT ──
-  // On iOS, this can take several seconds. We wait for it before doing anything.
-  auth.getRedirectResult().then(result => {
-    dbg("getRedirectResult → " + (result&&result.user ? "✅ "+result.user.email : "pas de user"));
-    redirectHandled = true;
-    if(result && result.user) {
-      // ✅ Redirect login success
-      localStorage.removeItem("sc_pending_login");
-      currentUser = result.user;
-      loadUserProfile(result.user);
-    } else if(!currentUser) {
-      // No redirect result and no user → show auth
-      show("auth");
+  // ── GOOGLE LOGIN ──
+  async function loginGoogle() {
+    const provider = new firebase.auth.GoogleAuthProvider();
+    provider.addScope("email");
+    provider.addScope("profile");
+
+    const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+    const isStandalone = window.navigator.standalone===true || window.matchMedia("(display-mode:standalone)").matches;
+
+    if(isIOS && isStandalone){
+      showAuthErr("authErr","⚠️ Sur iOS PWA, utilisez Safari pour vous connecter.");
+      return;
     }
-    // If currentUser was already set by onAuthStateChanged, do nothing
-  }).catch(e => {
-    dbg("getRedirectResult ERROR: " + (e.code || e.message), "#ff4444");
-    redirectHandled = true;
+
+    try{
+      if(isStandalone){
+        localStorage.setItem("sc_pending_login","1");
+        await auth.signInWithRedirect(provider);
+      } else {
+        const result = await auth.signInWithPopup(provider);
+        if(result.user){ currentUser=result.user; loadUserProfile(result.user); }
+      }
+    }catch(e){
+      showAuthErr("authErr", e.message || "Erreur Google Login");
+    }
+  }
+
+  // ── REDIRECT RESULT ──
+  auth.getRedirectResult().then(result=>{
+    redirectHandled=true;
+    if(result && result.user){
+      localStorage.removeItem("sc_pending_login");
+      currentUser=result.user;
+      loadUserProfile(result.user);
+    } else if(!currentUser){
+      show("aLogin");
+    }
+  }).catch(e=>{
+    redirectHandled=true;
     localStorage.removeItem("sc_pending_login");
-    const code = e.code || "";
-    if(code === "auth/unauthorized-domain") {
-      show("auth");
-      showAuthErr("authErr", "Domaine non autorisé. Ajoutez '" + window.location.hostname + "' dans Firebase Console → Authentication → Authorized domains.");
-    } else if(code !== "auth/no-auth-event" && code !== "auth/null-user" && code !== "") {
-      // Real error
-      show("auth");
-      showAuthErr("authErr", "Erreur connexion Google : " + code + ". Essayez avec Email.");
+    const code = e.code||"";
+    if(code==="auth/unauthorized-domain"){
+      show("aLogin");
+      showAuthErr("authErr","Domaine non autorisé. Ajoutez '"+window.location.hostname+"' dans Firebase Console → Authentication → Authorized domains.");
+    } else if(code && code!=="auth/no-auth-event" && code!=="auth/null-user"){
+      show("aLogin");
+      showAuthErr("authErr","Erreur connexion Google : "+code+". Essayez Email/Mot de passe.");
     } else {
-      // No redirect result - normal case
-      if(!currentUser) show("auth");
+      if(!currentUser) show("aLogin");
     }
   });
 
   // ── AUTH STATE CHANGE ──
-  auth.onAuthStateChanged(user => {
-    dbg("onAuthStateChanged: user=" + (user ? user.email : "null") + " redirectHandled=" + redirectHandled);
-    if(user) {
-      currentUser = user;
-      if(!redirectHandled) {
-        // Fast path: session was persisted, no redirect needed
-        redirectHandled = true;
+  auth.onAuthStateChanged(user=>{
+    dbg("onAuthStateChanged: user="+(user?user.email:"null")+" redirectHandled="+redirectHandled);
+    if(user){
+      currentUser=user;
+      if(!redirectHandled){
+        redirectHandled=true;
         loadUserProfile(user);
       }
-    } else {
-      // Not logged in — but ONLY show auth if no pending redirect
-      if(!hasPendingRedirect && redirectHandled) {
-        show("auth");
-      }
-      // If hasPendingRedirect: wait for getRedirectResult above
-      // If !redirectHandled: getRedirectResult hasn't fired yet, wait
+    } else if(!hasPendingRedirect && redirectHandled){
+      show("aLogin");
     }
   });
 
-  // ── SAFETY: show splash for 1.5s minimum, then show auth if still stuck ──
-  setTimeout(() => {
-    if(!redirectHandled && !currentUser) {
-      redirectHandled = true;
-      show("auth");
+  // ── SAFETY TIMEOUT ──
+  setTimeout(()=>{
+    if(!redirectHandled && !currentUser){
+      redirectHandled=true;
+      show("aLogin");
     }
-  }, 6000); // 6 seconds max wait for redirect on slow mobile;
-});
+  },6000);
 
-// ════════════════════════════════════════
-// AUTH — REAL Firebase
-// ════════════════════════════════════════
-function toReg() { document.getElementById("aLogin").style.display = "none"; document.getElementById("aReg").style.display = "block"; }
-function toLogin() { document.getElementById("aReg").style.display = "none"; document.getElementById("aLogin").style.display = "block"; }
+  // ── LOGIN / REGISTER SWITCH ──
+  function toReg(){ hide("aLogin"); show("aReg"); }
+  function toLogin(){ hide("aReg"); show("aLogin"); }
 
-function showAuthErr(id, msg) {
-  const el = document.getElementById(id);
-  el.textContent = msg; el.style.display = "block";
-  setTimeout(() => { el.style.display = "none"; }, 5000);
-}
-
-function setAuthLoading(btnId, loading, label) {
-  const btn = document.getElementById(btnId);
-  if(!btn) return;
-  btn.disabled = loading;
-  btn.textContent = loading ? "Connexion…" : label;
-}
-
-function isMobileOrPWA() {
-  return /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ||
-    window.matchMedia("(display-mode: standalone)").matches ||
-    window.navigator.standalone === true;
-}
-
-async function loginGoogle() {
-  const provider = new firebase.auth.GoogleAuthProvider();
-  provider.addScope("email");
-  provider.addScope("profile");
-
-  const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
-  const isStandalone = window.navigator.standalone === true || window.matchMedia("(display-mode:standalone)").matches;
-
-  if(isIOS && isStandalone) {
-    // iOS PWA: impossible — popups bloquées, redirect bloque sessionStorage
-    showAuthErr("authErr", "⚠️ Sur iOS, ouvrez l'app dans Safari (pas depuis l'icône), connectez-vous, puis ajoutez à l'écran d'accueil. Ou utilisez Email/Mot de passe.");
-    return;
+  // ── UTILITIES ──
+  function setAuthLoading(btnId,loading,label){
+    const btn=document.getElementById(btnId);
+    if(!btn) return;
+    btn.disabled=loading;
+    btn.textContent = loading?"Connexion…":label;
+  }
+  function isMobileOrPWA(){
+    return /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ||
+      window.matchMedia("(display-mode: standalone)").matches ||
+      window.navigator.standalone===true;
   }
 
-  if(isIOS) {
-    dbg("iOS detected — using signInWithPopup");
-    try {
-      const result = await auth.signInWithPopup(provider);
-      if(result && result.user) {
-        redirectHandled = true;
-        currentUser = result.user;
-        loadUserProfile(result.user);
-      }
-    } catch(e) {
-      dbg("iOS popup ERROR: " + e.code + " " + e.message, "#ff4444");
-      const msgs = {
-        "auth/popup-closed-by-user": "Connexion annulée.",
-        "auth/popup-blocked": "Popup bloquée. Utilisez Email/Mot de passe.",
-        "auth/cancelled-popup-request": "Connexion annulée."
-      };
-      showAuthErr("authErr", msgs[e.code] || "Erreur : " + e.message);
-    }
-    return;
+  function loadUserProfile(user){
+    console.log("User connecté:",user.email);
+    // ici ton code pour afficher l'interface utilisateur
   }
+
+</script>
+</body>
+</html>
 
   // Desktop: popup
   try {

@@ -1585,53 +1585,52 @@ window.addEventListener("load", () => {
       showAuthErr("authErr", e.message || "Erreur Google Login");
     }
   }
-
   // ── REDIRECT RESULT ──
-  auth.getRedirectResult().then(result=>{
+auth.getRedirectResult().then(result => {
     redirectHandled=true;
     if(result && result.user){
-      localStorage.removeItem("sc_pending_login");
-      currentUser=result.user;
-      loadUserProfile(result.user);
+        ...
     } else if(!currentUser){
-      show("aLogin");
+        show("aLogin");
     }
-  }).catch(e=>{
-    redirectHandled=true;
+});
+  .catch(e => {
+    redirectHandled = true;
     localStorage.removeItem("sc_pending_login");
-    const code = e.code||"";
-    if(code==="auth/unauthorized-domain"){
-      show("aLogin");
-      showAuthErr("authErr","Domaine non autorisé. Ajoutez '"+window.location.hostname+"' dans Firebase Console → Authentication → Authorized domains.");
-    } else if(code && code!=="auth/no-auth-event" && code!=="auth/null-user"){
-      show("aLogin");
-      showAuthErr("authErr","Erreur connexion Google : "+code+". Essayez Email/Mot de passe.");
-    } else {
-      if(!currentUser) show("aLogin");
+    const code = e.code || "";
+    console.error("getRedirectResult ERROR", e);
+    show("aLogin"); // <-- Toujours afficher login en cas d'erreur
+    if(code === "auth/unauthorized-domain"){
+      showAuthErr("authErr", "Domaine non autorisé. Ajoutez '"+window.location.hostname+"' dans Firebase Console → Authentication → Authorized domains.");
+    } else if(code && code !== "auth/no-auth-event" && code !== "auth/null-user") {
+      showAuthErr("authErr", "Erreur connexion Google : " + code + ". Essayez Email/Mot de passe.");
     }
   });
 
-  // ── AUTH STATE CHANGE ──
-  auth.onAuthStateChanged(user=>{
-    dbg("onAuthStateChanged: user="+(user?user.email:"null")+" redirectHandled="+redirectHandled);
-    if(user){
-      currentUser=user;
-      if(!redirectHandled){
-        redirectHandled=true;
-        loadUserProfile(user);
-      }
-    } else if(!hasPendingRedirect && redirectHandled){
+// ── AUTH STATE CHANGE ──
+auth.onAuthStateChanged(user => {
+  dbg("onAuthStateChanged: user=" + (user ? user.email : "null") + " redirectHandled=" + redirectHandled);
+  if(user){
+    currentUser = user;
+    if(!redirectHandled){
+      redirectHandled = true;
+      loadUserProfile(user);
+    }
+  } else {
+    // Toujours montrer login si pas d'utilisateur
+    if(!currentUser){
       show("aLogin");
     }
-  });
+  }
+});
 
-  // ── SAFETY TIMEOUT ──
-  setTimeout(()=>{
-    if(!redirectHandled && !currentUser){
-      redirectHandled=true;
-      show("aLogin");
-    }
-  },6000);
+// ── SAFETY TIMEOUT ──
+setTimeout(() => {
+  if(!redirectHandled && !currentUser){
+    redirectHandled = true;
+    show("aLogin");
+  }
+}, 3000); // timeout plus court pour PWA
 
   // ── LOGIN / REGISTER SWITCH ──
   function toReg(){ hide("aLogin"); show("aReg"); }

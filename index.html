@@ -1299,18 +1299,22 @@ const FIREBASE_CONFIG = {
 function saveFBConfig() { toast("ℹ️","Config intégrée","Firebase est déjà configuré."); }
 function showFBSetup() { show("fbSetup"); }
 
-function initFirebase() {
+async function initFirebase() {
   try {
-    if(!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
+    if (!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
+
     auth = firebase.auth();
     db = firebase.firestore();
-    // CRITICAL: force LOCAL persistence so Firebase survives PWA/WebView context switches
-    auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(e => console.warn("setPersistence:", e));
+
+    // IMPORTANT : attendre réellement la persistence
+    await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+
     db.enablePersistence({ synchronizeTabs: true }).catch(() => {});
+
     return true;
-  } catch(e) {
+  } catch (e) {
     console.error("Firebase init error:", e);
-    toast("⚠️","Erreur Firebase",e.message);
+    toast("⚠️", "Erreur Firebase", e.message);
     return false;
   }
 }
@@ -1529,37 +1533,49 @@ window.addEventListener("load", () => {
 
   // ── GOOGLE REDIRECT RESULT ──
   // On iOS, this can take several seconds. We wait for it before doing anything.
-  auth.getRedirectResult().then(result => {
-    dbg("getRedirectResult → " + (result&&result.user ? "✅ "+result.user.email : "pas de user"));
-    redirectHandled = true;
-    if(result && result.user) {
-      // ✅ Redirect login success
-      localStorage.removeItem("sc_pending_login");
-      currentUser = result.user;
-      loadUserProfile(result.user);
-    } else if(!currentUser) {
-      // No redirect result and no user → show auth
-      show("auth");
-    }
-    // If currentUser was already set by onAuthStateChanged, do nothing
-  }).catch(e => {
-    dbg("getRedirectResult ERROR: " + (e.code || e.message), "#ff4444");
+await initFirebase();
+
+auth.onAuthStateChanged(async user => {
+  dbg("onAuthStateChanged: " + (user ? user.email : "user=null"));
+
+  if (user) {
+    currentUser = user;
     redirectHandled = true;
     localStorage.removeItem("sc_pending_login");
-    const code = e.code || "";
-    if(code === "auth/unauthorized-domain") {
-      show("auth");
-      showAuthErr("authErr", "Domaine non autorisé. Ajoutez '" + window.location.hostname + "' dans Firebase Console → Authentication → Authorized domains.");
-    } else if(code !== "auth/no-auth-event" && code !== "auth/null-user" && code !== "") {
-      // Real error
-      show("auth");
-      showAuthErr("authErr", "Erreur connexion Google : " + code + ". Essayez avec Email.");
-    } else {
-      // No redirect result - normal case
-      if(!currentUser) show("auth");
-    }
-  });
+    loadUserProfile(user);
+    return;
+  }
 
+  try {
+    const result = await auth.getRedirectResult();
+
+    dbg("getRedirectResult → " + (result?.user ? result.user.email : "pas de user"));
+
+    if (result?.user) {
+      currentUser = result.user;
+      redirectHandled = true;
+      localStorage.removeItem("sc_pending_login");
+      loadUserProfile(result.user);
+    } else {
+      redirectHandled = true;
+      show("auth");
+    }
+
+  } catch (e) {
+    dbg("getRedirectResult ERROR: " + e.code);
+    redirectHandled = true;
+    show("auth");
+  }
+});
+
+// sécurité max 6 sec
+setTimeout(() => {
+  if (!redirectHandled && !currentUser) {
+    dbg("timeout fallback → auth");
+    redirectHandled = true;
+    show("auth");
+  }
+}, 6000);
   // ── AUTH STATE CHANGE ──
   auth.onAuthStateChanged(user => {
     dbg("onAuthStateChanged: user=" + (user ? user.email : "null") + " redirectHandled=" + redirectHandled);

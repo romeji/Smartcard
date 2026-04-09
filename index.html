@@ -1301,20 +1301,16 @@ function showFBSetup() { show("fbSetup"); }
 
 async function initFirebase() {
   try {
-    if (!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
-
+    if(!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
     auth = firebase.auth();
     db = firebase.firestore();
-
-    // IMPORTANT : attendre réellement la persistence
+    // CRITICAL: force LOCAL persistence so Firebase survives PWA/WebView context switches
     await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
-
     db.enablePersistence({ synchronizeTabs: true }).catch(() => {});
-
+    dbg("Firebase: setPersistence LOCAL ✅");
     return true;
-  } catch (e) {
-    console.error("Firebase init error:", e);
-    toast("⚠️", "Erreur Firebase", e.message);
+  } catch(e) {
+    dbg("Firebase ERROR: " + e.message, "#ff4444");
     return false;
   }
 }
@@ -1533,66 +1529,65 @@ window.addEventListener("load", () => {
 
   // ── GOOGLE REDIRECT RESULT ──
   // On iOS, this can take several seconds. We wait for it before doing anything.
-await initFirebase();
-
-auth.onAuthStateChanged(async user => {
-  dbg("onAuthStateChanged: " + (user ? user.email : "user=null"));
-
-  if (user) {
-    currentUser = user;
+  auth.getRedirectResult().then(result => {
+    dbg("getRedirectResult → " + (result&&result.user ? "✅ "+result.user.email : "pas de user"));
     redirectHandled = true;
-    localStorage.removeItem("sc_pending_login");
-    loadUserProfile(user);
-    return;
-  }
-
-  try {
-    const result = await auth.getRedirectResult();
-
-    dbg("getRedirectResult → " + (result?.user ? result.user.email : "pas de user"));
-
-    if (result?.user) {
-      currentUser = result.user;
-      redirectHandled = true;
+    if(result && result.user) {
+      // ✅ Redirect login success
       localStorage.removeItem("sc_pending_login");
+      currentUser = result.user;
       loadUserProfile(result.user);
-    } else {
-      redirectHandled = true;
+    } else if(!currentUser) {
+      // No redirect result and no user → show auth
       show("auth");
     }
-
-  } catch (e) {
-    dbg("getRedirectResult ERROR: " + e.code);
+    // If currentUser was already set by onAuthStateChanged, do nothing
+  }).catch(e => {
+    dbg("getRedirectResult ERROR: " + (e.code || e.message), "#ff4444");
     redirectHandled = true;
-    show("auth");
-  }
-});
+    localStorage.removeItem("sc_pending_login");
+    const code = e.code || "";
+    if(code === "auth/unauthorized-domain") {
+      show("auth");
+      showAuthErr("authErr", "Domaine non autorisé. Ajoutez '" + window.location.hostname + "' dans Firebase Console → Authentication → Authorized domains.");
+    } else if(code !== "auth/no-auth-event" && code !== "auth/null-user" && code !== "") {
+      // Real error
+      show("auth");
+      showAuthErr("authErr", "Erreur connexion Google : " + code + ". Essayez avec Email.");
+    } else {
+      // No redirect result - normal case
+      if(!currentUser) show("auth");
+    }
+  });
 
-// sécurité max 6 sec
-setTimeout(() => {
-  if (!redirectHandled && !currentUser) {
-    dbg("timeout fallback → auth");
-    redirectHandled = true;
-    show("auth");
-  }
-}, 6000);
   // ── AUTH STATE CHANGE ──
-  auth.onAuthStateChanged(user => {
-    dbg("onAuthStateChanged: user=" + (user ? user.email : "null") + " redirectHandled=" + redirectHandled);
+  auth.onAuthStateChanged(async user => {
+    dbg("onAuthStateChanged: " + (user ? "✅ " + user.email : "user=null"));
+
     if(user) {
       currentUser = user;
-      if(!redirectHandled) {
-        // Fast path: session was persisted, no redirect needed
+      redirectHandled = true;
+      loadUserProfile(user);
+      return;
+    }
+
+    // No user — check for Google redirect result
+    try {
+      const result = await auth.getRedirectResult();
+      dbg("getRedirectResult: " + (result && result.user ? "✅ " + result.user.email : "pas de user"));
+      if(result && result.user) {
+        localStorage.removeItem("sc_pending_login");
+        currentUser = result.user;
         redirectHandled = true;
-        loadUserProfile(user);
-      }
-    } else {
-      // Not logged in — but ONLY show auth if no pending redirect
-      if(!hasPendingRedirect && redirectHandled) {
+        loadUserProfile(result.user);
+      } else {
+        localStorage.removeItem("sc_pending_login");
         show("auth");
       }
-      // If hasPendingRedirect: wait for getRedirectResult above
-      // If !redirectHandled: getRedirectResult hasn't fired yet, wait
+    } catch(e) {
+      dbg("getRedirectResult ERROR: " + (e.code || e.message), "#ff4444");
+      localStorage.removeItem("sc_pending_login");
+      show("auth");
     }
   });
 
@@ -1639,45 +1634,28 @@ async function loginGoogle() {
   const isStandalone = window.navigator.standalone === true || window.matchMedia("(display-mode:standalone)").matches;
 
   if(isIOS && isStandalone) {
-    // iOS PWA: impossible — popups bloquées, redirect bloque sessionStorage
-    showAuthErr("authErr", "⚠️ Sur iOS, ouvrez l'app dans Safari (pas depuis l'icône), connectez-vous, puis ajoutez à l'écran d'accueil. Ou utilisez Email/Mot de passe.");
+    // iOS PWA: Google impossible (Firebase bug officiel iOS PWA + redirect)
+    showAuthErr("authErr", "⚠️ Sur iOS, connectez-vous via Safari (pas depuis l'icône), puis ajoutez à l'écran d'accueil. Ou utilisez Email/Mot de passe.");
+    dbg("iOS PWA: Google bloqué", "#ff8800");
     return;
   }
 
-  if(isIOS) {
-    dbg("iOS detected — using signInWithPopup");
-    try {
-      const result = await auth.signInWithPopup(provider);
-      if(result && result.user) {
-        redirectHandled = true;
-        currentUser = result.user;
-        loadUserProfile(result.user);
-      }
-    } catch(e) {
-      dbg("iOS popup ERROR: " + e.code + " " + e.message, "#ff4444");
-      const msgs = {
-        "auth/popup-closed-by-user": "Connexion annulée.",
-        "auth/popup-blocked": "Popup bloquée. Utilisez Email/Mot de passe.",
-        "auth/cancelled-popup-request": "Connexion annulée."
-      };
-      showAuthErr("authErr", msgs[e.code] || "Erreur : " + e.message);
-    }
-    return;
-  }
-
-  // Desktop: popup
+  // All other cases: signInWithPopup (no redirect — avoids sessionStorage iOS bug)
+  dbg("Google: signInWithPopup...");
   try {
     const result = await auth.signInWithPopup(provider);
-    dbg("Desktop popup: ✅ " + (result.user?.email || "?"));
-    // onAuthStateChanged handles profile loading
+    dbg("Google popup ✅ " + result.user.email);
+    // onAuthStateChanged fires automatically with the user
   } catch(e) {
-    localStorage.removeItem("sc_pending_login");
+    dbg("Google popup ERROR: " + e.code + " — " + e.message, "#ff4444");
     const msgs = {
       "auth/popup-closed-by-user": "Connexion annulée.",
-      "auth/unauthorized-domain": "Domaine non autorisé Firebase : " + window.location.hostname,
+      "auth/popup-blocked": "⚠️ Popup bloquée. Désactivez le bloqueur de popups pour ce site dans les réglages Safari/Chrome.",
+      "auth/cancelled-popup-request": "Connexion annulée.",
+      "auth/unauthorized-domain": "⚠️ Domaine non autorisé : " + window.location.hostname,
       "auth/network-request-failed": "Erreur réseau."
     };
-    showAuthErr("authErr", msgs[e.code] || "Erreur Google : " + e.message);
+    showAuthErr("authErr", msgs[e.code] || "Erreur : " + e.code + " — " + e.message);
   }
 }
 

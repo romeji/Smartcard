@@ -680,6 +680,11 @@ html,body{overflow:hidden;max-width:100vw;}
         Continuer avec Google
       </button>
 
+      <div id="iosReturnBtn" style="display:none;width:100%;margin-bottom:10px;">
+        <button onclick="checkExistingSession()" style="width:100%;padding:12px;border-radius:14px;background:linear-gradient(135deg,var(--tl),var(--gn));color:#fff;font-weight:800;font-size:.88rem;border:none;cursor:pointer;">
+          ✅ Déjà connecté ? Accéder à l'app
+        </button>
+      </div>
       <div class="a-div">ou par email</div>
       <div class="fg"><label class="flb">Email</label><input class="inp" type="email" placeholder="vous@email.com" id="lE" onkeydown="if(event.key==='Enter')document.getElementById('lP').focus()"></div>
       <div class="fg"><label class="flb">Mot de passe</label><input class="inp" type="password" placeholder="••••••••" id="lP" onkeydown="if(event.key==='Enter')loginEmail()"></div>
@@ -1513,6 +1518,40 @@ function show(id) {
 }
 
 window.addEventListener("load", () => {
+  // ─── AUTH RELAY MODE (runs in Safari to do Google login for iOS PWA) ───
+  const urlParams = new URLSearchParams(window.location.search);
+  if(urlParams.get("auth_relay") === "google") {
+    document.body.style.cssText = "margin:0;background:#1e2130;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;font-family:Nunito,sans-serif;color:#fff;gap:20px;padding:30px;box-sizing:border-box;";
+    document.body.innerHTML = `
+      <div style="font-size:3rem;">🛒</div>
+      <div style="font-size:1.3rem;font-weight:900;">SmartCart</div>
+      <div style="font-size:.9rem;color:rgba(255,255,255,.6);text-align:center;line-height:1.6;">Connexion Google en cours…<br>Vous serez redirigé automatiquement.</div>
+      <div id="rs" style="font-size:.82rem;color:#a29bfe;text-align:center;min-height:24px;"></div>
+    `;
+    const setS = (m, c2) => { const el = document.getElementById("rs"); if(el){ el.textContent = m; el.style.color = c2 || "#a29bfe"; } };
+    async function doRelay() {
+      try {
+        setS("Initialisation Firebase…");
+        if(!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
+        const ra = firebase.auth();
+        await ra.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+        setS("Ouverture Google…");
+        const prov = new firebase.auth.GoogleAuthProvider();
+        prov.addScope("email"); prov.addScope("profile");
+        const res = await ra.signInWithPopup(prov);
+        if(res && res.user) {
+          setS("✅ Connecté ! Retour à l'app dans 2s…", "#00b894");
+          localStorage.setItem("sc_auth_relay_done", res.user.email + "|" + Date.now());
+          setTimeout(() => { window.close(); }, 2000);
+        }
+      } catch(e) {
+        setS("❌ " + (e.code || e.message), "#d63031");
+      }
+    }
+    setTimeout(doRelay, 600);
+    return;
+  }
+
   const t = localStorage.getItem("sc_theme") || "light";
   document.documentElement.setAttribute("data-theme", t);
   document.getElementById(t === "dark" ? "thD" : "thL")?.classList.add("on");
@@ -1634,9 +1673,39 @@ async function loginGoogle() {
   const isStandalone = window.navigator.standalone === true || window.matchMedia("(display-mode:standalone)").matches;
 
   if(isIOS && isStandalone) {
-    // iOS PWA: Google impossible (Firebase bug officiel iOS PWA + redirect)
-    showAuthErr("authErr", "⚠️ Sur iOS, connectez-vous via Safari (pas depuis l'icône), puis ajoutez à l'écran d'accueil. Ou utilisez Email/Mot de passe.");
-    dbg("iOS PWA: Google bloqué", "#ff8800");
+    // iOS PWA: ouvre Safari pour le login (popup + localStorage partagé)
+    dbg("iOS PWA: ouverture Safari relay pour Google auth");
+    const relayUrl = window.location.origin + window.location.pathname + "?auth_relay=google";
+    window.open(relayUrl, "_blank");
+    
+    // Show waiting message
+    showAuthErr("authErr", "");
+    document.getElementById("authErr").style.display = "block";
+    document.getElementById("authErr").style.color = "var(--tl)";
+    document.getElementById("authErr").style.background = "rgba(0,181,184,.1)";
+    document.getElementById("authErr").style.borderColor = "var(--tl)";
+    document.getElementById("authErr").textContent = "⏳ Safari ouvert pour la connexion Google. Une fois connecté, revenez ici et appuyez sur « Déjà connecté ? »";
+    
+    // Poll localStorage for relay completion
+    const pollRelay = setInterval(() => {
+      const done = localStorage.getItem("sc_auth_relay_done");
+      if(done && Date.now() - parseInt(done.split("|")[1]) < 300000) {
+        clearInterval(pollRelay);
+        localStorage.removeItem("sc_auth_relay_done");
+        dbg("Relay done — Firebase session should be in localStorage");
+        // Firebase onAuthStateChanged should fire automatically
+        // If not, force check
+        if(auth && auth.currentUser) {
+          loadUserProfile(auth.currentUser);
+        } else {
+          // Reload to let Firebase pick up the session
+          setTimeout(() => window.location.reload(), 500);
+        }
+      }
+    }, 1000);
+    
+    // Stop polling after 5 minutes
+    setTimeout(() => clearInterval(pollRelay), 300000);
     return;
   }
 
@@ -3539,6 +3608,19 @@ function closeNotifPanel(e) {
 }
 function clearNotifs() {
   document.getElementById("notifList").innerHTML = '<div class="xs t2" style="text-align:center;padding:14px;">Aucune notification</div>';
+}
+
+function checkExistingSession() {
+  dbg("Checking existing Firebase session...");
+  if(auth && auth.currentUser) {
+    dbg("✅ Session found: " + auth.currentUser.email);
+    currentUser = auth.currentUser;
+    loadUserProfile(auth.currentUser);
+  } else {
+    // Try to reload — Firebase will read localStorage and restore session
+    dbg("No current user — reloading to restore session...");
+    window.location.reload();
+  }
 }
 
 function openChat() { document.getElementById("chatOv").classList.add("on"); document.getElementById("chatInp").focus(); }

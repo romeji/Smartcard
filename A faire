@@ -1,0 +1,15 @@
+🥈 Solution 2 — login via Safari + token manuel (hack avancé)
+
+Flow :
+
+Ouvrir Safari
+Login Google
+Ton backend récupère un token Firebase
+Tu passes un custom token à la PWA
+signInWithCustomToken()
+
+👉 MAIS :
+
+nécessite backend
+complexe
+fragile

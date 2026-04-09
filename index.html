@@ -1521,35 +1521,124 @@ window.addEventListener("load", () => {
   // ─── AUTH RELAY MODE (runs in Safari to do Google login for iOS PWA) ───
   const urlParams = new URLSearchParams(window.location.search);
   if(urlParams.get("auth_relay") === "google") {
-    document.body.style.cssText = "margin:0;background:#1e2130;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;font-family:Nunito,sans-serif;color:#fff;gap:20px;padding:30px;box-sizing:border-box;";
+    // ─ RELAY PAGE: runs in Safari, does signInWithPopup, passes token via URL hash ─
+    document.body.style.cssText = "margin:0;background:#1e2130;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;font-family:Nunito,sans-serif;color:#fff;gap:16px;padding:30px;box-sizing:border-box;text-align:center;";
     document.body.innerHTML = `
       <div style="font-size:3rem;">🛒</div>
-      <div style="font-size:1.3rem;font-weight:900;">SmartCart</div>
-      <div style="font-size:.9rem;color:rgba(255,255,255,.6);text-align:center;line-height:1.6;">Connexion Google en cours…<br>Vous serez redirigé automatiquement.</div>
-      <div id="rs" style="font-size:.82rem;color:#a29bfe;text-align:center;min-height:24px;"></div>
+      <div style="font-size:1.4rem;font-weight:900;">SmartCart</div>
+      <div style="font-size:.88rem;color:rgba(255,255,255,.6);line-height:1.65;">Connexion Google en cours…<br>Cette fenêtre se fermera automatiquement.</div>
+      <div id="rs" style="font-size:.82rem;color:#a29bfe;min-height:24px;"></div>
+      <button id="retryBtn" onclick="doRelay()" style="display:none;padding:12px 24px;background:#6c5ce7;color:#fff;border:none;border-radius:12px;font-size:.9rem;font-weight:700;cursor:pointer;">Réessayer</button>
     `;
-    const setS = (m, c2) => { const el = document.getElementById("rs"); if(el){ el.textContent = m; el.style.color = c2 || "#a29bfe"; } };
-    async function doRelay() {
+    const setS = (m, col) => { const el = document.getElementById("rs"); if(el){ el.textContent = m; el.style.color = col || "#a29bfe"; } };
+
+    window.doRelay = async function() {
+      document.getElementById("retryBtn").style.display = "none";
       try {
         setS("Initialisation Firebase…");
         if(!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
         const ra = firebase.auth();
         await ra.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
-        setS("Ouverture Google…");
+
+        setS("Connexion Google…");
         const prov = new firebase.auth.GoogleAuthProvider();
         prov.addScope("email"); prov.addScope("profile");
-        const res = await ra.signInWithPopup(prov);
-        if(res && res.user) {
-          setS("✅ Connecté ! Retour à l'app dans 2s…", "#00b894");
-          localStorage.setItem("sc_auth_relay_done", res.user.email + "|" + Date.now());
-          setTimeout(() => { window.close(); }, 2000);
+        const result = await ra.signInWithPopup(prov);
+
+        if(result && result.user) {
+          setS("✅ Popup OK: " + result.user.email + " — extraction token…", "#00b894");
+          // Firebase v8 compat: use result.credential directly
+          const credential = result.credential;
+          const idToken = credential ? credential.idToken : null;
+          const accessToken = credential ? credential.accessToken : null;
+          dbg("credential: " + (credential ? "✅" : "❌") + " idToken: " + (idToken ? "✅" : "❌") + " accessToken: " + (accessToken ? "✅" : "❌"), idToken ? "#00b894" : "#ff4444");
+
+          if(idToken) {
+            setS("✅ Token OK ! Transfert vers l'app…", "#00b894");
+            const baseUrl = window.location.origin + window.location.pathname;
+            const hashData = "idToken=" + encodeURIComponent(idToken) +
+                             "&accessToken=" + encodeURIComponent(accessToken || "") +
+                             "&email=" + encodeURIComponent(result.user.email || "");
+            setTimeout(() => {
+              window.location.href = baseUrl + "#google_auth=" + btoa(hashData);
+            }, 800);
+          } else {
+            // Fallback: try to get a fresh ID token from the user
+            setS("Token null — tentative getIdToken…", "#f0b429");
+            try {
+              const freshToken = await result.user.getIdToken(true);
+              if(freshToken) {
+                setS("✅ Fresh token OK ! Transfert…", "#00b894");
+                const baseUrl = window.location.origin + window.location.pathname;
+                const hashData = "idToken=" + encodeURIComponent(freshToken) +
+                                 "&accessToken=&email=" + encodeURIComponent(result.user.email || "");
+                setTimeout(() => {
+                  window.location.href = baseUrl + "#google_auth=" + btoa(hashData);
+                }, 800);
+              } else {
+                setS("❌ Impossible de récupérer le token. Réessayez.", "#d63031");
+                document.getElementById("retryBtn").style.display = "block";
+              }
+            } catch(te) {
+              setS("❌ " + te.message, "#d63031");
+              document.getElementById("retryBtn").style.display = "block";
+            }
+          }
         }
       } catch(e) {
-        setS("❌ " + (e.code || e.message), "#d63031");
+        const msgs = {
+          "auth/popup-closed-by-user": "Fenêtre fermée. Cliquez Réessayer.",
+          "auth/popup-blocked": "Popup bloquée. Autorisez les popups pour ce site dans Safari."
+        };
+        setS("❌ " + (msgs[e.code] || e.code + ": " + e.message), "#d63031");
+        document.getElementById("retryBtn").style.display = "block";
       }
-    }
-    setTimeout(doRelay, 600);
+    };
+
+    setTimeout(window.doRelay, 500);
     return;
+  }
+
+  // ─ HANDLE TOKEN from relay (PWA receives #google_auth=... after Safari login) ─
+  if(window.location.hash.includes("google_auth=")) {
+    const hashCapture = window.location.hash;
+    history.replaceState({}, "", window.location.pathname);
+    (async () => {
+      try {
+        const encoded = hashCapture.split("google_auth=")[1];
+        const decoded = atob(encoded);
+        const params = new URLSearchParams(decoded);
+        const idToken = decodeURIComponent(params.get("idToken") || "");
+        const accessToken = decodeURIComponent(params.get("accessToken") || "");
+        dbg("Token relay received: idToken=" + (idToken ? "✅" : "❌") + " accessToken=" + (accessToken ? "✅" : "❌"));
+        if(idToken) {
+          if(!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
+          auth = firebase.auth();
+          db = firebase.firestore();
+          await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+          db.enablePersistence({ synchronizeTabs: true }).catch(() => {});
+          // Build GoogleAuthProvider credential from tokens
+          const credential = firebase.auth.GoogleAuthProvider.credential(
+            idToken,
+            accessToken || null  // accessToken may be empty if we used getIdToken fallback
+          );
+          dbg("signInWithCredential avec " + (accessToken ? "idToken+accessToken" : "idToken seul") + "...");
+          const result = await auth.signInWithCredential(credential);
+          if(result && result.user) {
+            dbg("signInWithCredential ✅ " + result.user.email);
+            currentUser = result.user;
+            redirectHandled = true;
+            loadUserProfile(result.user);
+            return; // Done — skip normal boot
+          }
+        }
+      } catch(e) {
+        dbg("Token relay error: " + (e.code || e.message), "#ff4444");
+      }
+      // If credential failed, reload without hash
+      window.location.reload();
+    })();
+    return; // Don't run normal boot synchronously — the async IIFE handles it
   }
 
   const t = localStorage.getItem("sc_theme") || "light";
@@ -1673,39 +1762,10 @@ async function loginGoogle() {
   const isStandalone = window.navigator.standalone === true || window.matchMedia("(display-mode:standalone)").matches;
 
   if(isIOS && isStandalone) {
-    // iOS PWA: ouvre Safari pour le login (popup + localStorage partagé)
-    dbg("iOS PWA: ouverture Safari relay pour Google auth");
+    // iOS PWA: navigate to relay page in Safari (token hash method)
+    dbg("iOS PWA: navigation vers relay Safari");
     const relayUrl = window.location.origin + window.location.pathname + "?auth_relay=google";
-    window.open(relayUrl, "_blank");
-    
-    // Show waiting message
-    showAuthErr("authErr", "");
-    document.getElementById("authErr").style.display = "block";
-    document.getElementById("authErr").style.color = "var(--tl)";
-    document.getElementById("authErr").style.background = "rgba(0,181,184,.1)";
-    document.getElementById("authErr").style.borderColor = "var(--tl)";
-    document.getElementById("authErr").textContent = "⏳ Safari ouvert pour la connexion Google. Une fois connecté, revenez ici et appuyez sur « Déjà connecté ? »";
-    
-    // Poll localStorage for relay completion
-    const pollRelay = setInterval(() => {
-      const done = localStorage.getItem("sc_auth_relay_done");
-      if(done && Date.now() - parseInt(done.split("|")[1]) < 300000) {
-        clearInterval(pollRelay);
-        localStorage.removeItem("sc_auth_relay_done");
-        dbg("Relay done — Firebase session should be in localStorage");
-        // Firebase onAuthStateChanged should fire automatically
-        // If not, force check
-        if(auth && auth.currentUser) {
-          loadUserProfile(auth.currentUser);
-        } else {
-          // Reload to let Firebase pick up the session
-          setTimeout(() => window.location.reload(), 500);
-        }
-      }
-    }, 1000);
-    
-    // Stop polling after 5 minutes
-    setTimeout(() => clearInterval(pollRelay), 300000);
+    window.location.href = relayUrl;
     return;
   }
 

@@ -41,8 +41,7 @@ button,input,textarea{font-family:var(--f);border:none;outline:none;background:n
 svg{display:block;flex-shrink:0;}
 
 /* ══ SCREENS ══ */
-.screen{position:fixed;inset:0;display:none;flex-direction:column;background:var(--bg);overflow:hidden;height:100%;}
-.screen.on{display:flex;}
+
 .sb{flex:1;overflow-y:auto;scrollbar-width:none;}
 .sb::-webkit-scrollbar{display:none;}
 
@@ -159,7 +158,7 @@ svg{display:block;flex-shrink:0;}
 .ob-ni{display:flex;gap:11px;max-width:520px;margin:0 auto;}
 
 /* ══ APP ══ */
-#app{display:none;}
+#app{display:none;}#app.on{display:flex;flex-direction:column;height:100%;}
 
 .topbar{display:flex;align-items:center;gap:10px;padding:14px 18px;padding-top:calc(14px + env(safe-area-inset-top));background:var(--bg);flex-shrink:0;position:relative;z-index:10;}
 .tb-logo{display:flex;align-items:center;gap:9px;}
@@ -597,8 +596,7 @@ body.is-swiping{overflow:hidden;}
    .view.on = display:flex fills vwrap
    .vb    = flex:1 overflow-y:auto (scroll)
 ══════════════════════════════════════ */
-.screen{position:fixed;inset:0;background:var(--bg);display:none;flex-direction:column;overflow:hidden;}
-.screen.on{display:flex;}
+.screen{position:fixed;inset:0;background:var(--bg);display:none;flex-direction:column;overflow:hidden;height:100%;}
 .vwrap{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden;}
 .view{display:none;flex-direction:column;flex:1;min-height:0;}
 .view.on{display:flex;flex-direction:column;flex:1;min-height:0;}

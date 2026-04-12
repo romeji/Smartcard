@@ -668,29 +668,46 @@ html,body{overflow:hidden;max-width:100vw;}
     </div>
     <div id="aLogin">
       <h1 class="a-h">Bonjour 👋</h1>
-      <p class="a-sub">Connectez-vous pour accéder à votre liste intelligente et partagée.</p>
-      <div id="debugPanel" style="background:#0a0a0a;border-radius:10px;padding:10px 12px;margin-bottom:14px;font-family:monospace;font-size:.68rem;color:#00ff88;max-height:180px;overflow-y:auto;display:none;">
-        <div style="color:#888;margin-bottom:6px;">🔍 Debug Log — <button onclick="document.getElementById('debugPanel').style.display='none'" style="color:#888;background:none;border:none;cursor:pointer;font-size:.65rem;">fermer</button></div>
+      <p class="a-sub">Gérez vos courses intelligemment, partagez avec votre famille.</p>
+
+      <div id="debugPanel" style="background:#0a0a0a;border-radius:10px;padding:10px 12px;margin-bottom:12px;font-family:monospace;font-size:.65rem;color:#00ff88;max-height:150px;overflow-y:auto;display:none;">
+        <div style="color:#888;margin-bottom:4px;">🔍 Debug <button onclick="document.getElementById('debugPanel').style.display='none'" style="color:#555;background:none;border:none;cursor:pointer;font-size:.6rem;">×</button></div>
         <div id="debugLog"></div>
       </div>
-      <div id="iosPwaHint" style="display:none;background:rgba(0,181,184,.1);border-left:3px solid var(--tl);border-radius:var(--rx);padding:10px 13px;font-size:.74rem;color:var(--tx2);line-height:1.55;margin-bottom:14px;">📱 <strong>iOS PWA</strong> : utilisez Email/Mot de passe depuis l'icône. Pour Google, ouvrez d'abord dans <strong>Safari</strong>.</div>
       <div class="auth-err" id="authErr"></div>
-      <button class="soc" onclick="loginGoogle()">
-        <svg width="19" height="19" viewBox="0 0 24 24"><path fill="#4285F4" d="M23.745 12.27c0-.79-.07-1.54-.19-2.27h-11.3v4.51h6.47c-.29 1.48-1.14 2.73-2.4 3.58v3h3.86c2.26-2.09 3.56-5.17 3.56-8.82z"/><path fill="#34A853" d="M12.255 24c3.24 0 5.95-1.08 7.93-2.91l-3.86-3c-1.08.72-2.45 1.16-4.07 1.16-3.13 0-5.78-2.11-6.73-4.96h-3.98v3.09C3.515 21.3 7.615 24 12.255 24z"/><path fill="#FBBC05" d="M5.525 14.29c-.25-.72-.38-1.49-.38-2.29s.14-1.57.38-2.29V6.62h-3.98a11.86 11.86 0 000 10.76l3.98-3.09z"/><path fill="#EA4335" d="M12.255 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C18.205 1.19 15.495 0 12.255 0c-4.64 0-8.74 2.7-10.71 6.62l3.98 3.09c.95-2.85 3.6-4.96 6.73-4.96z"/></svg>
+
+      <div id="iosPwaHint" style="display:none;background:rgba(108,92,231,.1);border:1.5px solid rgba(108,92,231,.3);border-radius:var(--rs);padding:12px 14px;font-size:.78rem;color:var(--tx);line-height:1.7;margin-bottom:14px;">
+        📱 <strong>iOS</strong> : Google via l'icône PWA fonctionne maintenant ! Si ça ne marche pas, utilisez Email/Mot de passe.
+      </div>
+
+      <button class="soc" onclick="loginGoogle()" style="margin-bottom:8px;">
+        <svg width="18" height="18" viewBox="0 0 24 24"><path fill="#4285F4" d="M23.745 12.27c0-.79-.07-1.54-.19-2.27h-11.3v4.51h6.47c-.29 1.48-1.14 2.73-2.4 3.58v3h3.86c2.26-2.09 3.56-5.17 3.56-8.82z"/><path fill="#34A853" d="M12.255 24c3.24 0 5.95-1.08 7.93-2.91l-3.86-3c-1.08.72-2.45 1.16-4.07 1.16-3.13 0-5.78-2.11-6.73-4.96h-3.98v3.09C3.515 21.3 7.615 24 12.255 24z"/><path fill="#FBBC05" d="M5.525 14.29c-.25-.72-.38-1.49-.38-2.29s.14-1.57.38-2.29V6.62h-3.98a11.86 11.86 0 000 10.76l3.98-3.09z"/><path fill="#EA4335" d="M12.255 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C18.205 1.19 15.495 0 12.255 0c-4.64 0-8.74 2.7-10.71 6.62l3.98 3.09c.95-2.85 3.6-4.96 6.73-4.96z"/></svg>
         Continuer avec Google
       </button>
 
-      <div id="iosReturnBtn" style="display:none;width:100%;margin-bottom:10px;">
-        <button onclick="checkExistingSession()" style="width:100%;padding:12px;border-radius:14px;background:linear-gradient(135deg,var(--tl),var(--gn));color:#fff;font-weight:800;font-size:.88rem;border:none;cursor:pointer;">
-          ✅ Déjà connecté ? Accéder à l'app
+      <div id="iosReturnBtn" style="display:none;margin-bottom:8px;">
+        <button onclick="checkExistingSession()" style="width:100%;padding:13px;border-radius:14px;background:linear-gradient(135deg,#00b894,#00b5b8);color:#fff;font-weight:800;font-size:.88rem;border:none;cursor:pointer;">
+          🔄 Vérifier ma connexion Google
         </button>
       </div>
+
       <div class="a-div">ou par email</div>
-      <div class="fg"><label class="flb">Email</label><input class="inp" type="email" placeholder="vous@email.com" id="lE" onkeydown="if(event.key==='Enter')document.getElementById('lP').focus()"></div>
-      <div class="fg"><label class="flb">Mot de passe</label><input class="inp" type="password" placeholder="••••••••" id="lP" onkeydown="if(event.key==='Enter')loginEmail()"></div>
-      <button class="btn acc full" id="loginBtn" onclick="loginEmail()">Se connecter</button>
-      <div class="a-sw">Pas de compte ? <a onclick="toReg()">Créer un compte</a></div>
-      <div class="a-sw mt8" style="font-size:.72rem;"><a onclick="showFBSetup()">⚙️ Règles Firestore / Aide</a></div>
+
+      <div class="a-field">
+        <label class="a-lbl">Adresse email</label>
+        <input class="inp" id="aEmail" type="email" placeholder="vous@exemple.com" autocomplete="email" inputmode="email">
+      </div>
+      <div class="a-field">
+        <label class="a-lbl">Mot de passe</label>
+        <input class="inp" id="aPwd" type="password" placeholder="••••••••" autocomplete="current-password">
+      </div>
+      <button class="btn acc" style="width:100%;padding:14px;border-radius:14px;margin-top:4px;font-size:.95rem;font-weight:800;" onclick="loginEmail()">
+        Se connecter
+      </button>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-top:12px;">
+        <button class="btn ghost sm" onclick="forgotPwd()" style="font-size:.75rem;color:var(--tx2);">Mot de passe oublié ?</button>
+        <button class="btn ghost sm" onclick="switchAuth('aReg')" style="font-size:.75rem;color:var(--ac);font-weight:700;">Créer un compte →</button>
+      </div>
     </div>
     <div id="aReg" style="display:none;">
       <h1 class="a-h">Créer un compte 🌟</h1>
@@ -1517,26 +1534,56 @@ function show(id) {
   s.classList.add("on");
 }
 
-window.addEventListener("load", () => {
+window.addEventListener("load", async () => {
     const t = localStorage.getItem("sc_theme") || "light";
   document.documentElement.setAttribute("data-theme", t);
   document.getElementById(t === "dark" ? "thD" : "thL")?.classList.add("on");
   document.getElementById(t === "dark" ? "thL" : "thD")?.classList.remove("on");
 
-  // ── INIT FIREBASE IMMEDIATELY ──
-  if(!initFirebase()) {
+  // ── INIT FIREBASE (async — awaits setPersistence) ──
+  const bootHash = window.location.hash;
+  const hasCustomToken = bootHash.includes("firebase_custom_token=");
+  const hasAuthError = bootHash.includes("auth_error=");
+  if(hasCustomToken || hasAuthError) history.replaceState({}, "", window.location.pathname);
+  localStorage.removeItem("sc_pending_login");
+
+  const fbOK = await initFirebase();
+  if(!fbOK) { show("auth"); return; }
+  dbg("Firebase ✅ setPersistence LOCAL active | url=" + window.location.hostname);
+
+  // ── CUSTOM TOKEN from Vercel backend (iOS PWA Google OAuth) ──
+  if(hasCustomToken) {
+    try {
+      const p = new URLSearchParams(bootHash.slice(1));
+      const ct = decodeURIComponent(p.get("firebase_custom_token") || "");
+      const ue = decodeURIComponent(p.get("user_email") || "");
+      dbg("Custom token pour: " + ue + (ct ? " ✅" : " ❌"));
+      if(ct) {
+        await auth.signInWithCustomToken(ct);
+        dbg("signInWithCustomToken ✅ — en attente onAuthStateChanged");
+        // onAuthStateChanged fires and handles loadUserProfile
+      } else {
+        show("auth");
+      }
+    } catch(e) {
+      dbg("signInWithCustomToken ERROR: " + (e.code||e.message), "#ff4444");
+      show("auth");
+      showAuthErr("authErr", "Erreur Google backend: " + (e.code||e.message));
+    }
+    // Fall through to onAuthStateChanged
+  }
+
+  // ── AUTH ERROR from Vercel backend ──
+  if(hasAuthError) {
+    const p = new URLSearchParams(bootHash.slice(1));
+    const em = decodeURIComponent(p.get("auth_error") || "Erreur inconnue");
+    dbg("Backend error: " + em, "#ff4444");
     show("auth");
+    setTimeout(() => showAuthErr("authErr", "❌ " + em), 500);
     return;
   }
 
-  const hasPendingRedirect = !!localStorage.getItem("sc_pending_login");
-  dbg("Boot: hasPendingRedirect=" + hasPendingRedirect + " | url=" + window.location.hostname);
-
-  // ── GOOGLE REDIRECT RESULT ──
-  // On iOS, this can take several seconds. We wait for it before doing anything.
-
   // ── AUTH STATE CHANGE ──
-    // ── AUTH STATE CHANGE ──
   auth.onAuthStateChanged(async user => {
     dbg("onAuthStateChanged: " + (user ? "✅ " + user.email : "user=null"));
 
@@ -1579,6 +1626,10 @@ window.addEventListener("load", () => {
 // ════════════════════════════════════════
 // AUTH — REAL Firebase
 // ════════════════════════════════════════
+function switchAuth(id) {
+  document.getElementById("aLogin").style.display = (id === "aLogin") ? "block" : "none";
+  document.getElementById("aReg").style.display = (id === "aReg") ? "block" : "none";
+}
 function toReg() { document.getElementById("aLogin").style.display = "none"; document.getElementById("aReg").style.display = "block"; }
 function toLogin() { document.getElementById("aReg").style.display = "none"; document.getElementById("aLogin").style.display = "block"; }
 
@@ -1613,16 +1664,9 @@ async function loginGoogle() {
   dbg("loginGoogle: isIOS=" + isIOS + " isStandalone=" + isStandalone);
 
   if(isIOS && isStandalone) {
-    // iOS PWA + Google = impossible sans backend.
-    // On affiche des instructions claires.
-    document.getElementById("authErr").style.display = "block";
-    document.getElementById("authErr").style.cssText = "display:block;background:rgba(0,181,184,.12);border-left:3px solid var(--tl);border-radius:var(--rx);padding:12px 14px;font-size:.78rem;color:var(--tx);margin-bottom:12px;line-height:1.7;";
-    document.getElementById("authErr").innerHTML =
-      "<strong>📱 iOS : 2 options</strong><br>" +
-      "<strong>Option 1 — Rapide :</strong> Utilisez Email/Mot de passe ci-dessous ✅<br>" +
-      "<strong>Option 2 — Google :</strong> Ouvrez <a href='" + window.location.href + "' target='_blank' style='color:var(--ac);'>ce lien dans Safari</a>, connectez-vous avec Google, puis revenez ici et appuyez sur le bouton vert.";
-    const btn = document.getElementById("iosReturnBtn");
-    if(btn) btn.style.display = "block";
+    // iOS PWA: redirect to Vercel backend Google OAuth
+    dbg("iOS PWA → /api/auth/google");
+    window.location.href = window.location.origin + "/api/auth/google?state=pwa_ios";
     return;
   }
 

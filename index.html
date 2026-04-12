@@ -1546,6 +1546,7 @@ window.addEventListener("load", async () => {
   const hasAuthError = bootHash.includes("auth_error=");
   if(hasCustomToken || hasAuthError) history.replaceState({}, "", window.location.pathname);
   localStorage.removeItem("sc_pending_login");
+  dbg("Boot hash: " + (hasCustomToken ? "✅ custom_token" : hasAuthError ? "❌ auth_error" : "normal"));
 
   const fbOK = await initFirebase();
   if(!fbOK) { show("auth"); return; }

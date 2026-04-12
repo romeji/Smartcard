@@ -1,120 +1,104 @@
-// api/auth/callback.js
-// Step 2: Google redirects here after login
-// Exchange code → Google tokens → Firebase custom token → redirect to PWA
-
+// api/auth/callback.js — Step 2: Exchange code for Firebase custom token
 import { initializeApp, cert, getApps } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 
-// Initialize Firebase Admin (once)
-function getFirebaseAdmin() {
+const GOOGLE_CLIENT_ID = "126521073547-ul3fugt7usg7nudf6bgroh2p3t2ugks2.apps.googleusercontent.com";
+const GOOGLE_CLIENT_SECRET = "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";
+const BASE_URL = "https://smartcard-eosin.vercel.app";
+const REDIRECT_URI = BASE_URL + "/api/auth/callback";
+
+function getAdmin() {
   if (getApps().length > 0) return getApps()[0];
-
-  const serviceAccount = {
-    type: "service_account",
-    project_id: process.env.FIREBASE_PROJECT_ID,
-    private_key_id: process.env.FIREBASE_PRIVATE_KEY_ID,
-    private_key: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n"),
-    client_email: process.env.FIREBASE_CLIENT_EMAIL,
-    client_id: process.env.FIREBASE_CLIENT_ID,
-    auth_uri: "https://accounts.google.com/o/oauth2/auth",
-    token_uri: "https://oauth2.googleapis.com/token",
-  };
-
-  return initializeApp({ credential: cert(serviceAccount) });
+  return initializeApp({
+    credential: cert({
+      projectId: process.env.FIREBASE_PROJECT_ID,
+      privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n"),
+      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+    }),
+  });
 }
 
 export default async function handler(req, res) {
-  const { code, error, state } = req.query;
+  const { code, error } = req.query;
 
-  // Handle OAuth errors
   if (error) {
-    return redirectWithError(res, "Google OAuth refusé : " + error);
+    return res.redirect(302, BASE_URL + "/#auth_error=" + encodeURIComponent("Google refusé : " + error));
   }
-
   if (!code) {
-    return redirectWithError(res, "Pas de code OAuth reçu.");
+    return res.redirect(302, BASE_URL + "/#auth_error=" + encodeURIComponent("Pas de code OAuth."));
   }
-
-  const clientId = process.env.GOOGLE_CLIENT_ID;
-  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || `https://${req.headers.host}`;
-  const redirectUri = `${baseUrl}/api/auth/callback`;
 
   try {
-    // Step 1: Exchange code for Google tokens
+    // 1. Échanger le code contre les tokens Google
     const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
         code,
-        client_id: clientId,
-        client_secret: clientSecret,
-        redirect_uri: redirectUri,
+        client_id: GOOGLE_CLIENT_ID,
+        client_secret: GOOGLE_CLIENT_SECRET,
+        redirect_uri: REDIRECT_URI,
         grant_type: "authorization_code",
       }),
     });
-
     const tokenData = await tokenRes.json();
 
     if (tokenData.error) {
-      console.error("Token exchange error:", tokenData);
-      return redirectWithError(res, "Échange de token échoué : " + tokenData.error_description);
+      console.error("Token error:", tokenData);
+      return res.redirect(302, BASE_URL + "/#auth_error=" + encodeURIComponent("Token échoué : " + tokenData.error_description));
     }
 
-    const { id_token, access_token } = tokenData;
-
-    if (!id_token) {
-      return redirectWithError(res, "Pas d'id_token reçu de Google.");
-    }
-
-    // Step 2: Get user info from Google
-    const userInfoRes = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
-      headers: { Authorization: `Bearer ${access_token}` },
+    // 2. Récupérer le profil Google
+    const userRes = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
+      headers: { Authorization: "Bearer " + tokenData.access_token },
     });
-    const userInfo = await userInfoRes.json();
+    const user = await userRes.json();
 
-    if (!userInfo.sub) {
-      return redirectWithError(res, "Impossible de récupérer le profil Google.");
+    if (!user.sub) {
+      return res.redirect(302, BASE_URL + "/#auth_error=" + encodeURIComponent("Profil Google introuvable."));
     }
 
-    // Step 3: Create Firebase custom token
-    getFirebaseAdmin();
+    // 3. Créer/récupérer l'utilisateur Firebase
+    getAdmin();
     const firebaseAuth = getAuth();
+    const uid = "google_" + user.sub;
 
-    // Create or update user in Firebase
-    let firebaseUser;
     try {
-      firebaseUser = await firebaseAuth.getUserByEmail(userInfo.email);
+      await firebaseAuth.getUser(uid);
     } catch {
-      // User doesn't exist yet — create them
-      firebaseUser = await firebaseAuth.createUser({
-        uid: `google_${userInfo.sub}`,
-        email: userInfo.email,
-        displayName: userInfo.name,
-        photoURL: userInfo.picture,
+      await firebaseAuth.createUser({
+        uid,
+        email: user.email,
+        displayName: user.name || user.email,
+        photoURL: user.picture || "",
         emailVerified: true,
       });
     }
 
-    // Create custom token (valid 1 hour)
-    const customToken = await firebaseAuth.createCustomToken(firebaseUser.uid, {
-      email: userInfo.email,
-      name: userInfo.name,
+    // Sync email/name if changed
+    await firebaseAuth.updateUser(uid, {
+      email: user.email,
+      displayName: user.name || user.email,
+      emailVerified: true,
+    }).catch(() => {});
+
+    // 4. Créer le custom token Firebase (valide 1h)
+    const customToken = await firebaseAuth.createCustomToken(uid, {
+      email: user.email,
+      name: user.name || "",
     });
 
-    // Step 4: Redirect back to PWA with custom token in URL hash
-    // The PWA reads this hash and calls signInWithCustomToken()
-    const pwaUrl = `${baseUrl}/#firebase_custom_token=${encodeURIComponent(customToken)}&user_email=${encodeURIComponent(userInfo.email)}&user_name=${encodeURIComponent(userInfo.name || "")}`;
+    // 5. Rediriger vers la PWA avec le token dans le hash
+    const hashData = [
+      "firebase_custom_token=" + encodeURIComponent(customToken),
+      "user_email=" + encodeURIComponent(user.email || ""),
+      "user_name=" + encodeURIComponent(user.name || ""),
+    ].join("&");
 
-    return res.redirect(302, pwaUrl);
+    return res.redirect(302, BASE_URL + "/#" + hashData);
 
   } catch (err) {
-    console.error("OAuth callback error:", err);
-    return redirectWithError(res, "Erreur serveur : " + err.message);
+    console.error("Callback error:", err);
+    return res.redirect(302, BASE_URL + "/#auth_error=" + encodeURIComponent("Erreur serveur : " + err.message));
   }
-}
-
-function redirectWithError(res, msg) {
-  const baseUrl = `https://${res.req?.headers?.host || "smartcard-eosin.vercel.app"}`;
-  return res.redirect(302, `${baseUrl}/#auth_error=${encodeURIComponent(msg)}`);
 }

@@ -160,8 +160,8 @@ svg{display:block;flex-shrink:0;}
 
 /* ══ APP ══ */
 #app{display:none;}
-#app.on{display:flex;}
-.topbar{display:flex;align-items:center;gap:10px;padding:14px 18px;padding-top:calc(14px + env(safe-area-inset-top));background:var(--bg);position:fixed;top:0;left:0;right:0;z-index:200;}
+
+.topbar{display:flex;align-items:center;gap:10px;padding:14px 18px;padding-top:calc(14px + env(safe-area-inset-top));background:var(--bg);flex-shrink:0;position:relative;z-index:10;}
 .tb-logo{display:flex;align-items:center;gap:9px;}
 .tb-logo-ic{width:36px;height:36px;border-radius:12px;background:var(--bg);box-shadow:var(--so);display:flex;align-items:center;justify-content:center;}
 .tb-logo-tx{font-size:1.05rem;font-weight:900;color:var(--tx);}
@@ -184,19 +184,18 @@ svg{display:block;flex-shrink:0;}
 .sync-pulse.syncing{background:var(--yl);}
 
 /* ══ VIEWS ══ */
-.vwrap{flex:1;display:flex;flex-direction:column;min-height:0;}
-.view{display:none;flex-direction:column;flex:1;overflow:hidden;height:100%;min-height:0;}
-.view.on > .vb{scroll-behavior:auto;}
-.view.on{display:flex;}
-.vb{flex:1;overflow-y:auto;overflow-x:hidden;padding:14px 18px 20px;scrollbar-width:none;overflow-anchor:none;}
+.vwrap{flex:1;display:flex;flex-direction:column;min-height:0;overflow:hidden;}
+.view{display:none;}
+
+
+/* vb — see master layout */
 .vb > *:first-child{scroll-margin-top:0;}
 .vb::-webkit-scrollbar{display:none;}
 @media(min-width:600px){.vb{padding:18px 26px 20px;}}
 @media(min-width:900px){.vb{max-width:740px;margin:0 auto;width:100%;}}
 
 /* ══ TABBAR ══ */
-.tabbar{background:var(--bg);padding:8px 14px calc(8px + env(safe-area-inset-bottom));display:flex;justify-content:center;position:fixed;bottom:0;left:0;right:0;z-index:200;box-shadow:0 -2px 12px rgba(0,0,0,.06);}
-body:not(.app-active) .tabbar{display:none !important;}
+.tabbar{background:var(--bg);padding:8px 14px;padding-bottom:calc(8px + env(safe-area-inset-bottom));display:flex;justify-content:center;flex-shrink:0;z-index:10;box-shadow:0 -2px 12px rgba(0,0,0,.06);}
 .tb-inner{display:flex;gap:3px;background:var(--bg);border-radius:var(--rp);box-shadow:var(--so);padding:4px;max-width:380px;width:100%;}
 .tab{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 4px;border-radius:var(--rp);cursor:pointer;transition:all .22s;color:var(--tx3);}
 .tab.on{background:var(--bg);box-shadow:var(--so);color:var(--ac);}
@@ -577,8 +576,7 @@ body.is-swiping{overflow:hidden;}
   .tab-lb{font-size:.48rem;}
 }
 /* Prevent horizontal scroll on all views */
-.view,.vb{max-width:100vw;}
-html,body{overflow:hidden;max-width:100vw;}
+
 /* Fix modals on small screens */
 .modal{padding:20px 16px 32px;}
 @media(max-height:700px){
@@ -588,16 +586,27 @@ html,body{overflow:hidden;max-width:100vw;}
 
 
 
-/* ── LAYOUT FIX: views fill correctly when active ── */
-.view.on{display:flex;flex-direction:column;flex:1;min-height:0;}
-.vwrap{flex:1;min-height:0;}
-.vb{flex:1;min-height:0;overflow-y:auto;}
 
-/* Account for fixed topbar and tabbar */
-.vwrap{
-  padding-top: calc(64px + env(safe-area-inset-top));
-  padding-bottom: calc(66px + env(safe-area-inset-bottom));
-}
+/* ══════════════════════════════════════
+   MASTER LAYOUT — Single source of truth
+   #app = fixed full screen, flex column
+   topbar = flex-shrink:0 (in-flow, top)
+   vwrap  = flex:1 (fills middle)
+   tabbar = flex-shrink:0 (in-flow, bottom)
+   .view  = display:none by default
+   .view.on = display:flex fills vwrap
+   .vb    = flex:1 overflow-y:auto (scroll)
+══════════════════════════════════════ */
+.screen{position:fixed;inset:0;background:var(--bg);display:none;flex-direction:column;overflow:hidden;}
+.screen.on{display:flex;}
+.vwrap{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden;}
+.view{display:none;flex-direction:column;flex:1;min-height:0;}
+.view.on{display:flex;}
+.vb{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;padding:14px 18px;padding-bottom:20px;scrollbar-width:none;overflow-anchor:none;}
+.vb::-webkit-scrollbar{display:none;}
+
+body:not(.app-active) .topbar{display:none;}
+body:not(.app-active) .tabbar{display:none;}
 </style>
 </head>
 <body>

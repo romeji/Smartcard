@@ -1,9 +1,8 @@
-// api/auth/callback.js — Step 2: Exchange code for Firebase custom token
+// api/auth/callback.js — Google OAuth → Firebase Custom Token
 import { initializeApp, cert, getApps } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 
-const GOOGLE_CLIENT_ID = "126521073547-ul3fugt7usg7nudf6bgroh2p3t2ugks2.apps.googleusercontent.com";
-const GOOGLE_CLIENT_SECRET = "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";
+// All credentials from Vercel environment variables (secure)
 const BASE_URL = "https://smartcard-eosin.vercel.app";
 const REDIRECT_URI = BASE_URL + "/api/auth/callback";
 
@@ -35,8 +34,8 @@ export default async function handler(req, res) {
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
         code,
-        client_id: GOOGLE_CLIENT_ID,
-        client_secret: GOOGLE_CLIENT_SECRET,
+        client_id: process.env.GOOGLE_CLIENT_ID,
+        client_secret: process.env.GOOGLE_CLIENT_SECRET,
         redirect_uri: REDIRECT_URI,
         grant_type: "authorization_code",
       }),
@@ -45,54 +44,57 @@ export default async function handler(req, res) {
 
     if (tokenData.error) {
       console.error("Token error:", tokenData);
-      return res.redirect(302, BASE_URL + "/#auth_error=" + encodeURIComponent("Token échoué : " + tokenData.error_description));
+      return res.redirect(302, BASE_URL + "/#auth_error=" + encodeURIComponent("Token échoué : " + (tokenData.error_description || tokenData.error)));
     }
 
     // 2. Récupérer le profil Google
     const userRes = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
       headers: { Authorization: "Bearer " + tokenData.access_token },
     });
-    const user = await userRes.json();
+    const gUser = await userRes.json();
 
-    if (!user.sub) {
+    if (!gUser.sub || !gUser.email) {
       return res.redirect(302, BASE_URL + "/#auth_error=" + encodeURIComponent("Profil Google introuvable."));
     }
 
-    // 3. Créer/récupérer l'utilisateur Firebase
+    // 3. Trouver ou créer l'utilisateur Firebase
     getAdmin();
     const firebaseAuth = getAuth();
-    const uid = "google_" + user.sub;
+    let uid;
 
     try {
-      await firebaseAuth.getUser(uid);
-    } catch {
-      await firebaseAuth.createUser({
-        uid,
-        email: user.email,
-        displayName: user.name || user.email,
-        photoURL: user.picture || "",
+      // Chercher par email d'abord (gère les comptes existants)
+      const existing = await firebaseAuth.getUserByEmail(gUser.email);
+      uid = existing.uid;
+      // Mettre à jour les infos
+      await firebaseAuth.updateUser(uid, {
+        displayName: gUser.name || existing.displayName || gUser.email,
+        photoURL: gUser.picture || existing.photoURL || "",
+        emailVerified: true,
+      }).catch(() => {});
+    } catch (notFound) {
+      // Créer un nouvel utilisateur
+      const newUser = await firebaseAuth.createUser({
+        email: gUser.email,
+        displayName: gUser.name || gUser.email,
+        photoURL: gUser.picture || "",
         emailVerified: true,
       });
+      uid = newUser.uid;
     }
 
-    // Sync email/name if changed
-    await firebaseAuth.updateUser(uid, {
-      email: user.email,
-      displayName: user.name || user.email,
-      emailVerified: true,
-    }).catch(() => {});
-
-    // 4. Créer le custom token Firebase (valide 1h)
+    // 4. Créer le custom token Firebase
     const customToken = await firebaseAuth.createCustomToken(uid, {
-      email: user.email,
-      name: user.name || "",
+      email: gUser.email,
+      name: gUser.name || "",
+      picture: gUser.picture || "",
     });
 
-    // 5. Rediriger vers la PWA avec le token dans le hash
+    // 5. Rediriger vers la PWA avec le token
     const hashData = [
       "firebase_custom_token=" + encodeURIComponent(customToken),
-      "user_email=" + encodeURIComponent(user.email || ""),
-      "user_name=" + encodeURIComponent(user.name || ""),
+      "user_email=" + encodeURIComponent(gUser.email),
+      "user_name=" + encodeURIComponent(gUser.name || ""),
     ].join("&");
 
     return res.redirect(302, BASE_URL + "/#" + hashData);

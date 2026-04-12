@@ -41,7 +41,7 @@ button,input,textarea{font-family:var(--f);border:none;outline:none;background:n
 svg{display:block;flex-shrink:0;}
 
 /* ══ SCREENS ══ */
-.screen{position:fixed;inset:0;display:none;flex-direction:column;background:var(--bg);overflow:hidden;}
+.screen{position:fixed;inset:0;display:none;flex-direction:column;background:var(--bg);overflow:hidden;height:100%;}
 .screen.on{display:flex;}
 .sb{flex:1;overflow-y:auto;scrollbar-width:none;}
 .sb::-webkit-scrollbar{display:none;}
@@ -185,7 +185,7 @@ svg{display:block;flex-shrink:0;}
 
 /* ══ VIEWS ══ */
 .vwrap{flex:1;overflow:hidden;display:flex;flex-direction:column;min-height:0;}
-.view{display:none;flex-direction:column;flex:1;overflow:hidden;height:100%;}
+.view{display:none;flex-direction:column;flex:1;overflow:hidden;height:100%;min-height:0;}
 .view.on > .vb{scroll-behavior:auto;}
 .view.on{display:flex;}
 .vb{flex:1;overflow-y:auto;overflow-x:hidden;padding:14px 18px 20px;scrollbar-width:none;overflow-anchor:none;}
@@ -585,6 +585,14 @@ html,body{overflow:hidden;max-width:100vw;}
   .modal{max-height:88vh;}
   .ob-ti{font-size:1.2rem;}
 }
+
+
+/* Force views to fill vwrap correctly */
+.vwrap,.view{display:flex;flex-direction:column;}
+.vwrap{flex:1;min-height:0;overflow:hidden;}
+.view{flex:1;min-height:0;overflow:hidden;}
+.view.on{display:flex;}
+.vb{flex:1;min-height:0;overflow-y:auto;}
 
 </style>
 </head>
@@ -1654,40 +1662,10 @@ function isMobileOrPWA() {
 }
 
 async function loginGoogle() {
-  const provider = new firebase.auth.GoogleAuthProvider();
-  provider.addScope("email");
-  provider.addScope("profile");
-
-  const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
-  const isStandalone = window.navigator.standalone === true ||
-    window.matchMedia("(display-mode:standalone)").matches;
-
-  dbg("loginGoogle: isIOS=" + isIOS + " isStandalone=" + isStandalone);
-
-  if(isIOS && isStandalone) {
-    // iOS PWA: redirect to Vercel backend Google OAuth
-    dbg("iOS PWA → /api/auth/google");
-    window.location.href = window.location.origin + "/api/auth/google?state=pwa_ios";
-    return;
-  }
-
-  // Android / Desktop : popup simple
-  dbg("Tentative signInWithPopup...");
-  try {
-    const result = await auth.signInWithPopup(provider);
-    dbg("signInWithPopup ✅ " + result.user.email);
-    // onAuthStateChanged va se déclencher automatiquement
-  } catch(e) {
-    dbg("signInWithPopup ERROR: " + e.code + " " + e.message, "#ff4444");
-    const msgs = {
-      "auth/popup-closed-by-user": "Connexion annulée.",
-      "auth/popup-blocked": "Popup bloquée — autorisez les popups dans les paramètres de votre navigateur.",
-      "auth/cancelled-popup-request": "Connexion annulée.",
-      "auth/unauthorized-domain": "Domaine non autorisé Firebase : " + window.location.hostname,
-      "auth/network-request-failed": "Erreur réseau."
-    };
-    showAuthErr("authErr", msgs[e.code] || e.code + " — " + e.message);
-  }
+  // ALL devices → Vercel backend OAuth
+  // Avoids: iOS ITP, popup bloquée PWA, invalid_client Firebase natif
+  dbg("loginGoogle → /api/auth/google");
+  window.location.href = window.location.origin + "/api/auth/google";
 }
 
 

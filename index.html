@@ -160,7 +160,7 @@ svg{display:block;flex-shrink:0;}
 /* ══ APP ══ */
 
 
-.topbar{display:flex;align-items:center;gap:10px;padding:14px 18px;padding-top:calc(14px + env(safe-area-inset-top));background:var(--bg);flex-shrink:0;position:relative;z-index:10;}
+/* topbar → master */
 .tb-logo{display:flex;align-items:center;gap:9px;}
 .tb-logo-ic{width:36px;height:36px;border-radius:12px;background:var(--bg);box-shadow:var(--so);display:flex;align-items:center;justify-content:center;}
 .tb-logo-tx{font-size:1.05rem;font-weight:900;color:var(--tx);}
@@ -192,7 +192,7 @@ svg{display:block;flex-shrink:0;}
 @media(min-width:900px){.vb{max-width:740px;margin:0 auto;width:100%;}}
 
 /* ══ TABBAR ══ */
-.tabbar{background:var(--bg);padding:8px 14px;padding-bottom:calc(8px + env(safe-area-inset-bottom));display:flex;justify-content:center;flex-shrink:0;z-index:10;box-shadow:0 -2px 12px rgba(0,0,0,.06);}
+/* tabbar → master */
 .tb-inner{display:flex;gap:3px;background:var(--bg);border-radius:var(--rp);box-shadow:var(--so);padding:4px;max-width:380px;width:100%;}
 .tab{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 4px;border-radius:var(--rp);cursor:pointer;transition:all .22s;color:var(--tx3);}
 .tab.on{background:var(--bg);box-shadow:var(--so);color:var(--ac);}
@@ -533,7 +533,7 @@ svg{display:block;flex-shrink:0;}
 /* Prevent body scroll while swiping */
 body.is-swiping{overflow:hidden;}
 /* Fix tab bar on notched phones */
-.tabbar{padding-bottom:calc(10px + env(safe-area-inset-bottom));}
+/* tabbar → master */
 /* Fix empty state */
 .empty{padding:32px 16px;}
 .empty-ic{font-size:2.2rem;}
@@ -556,7 +556,7 @@ body.is-swiping{overflow:hidden;}
 
 /* ══ MOBILE RESPONSIVE FIXES ══ */
 @media(max-width:390px){
-  .topbar{padding:12px 14px;padding-top:calc(12px + env(safe-area-inset-top));}
+  /* topbar → master */
   .tb-logo-tx{font-size:.9rem;}
     .card{padding:14px;}
   .btn{padding:9px 14px;}
@@ -583,16 +583,46 @@ body.is-swiping{overflow:hidden;}
 
 
 
-/* ══ MASTER LAYOUT ══ */
+/* ══ MASTER LAYOUT — position:fixed approach (reliable on mobile Safari) ══ */
 #app{display:none;}
-#app.on{display:flex;flex-direction:column;}
-.screen{position:fixed;inset:0;background:var(--bg);display:none;flex-direction:column;}
-.screen.on{display:flex;}
-.vwrap{flex:1;display:flex;flex-direction:column;min-height:0;overflow:hidden;}
-.view{display:none;flex-direction:column;flex:1;min-height:0;}
+#app.on{display:block;}
+.screen{position:fixed;inset:0;background:var(--bg);display:none;}
+.screen.on{display:block;}
+.topbar{
+  position:fixed;top:0;left:0;right:0;
+  z-index:200;
+  background:var(--bg);
+  display:flex;align-items:center;gap:10px;
+  padding:14px 18px;
+  padding-top:calc(14px + env(safe-area-inset-top));
+  height:calc(58px + env(safe-area-inset-top));
+}
+.tabbar{
+  position:fixed;bottom:0;left:0;right:0;
+  z-index:200;
+  background:var(--bg);
+  display:flex;justify-content:center;
+  padding:8px 14px;
+  padding-bottom:calc(8px + env(safe-area-inset-bottom));
+  box-shadow:0 -2px 12px rgba(0,0,0,.08);
+  height:calc(58px + env(safe-area-inset-bottom));
+}
+.vwrap{
+  position:fixed;
+  top:calc(58px + env(safe-area-inset-top));
+  bottom:calc(58px + env(safe-area-inset-bottom));
+  left:0;right:0;
+  display:flex;flex-direction:column;
+  overflow:hidden;
+}
+.view{display:none;flex-direction:column;position:absolute;inset:0;}
 .view.on{display:flex;}
-.vb{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;padding:14px 18px 20px;scrollbar-width:none;overflow-anchor:none;}
+.vb{flex:1;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;
+  padding:14px 18px 20px;scrollbar-width:none;overflow-anchor:none;}
 .vb::-webkit-scrollbar{display:none;}
+body:not(.app-active) .topbar,
+body:not(.app-active) .tabbar,
+body:not(.app-active) .vwrap{display:none !important;}
 </style>
 </head>
 <body>
@@ -1528,17 +1558,19 @@ const MEALS = [
 // ════════════════════════════════════════
 function show(id) {
   dbg("show(" + id + ")");
-  document.querySelectorAll(".screen").forEach(s => { s.classList.remove("on"); s.style.display = "none"; });
+  document.querySelectorAll(".screen").forEach(s => {
+    s.classList.remove("on");
+    s.style.display = "none";
+  });
   const s = document.getElementById(id);
-  if(!s) { dbg("ERROR: element #" + id + " not found!", "#ff4444"); return; }
+  if(!s) { dbg("ERROR: #" + id + " not found!", "#ff4444"); return; }
+  s.style.display = "block";
+  s.classList.add("on");
   if(id === "app") {
     document.body.classList.add("app-active");
-    s.style.display = "flex";
   } else {
     document.body.classList.remove("app-active");
-    s.style.display = "flex";
   }
-  s.classList.add("on");
 }
 
 window.addEventListener("load", async () => {

@@ -598,19 +598,22 @@ body.is-swiping{overflow:hidden;}
   height:calc(58px + env(safe-area-inset-top));
 }
 .tabbar{
-  position:fixed;bottom:0;left:0;right:0;
+  position:fixed;
+  bottom:calc(16px + env(safe-area-inset-bottom));
+  left:50%;transform:translateX(-50%);
+  width:calc(100% - 32px);max-width:420px;
   z-index:200;
   background:var(--bg);
+  -webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px);
   display:flex;justify-content:center;
-  padding:8px 14px;
-  padding-bottom:calc(8px + env(safe-area-inset-bottom));
-  box-shadow:0 -2px 12px rgba(0,0,0,.08);
-  height:calc(58px + env(safe-area-inset-bottom));
+  padding:8px 6px;border-radius:22px;
+  box-shadow:0 8px 32px rgba(0,0,0,.25),inset 0 1px 0 rgba(255,255,255,.08);
+  border:1px solid rgba(255,255,255,.07);
 }
 .vwrap{
   position:fixed;
   top:calc(58px + env(safe-area-inset-top));
-  bottom:calc(58px + env(safe-area-inset-bottom));
+  bottom:0;
   left:0;right:0;
   display:flex;flex-direction:column;
   overflow:hidden;
@@ -618,11 +621,17 @@ body.is-swiping{overflow:hidden;}
 .view{display:none;flex-direction:column;position:absolute;inset:0;}
 .view.on{display:flex;}
 .vb{flex:1;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;
-  padding:14px 18px 20px;scrollbar-width:none;overflow-anchor:none;}
+  padding:14px 18px calc(100px + env(safe-area-inset-bottom));scrollbar-width:none;overflow-anchor:none;}
 .vb::-webkit-scrollbar{display:none;}
 body:not(.app-active) .topbar,
 body:not(.app-active) .tabbar,
 body:not(.app-active) .vwrap{display:none !important;}
+
+/* LIST MODE TABS */
+.lmt{padding:8px 16px;border-radius:99px;font-size:.78rem;font-weight:700;background:var(--bg);box-shadow:var(--so);color:var(--tx2);border:none;cursor:pointer;transition:all .15s;white-space:nowrap;}
+.lmt.on{background:linear-gradient(135deg,var(--ac),#8b5cf6);color:#fff;box-shadow:var(--sp);}
+.lmt-badge{display:inline-block;background:rgba(255,255,255,.3);border-radius:99px;padding:1px 7px;font-size:.65rem;margin-left:4px;}
+.lmt.on .lmt-badge{background:rgba(255,255,255,.25);}
 </style>
 </head>
 <body>
@@ -774,6 +783,13 @@ body:not(.app-active) .vwrap{display:none !important;}
       <div class="ob-em">🏠</div>
       <h2 class="ob-ti">Votre foyer</h2>
       <p class="ob-su">Calibre les quantités, le budget et les suggestions IA.</p>
+        <div class="ob-field" style="margin-top:14px;">
+          <label class="ob-lbl">Budget courses / semaine (€)</label>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <input class="inp" id="obBudget" type="number" placeholder="80" min="20" max="2000" value="80" style="flex:1;">
+            <span style="font-size:.75rem;color:var(--tx2);flex-shrink:0;">€/sem</span>
+          </div>
+        </div>
       <div class="ob-slrow"><div class="ob-slbl"><span>Personnes</span><span id="vNb">2</span></div><input type="range" min="1" max="8" value="2" class="rng" oninput="document.getElementById('vNb').textContent=this.value;P.household=+this.value"></div>
       <div class="ob-slrow"><div class="ob-slbl"><span>Enfants</span><span id="vEn">0</span></div><input type="range" min="0" max="6" value="0" class="rng" oninput="document.getElementById('vEn').textContent=this.value;P.children=+this.value"></div>
       <div class="ob-slrow"><div class="ob-slbl"><span>Budget mensuel</span><span id="vBd">400€</span></div><input type="range" min="100" max="1200" step="50" value="400" class="rng" oninput="document.getElementById('vBd').textContent=this.value+'€';P.budget=+this.value"></div>
@@ -927,6 +943,9 @@ body:not(.app-active) .vwrap{display:none !important;}
         <div class="chip" onclick="fCat('bakery',this)">🥐 Boulangerie</div>
         <div class="chip" onclick="fCat('hygiene',this)">🧴 Hygiène</div>
       </div>
+      <!-- LIST MODE TABS: À faire / Dans mon chariot -->
+      <div id="listModeTabs" style="display:flex;gap:8px;margin-bottom:10px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;"></div>
+      <button id="finishShoppingBtn" onclick="finishShopping()" style="display:none;width:100%;padding:12px;margin-bottom:10px;border-radius:14px;background:linear-gradient(135deg,#00b894,#00b5b8);color:#fff;font-weight:800;font-size:.88rem;border:none;cursor:pointer;">✅ Courses terminées — Ajouter au frigo</button>
       <div id="catSuggestPanel" class="mb14" style="display:none;background:var(--bg);border-radius:var(--rs);box-shadow:var(--so);padding:12px 14px;"></div>
       <div class="sec-row">
         <div class="sec-lbl">Articles <span id="listCnt" style="color:var(--ac);margin-left:4px;"></span></div>
@@ -952,11 +971,7 @@ body:not(.app-active) .vwrap{display:none !important;}
           <div class="scan-c-ti">Ticket de caisse</div>
           <div class="scan-c-su">IA lit le ticket → ajoute à la liste ET met à jour le frigo</div>
         </div>
-        <div class="scan-c" onclick="openCam('barcode')">
-          <div class="scan-c-ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#00b5b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="3" height="16"/><rect x="7" y="4" width="1.5" height="16"/><rect x="11" y="4" width="2" height="16"/><rect x="15" y="4" width="1.5" height="16"/><rect x="19" y="4" width="3" height="16"/></svg></div>
-          <div class="scan-c-ti">Code-barres</div>
-          <div class="scan-c-su">Comparaison prix dans vos magasins + alerte prix/kg</div>
-        </div>
+        
       </div>
       <div class="cam-area" id="camArea" onclick="trigFile()">
         <div class="cam-ph"><svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#aab0c8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin:0 auto 10px;"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg><div class="sm b7 t2">Appuyez pour prendre une photo</div></div>
@@ -981,7 +996,11 @@ body:not(.app-active) .vwrap{display:none !important;}
         <div class="ai-b">
           <div class="ai-ti">Photo du frigo — IA</div>
           <div class="ai-tx">L'IA identifie les aliments, niveaux bas, et propose des recettes adaptées à votre régime.</div>
-          <div class="ai-acts"><button class="btn acc sm rnd" onclick="openFridgeCam()">📷 Scanner</button></div>
+          <div class="ai-acts"><div style="display:flex;gap:8px;margin-bottom:12px;">
+          <input class="inp" id="fridgeManualInp" placeholder="Ajouter un aliment manuellement..." style="flex:1;" onkeydown="if(event.key==='Enter')addFridgeManual()">
+          <button class="btn acc rnd" onclick="addFridgeManual()" style="padding:10px 14px;flex-shrink:0;">+</button>
+        </div>
+        <button class="btn acc sm rnd" onclick="openFridgeCam()">📷 Scanner</button></div>
         </div>
       </div>
       <div class="fridge-photo" id="fridgePA" onclick="openFridgeCam()">
@@ -1020,8 +1039,10 @@ body:not(.app-active) .vwrap{display:none !important;}
         <button class="btn acc" style="width:100%;margin-top:12px;padding:12px;border-radius:var(--rs);" onclick="addMealIngr()">+ Manquants à la liste</button>
       </div>
       <div class="sechd mb8 mt14"><div class="sechd-l"><div class="sec-dot"></div><div class="sec-ti" style="font-size:.85rem;">🌱 Légumes de saison</div></div></div>
-      <div class="sg mb14" id="sGrid"></div>
-      <div class="card"><div class="sechd-l mb12"><div class="sec-dot"></div><div class="sm b8" style="margin-left:5px;">Objectifs nutritionnels</div></div><div class="nb" id="nutriBars"></div></div>
+      <div class="sg mb1id="seasonHeader" style="font-size:.78rem;font-weight:700;color:var(--ac);margin-bottom:8px;"></div>
+      <div 4" id="sGrid"></div>
+      <div class="card"><div class="sechd-l mb12"><div class="sec-dot"></div><div class="sm b8" style="margin-left:5px;">Objectifs nutritionnels</div></div><div class="id="bmiInfo"></div>
+      <div nb" id="nutriBars"></div></div>
     </div>
   </div>
 
@@ -1378,9 +1399,26 @@ async function initFirebase() {
 // PROFILE (in-memory, saved to Firestore)
 // ════════════════════════════════════════
 let P = {
-  household: 2, children: 0, budget: 400,
+  // Profil utilisateur
+  name: "",
+  sex: "",           // "m" | "f"
+  age: 0,
+  weight: 70,        // kg actuel
+  targetWeight: 70,  // kg objectif
+  height: 170,       // cm
+  // Foyer
+  household: 2, children: 0,
+  houseCode: "", houseName: "",
+  // Alimentation & Santé  
+  budget: 80,        // budget courses/semaine (€)
   diet: [], goals: [], stores: [], freq: "hebdo",
-  houseCode: "", houseName: ""
+  // Sport
+  sport: [],         // ["running","cycling","gym",...]
+  sportMin: 0,       // minutes/semaine
+  // Calculé
+  bmr: 0,            // métabolisme de base
+  tdee: 0,           // dépense totale
+  calorieTarget: 0   // objectif calories/jour
 };
 let localItems = [], localFridge = [], localPantry = [], localScans = [];
 
@@ -1992,15 +2030,20 @@ async function addActivity(msg) {
 // ════════════════════════════════════════
 // ONBOARDING — OBLIGATOIRE avec validation
 // ════════════════════════════════════════
-let obP = 1; const OBT = 5;
+let obP = 1; const OBT = 7;
 
 function initOB() {
   obP = 1; rpOB();
   document.querySelectorAll(".ob-pg").forEach(p => p.classList.remove("on"));
-  document.getElementById("ob1").classList.add("on");
+  document.getElementById("ob0").classList.add("on");
   document.getElementById("obBk").style.opacity = "0";
   document.getElementById("obBk").style.pointerEvents = "none";
   document.getElementById("obNx").textContent = "Continuer →";
+  // Pre-fill name from Google account
+  if(currentUser?.displayName) {
+    const nameInp = document.getElementById("obName");
+    if(nameInp && !nameInp.value) nameInp.value = currentUser.displayName.split(" ")[0];
+  }
 }
 
 function rpOB() {
@@ -2052,15 +2095,22 @@ function obNext() {
     return;
   }
 
-  if(obP < OBT) {
-    document.getElementById("ob" + obP).classList.remove("on");
+  const obSeq = ["ob0","ob1","ob2","ob3","ob3b","ob4","ob5"];
+  const curPage = obSeq[obP - 1];
+  const nextPage = obSeq[obP];
+  if(nextPage) {
+    document.getElementById(curPage)?.classList.remove("on");
+    document.getElementById(nextPage)?.classList.add("on");
     obP++;
-    document.getElementById("ob" + obP).classList.add("on");
     rpOB();
     document.getElementById("obBk").style.opacity = "1";
     document.getElementById("obBk").style.pointerEvents = "auto";
-    if(obP === OBT) document.getElementById("obNx").textContent = "Commencer !";
+    if(obP >= obSeq.length) document.getElementById("obNx").textContent = "Commencer !";
     window.scrollTo(0, 0);
+    // Show weight goal field if goal is "poids"
+    const hasWeightGoal = [...document.querySelectorAll("#ob3 .ob-va .chip.on")].some(c => c.dataset.v === "poids");
+    const wGoal = document.getElementById("obSportGoal");
+    if(wGoal) wGoal.style.display = hasWeightGoal ? "block" : "none";
   } else {
     finishOnboarding();
   }
@@ -2068,19 +2118,45 @@ function obNext() {
 
 function obPrev() {
   if(obP <= 1) return;
-  document.getElementById("ob" + obP).classList.remove("on");
-  obP--;
-  document.getElementById("ob" + obP).classList.add("on");
-  rpOB();
-  document.getElementById("obNx").textContent = "Continuer →";
-  if(obP === 1) { document.getElementById("obBk").style.opacity = "0"; document.getElementById("obBk").style.pointerEvents = "none"; }
+  const obSeq = ["ob0","ob1","ob2","ob3","ob3b","ob4","ob5"];
+  const curPage = obSeq[obP - 1];
+  const prevPage = obSeq[obP - 2];
+  if(prevPage) {
+    document.getElementById(curPage)?.classList.remove("on");
+    obP--;
+    document.getElementById(prevPage)?.classList.add("on");
+    rpOB();
+    if(obP <= 1) {
+      document.getElementById("obBk").style.opacity = "0";
+      document.getElementById("obBk").style.pointerEvents = "none";
+    }
+    document.getElementById("obNx").textContent = "Continuer →";
+    window.scrollTo(0, 0);
+  }
 }
 
+
+function obSel(el, field) {
+  const parent = el.parentElement;
+  parent.querySelectorAll(".chip.on").forEach(ch => ch.classList.remove("on"));
+  el.classList.add("on");
+}
+
+function obMultiSel(el, field) {
+  el.classList.toggle("on");
+}
 async function finishOnboarding() {
   if(!currentUser) return;
   document.getElementById("obNx").textContent = "Création…";
   document.getElementById("obNx").disabled = true;
-  try {
+  // BMR/TDEE
+  if(P.weight && P.height && P.age) {
+    P.bmr = P.sex==="f"?Math.round(10*P.weight+6.25*P.height-5*P.age-161):Math.round(10*P.weight+6.25*P.height-5*P.age+5);
+    const act=P.sportMin>300?1.725:P.sportMin>150?1.55:P.sportMin>60?1.375:1.2;
+    P.tdee=Math.round(P.bmr*act);
+    P.calorieTarget=(P.goals.includes("poids")&&P.targetWeight<P.weight)?Math.max(1200,P.tdee-500):P.goals.includes("sport")?P.tdee+200:P.tdee;
+  }
+    try {
     // set() with merge = works even if doc doesn't exist yet
     await db.collection("users").doc(currentUser.uid).set({
       name: currentUser.displayName || "Utilisateur",
@@ -2119,10 +2195,203 @@ async function finishOnboarding() {
 // ════════════════════════════════════════
 // APP INIT
 // ════════════════════════════════════════
+
+// ── ADDITIONAL FOODS (expansion) ──
+const FOODS_EXTRA = [
+// FRUITS supplémentaires
+{n:"Mangue",em:"🥭",cat:"fruits"},{n:"Ananas",em:"🍍",cat:"fruits"},{n:"Pastèque",em:"🍉",cat:"fruits"},
+{n:"Melon",em:"🍈",cat:"fruits"},{n:"Abricot",em:"🟠",cat:"fruits"},{n:"Figue",em:"🫐",cat:"fruits"},
+{n:"Grenade",em:"🍎",cat:"fruits"},{n:"Kiwi",em:"🥝",cat:"fruits"},{n:"Litchi",em:"🍒",cat:"fruits"},
+{n:"Noix de coco",em:"🥥",cat:"fruits"},{n:"Papaye",em:"🥭",cat:"fruits"},{n:"Goyave",em:"🍐",cat:"fruits"},
+{n:"Fruit de la passion",em:"🍑",cat:"fruits"},{n:"Cerise",em:"🍒",cat:"fruits"},{n:"Prune",em:"🫐",cat:"fruits"},
+{n:"Mirabelle",em:"🟡",cat:"fruits"},{n:"Quetsche",em:"🫐",cat:"fruits"},{n:"Nectarine",em:"🍑",cat:"fruits"},
+{n:"Brugnon",em:"🍑",cat:"fruits"},{n:"Myrtille",em:"🫐",cat:"fruits"},{n:"Mûre",em:"🫐",cat:"fruits"},
+{n:"Groseille",em:"🔴",cat:"fruits"},{n:"Framboise",em:"🍓",cat:"fruits"},{n:"Cassis",em:"🫐",cat:"fruits"},
+{n:"Canneberge",em:"🔴",cat:"fruits"},{n:"Raisin muscat",em:"🍇",cat:"fruits"},
+// LÉGUMES supplémentaires
+{n:"Artichaut",em:"🥬",cat:"fruits"},{n:"Asperge verte",em:"🌱",cat:"fruits"},{n:"Asperge blanche",em:"🌱",cat:"fruits"},
+{n:"Betterave rouge",em:"🔴",cat:"fruits"},{n:"Blette",em:"🥬",cat:"fruits"},{n:"Chou blanc",em:"🥬",cat:"fruits"},
+{n:"Chou rouge",em:"🥬",cat:"fruits"},{n:"Chou de Bruxelles",em:"🥦",cat:"fruits"},{n:"Chou-fleur",em:"🥦",cat:"fruits"},
+{n:"Chou vert",em:"🥬",cat:"fruits"},{n:"Chou chinois",em:"🥬",cat:"fruits"},{n:"Chou romanesco",em:"🥦",cat:"fruits"},
+{n:"Céleri branche",em:"🌿",cat:"fruits"},{n:"Céleri rave",em:"🧅",cat:"fruits"},{n:"Cerfeuil",em:"🌿",cat:"fruits"},
+{n:"Ciboulette",em:"🌿",cat:"fruits"},{n:"Citrouille",em:"🎃",cat:"fruits"},{n:"Courge butternut",em:"🎃",cat:"fruits"},
+{n:"Courgette ronde",em:"🥒",cat:"fruits"},{n:"Cresson",em:"🌿",cat:"fruits"},{n:"Endive",em:"🫛",cat:"fruits"},
+{n:"Estragon",em:"🌿",cat:"fruits"},{n:"Fenouil",em:"🌿",cat:"fruits"},{n:"Fève",em:"🫘",cat:"fruits"},
+{n:"Haricot plat",em:"🫛",cat:"fruits"},{n:"Haricot blanc",em:"🫘",cat:"fruits"},{n:"Haricot rouge",em:"🫘",cat:"fruits"},
+{n:"Laitue romaine",em:"🥗",cat:"fruits"},{n:"Mâche",em:"🌿",cat:"fruits"},{n:"Maïs",em:"🌽",cat:"fruits"},
+{n:"Navet",em:"🧅",cat:"fruits"},{n:"Panais",em:"🥕",cat:"fruits"},{n:"Patate douce",em:"🍠",cat:"fruits"},
+{n:"Petit pois surgelé",em:"🫛",cat:"fruits"},{n:"Pissenlit",em:"🌿",cat:"fruits"},{n:"Poireau",em:"🥬",cat:"fruits"},
+{n:"Pois mange-tout",em:"🫛",cat:"fruits"},{n:"Poivron rouge",em:"🫑",cat:"fruits"},{n:"Poivron jaune",em:"🫑",cat:"fruits"},
+{n:"Poivron vert",em:"🫑",cat:"fruits"},{n:"Pourpier",em:"🌿",cat:"fruits"},{n:"Potiron",em:"🎃",cat:"fruits"},
+{n:"Potimarron",em:"🎃",cat:"fruits"},{n:"Radis rose",em:"🔴",cat:"fruits"},{n:"Radis noir",em:"⚫",cat:"fruits"},
+{n:"Rhubarbe",em:"🌿",cat:"fruits"},{n:"Roquette",em:"🥬",cat:"fruits"},{n:"Rutabaga",em:"🧅",cat:"fruits"},
+{n:"Salsifis",em:"🥕",cat:"fruits"},{n:"Tomate cerise",em:"🍅",cat:"fruits"},{n:"Tomate coeur de boeuf",em:"🍅",cat:"fruits"},
+{n:"Tomate olivette",em:"🍅",cat:"fruits"},{n:"Topinambour",em:"🥔",cat:"fruits"},{n:"Trévise",em:"🥬",cat:"fruits"},
+{n:"Coriandre",em:"🌿",cat:"fruits"},{n:"Menthe fraîche",em:"🌿",cat:"fruits"},{n:"Thym",em:"🌿",cat:"fruits"},
+{n:"Romarin",em:"🌿",cat:"fruits"},{n:"Laurier",em:"🌿",cat:"fruits"},{n:"Origan frais",em:"🌿",cat:"fruits"},
+// VIANDES & POISSONS
+{n:"Escalope de veau",em:"🥩",cat:"meat"},{n:"Côte de veau",em:"🥩",cat:"meat"},
+{n:"Rôti de veau",em:"🥩",cat:"meat"},{n:"Blanquette de veau",em:"🥩",cat:"meat"},
+{n:"Côtelette d'agneau",em:"🥩",cat:"meat"},{n:"Gigot d'agneau",em:"🥩",cat:"meat"},
+{n:"Épaule d'agneau",em:"🥩",cat:"meat"},{n:"Merguez",em:"🌭",cat:"meat"},
+{n:"Chipolata",em:"🌭",cat:"meat"},{n:"Andouillette",em:"🌭",cat:"meat"},
+{n:"Boudin noir",em:"⚫",cat:"meat"},{n:"Boudin blanc",em:"⚪",cat:"meat"},
+{n:"Foie de veau",em:"🥩",cat:"meat"},{n:"Foie de poulet",em:"🍗",cat:"meat"},
+{n:"Gésier de canard",em:"🦆",cat:"meat"},{n:"Magret de canard",em:"🦆",cat:"meat"},
+{n:"Confit de canard",em:"🦆",cat:"meat"},{n:"Cuisse de canard",em:"🦆",cat:"meat"},
+{n:"Pintade",em:"🐔",cat:"meat"},{n:"Caille",em:"🐦",cat:"meat"},
+{n:"Lapin entier",em:"🐰",cat:"meat"},{n:"Cuisse de lapin",em:"🐰",cat:"meat"},
+{n:"Sanglier",em:"🐗",cat:"meat"},{n:"Chevreuil",em:"🦌",cat:"meat"},
+{n:"Cabillaud",em:"🐟",cat:"meat"},{n:"Merlu",em:"🐟",cat:"meat"},
+{n:"Colin",em:"🐟",cat:"meat"},{n:"Lotte",em:"🐟",cat:"meat"},
+{n:"Bar",em:"🐟",cat:"meat"},{n:"Daurade",em:"🐟",cat:"meat"},
+{n:"Truite",em:"🐟",cat:"meat"},{n:"Maquereau",em:"🐟",cat:"meat"},
+{n:"Hareng",em:"🐟",cat:"meat"},{n:"Anchois",em:"🐟",cat:"meat"},
+{n:"Sardine fraîche",em:"🐟",cat:"meat"},{n:"Rouget",em:"🐟",cat:"meat"},
+{n:"Saint-Jacques",em:"🐚",cat:"meat"},{n:"Pétoncle",em:"🐚",cat:"meat"},
+{n:"Huître",em:"🦪",cat:"meat"},{n:"Palourde",em:"🐚",cat:"meat"},
+{n:"Écrevisse",em:"🦞",cat:"meat"},{n:"Langouste",em:"🦞",cat:"meat"},
+{n:"Homard",em:"🦞",cat:"meat"},{n:"Calmar",em:"🦑",cat:"meat"},
+{n:"Seiche",em:"🦑",cat:"meat"},{n:"Pieuvre",em:"🐙",cat:"meat"},
+// PRODUITS LAITIERS
+{n:"Mozzarella",em:"🧀",cat:"dairy"},{n:"Parmesan",em:"🧀",cat:"dairy"},
+{n:"Emmental râpé",em:"🧀",cat:"dairy"},{n:"Comté",em:"🧀",cat:"dairy"},
+{n:"Raclette",em:"🧀",cat:"dairy"},{n:"Reblochon",em:"🧀",cat:"dairy"},
+{n:"Munster",em:"🧀",cat:"dairy"},{n:"Brie",em:"🧀",cat:"dairy"},
+{n:"Roquefort",em:"🧀",cat:"dairy"},{n:"Chèvre frais",em:"🧀",cat:"dairy"},
+{n:"Chèvre bûche",em:"🧀",cat:"dairy"},{n:"Feta",em:"🧀",cat:"dairy"},
+{n:"Ricotta",em:"🧀",cat:"dairy"},{n:"Mascarpone",em:"🧀",cat:"dairy"},
+{n:"Crème fraîche légère",em:"🥛",cat:"dairy"},{n:"Crème liquide",em:"🥛",cat:"dairy"},
+{n:"Lait de brebis",em:"🥛",cat:"dairy"},{n:"Lait de chèvre",em:"🥛",cat:"dairy"},
+{n:"Yaourt à la grecque",em:"🫙",cat:"dairy"},{n:"Yaourt aux fruits",em:"🫙",cat:"dairy"},
+{n:"Petits-suisses",em:"🫙",cat:"dairy"},{n:"Faisselle",em:"🫙",cat:"dairy"},
+{n:"Lait d'amande",em:"🥛",cat:"dairy"},{n:"Lait de coco",em:"🥛",cat:"dairy"},
+{n:"Yaourt végétal",em:"🫙",cat:"dairy"},{n:"Crème végétale",em:"🥛",cat:"dairy"},
+// ÉPICERIE / CONSERVES
+{n:"Lentilles vertes",em:"🫘",cat:"other"},{n:"Lentilles beluga",em:"🫘",cat:"other"},
+{n:"Pois cassés",em:"🫘",cat:"other"},{n:"Haricots en boîte",em:"🫘",cat:"other"},
+{n:"Maïs en boîte",em:"🌽",cat:"other"},{n:"Champignons en boîte",em:"🍄",cat:"other"},
+{n:"Sauce tomate",em:"🍅",cat:"other"},{n:"Coulis de tomates",em:"🍅",cat:"other"},
+{n:"Double concentré tomate",em:"🍅",cat:"other"},{n:"Tomates séchées",em:"🍅",cat:"other"},
+{n:"Olives vertes",em:"🫒",cat:"other"},{n:"Olives noires",em:"🫒",cat:"other"},
+{n:"Câpres",em:"🌿",cat:"other"},{n:"Cornichons",em:"🥒",cat:"other"},
+{n:"Moutarde forte",em:"🟡",cat:"other"},{n:"Moutarde à l'ancienne",em:"🟡",cat:"other"},
+{n:"Mayonnaise",em:"🟡",cat:"other"},{n:"Ketchup",em:"🔴",cat:"other"},
+{n:"Vinaigre de vin",em:"🍷",cat:"other"},{n:"Vinaigre balsamique",em:"⚫",cat:"other"},
+{n:"Huile de tournesol",em:"🌻",cat:"other"},{n:"Huile de colza",em:"🌿",cat:"other"},
+{n:"Huile de noix",em:"🥜",cat:"other"},{n:"Sauce soja",em:"🍱",cat:"other"},
+{n:"Sauce nuoc-mam",em:"🐟",cat:"other"},{n:"Sauce worcestershire",em:"🍶",cat:"other"},
+{n:"Tabasco",em:"🌶️",cat:"other"},{n:"Harissa",em:"🌶️",cat:"other"},
+{n:"Curry en poudre",em:"🟡",cat:"other"},{n:"Cumin",em:"🟤",cat:"other"},
+{n:"Paprika",em:"🔴",cat:"other"},{n:"Curcuma",em:"🟡",cat:"other"},
+{n:"Cannelle",em:"🟤",cat:"other"},{n:"Gingembre en poudre",em:"🟡",cat:"other"},
+{n:"Muscade",em:"🟤",cat:"other"},{n:"Cardamome",em:"🌿",cat:"other"},
+{n:"Piment d'Espelette",em:"🌶️",cat:"other"},{n:"Fleur de sel",em:"⬜",cat:"other"},
+{n:"Poivre noir",em:"⚫",cat:"other"},{n:"Poivre de Sichuan",em:"🔴",cat:"other"},
+{n:"Piment rouge",em:"🌶️",cat:"other"},{n:"Ail en poudre",em:"🧄",cat:"other"},
+{n:"Oignon en poudre",em:"🧅",cat:"other"},{n:"Herbes de Provence",em:"🌿",cat:"other"},
+{n:"Bouquet garni",em:"🌿",cat:"other"},{n:"Fond de veau",em:"🍲",cat:"other"},
+{n:"Fond de volaille",em:"🍲",cat:"other"},{n:"Bouillon cube légumes",em:"🟡",cat:"other"},
+{n:"Levure chimique",em:"🫙",cat:"other"},{n:"Levure de boulanger",em:"🫙",cat:"other"},
+{n:"Bicarbonate alimentaire",em:"⬜",cat:"other"},{n:"Gélatine",em:"🫙",cat:"other"},
+{n:"Agar-agar",em:"🫙",cat:"other"},{n:"Arôme vanille",em:"🍶",cat:"other"},
+{n:"Extrait d'amande",em:"🍶",cat:"other"},{n:"Caramel liquide",em:"🍶",cat:"other"},
+{n:"Sirop d'érable",em:"🍁",cat:"other"},{n:"Sirop d'agave",em:"🍯",cat:"other"},
+{n:"Sucre roux",em:"🟤",cat:"other"},{n:"Sucre glace",em:"⬜",cat:"other"},
+{n:"Cassonade",em:"🟤",cat:"other"},{n:"Stévia",em:"🌿",cat:"other"},
+// CÉRÉALES & FÉCULENTS
+{n:"Riz basmati",em:"🍚",cat:"other"},{n:"Riz long grain",em:"🍚",cat:"other"},
+{n:"Riz complet",em:"🍚",cat:"other"},{n:"Riz à risotto",em:"🍚",cat:"other"},
+{n:"Quinoa",em:"🌾",cat:"other"},{n:"Boulgour",em:"🌾",cat:"other"},
+{n:"Couscous moyen",em:"🌾",cat:"other"},{n:"Polenta",em:"🌽",cat:"other"},
+{n:"Semoule fine",em:"🌾",cat:"other"},{n:"Pâtes spaghetti",em:"🍝",cat:"other"},
+{n:"Pâtes penne",em:"🍝",cat:"other"},{n:"Pâtes fusilli",em:"🍝",cat:"other"},
+{n:"Pâtes rigatoni",em:"🍝",cat:"other"},{n:"Pâtes farfalle",em:"🍝",cat:"other"},
+{n:"Pâtes tagliatelle",em:"🍝",cat:"other"},{n:"Pâtes lasagne",em:"🍝",cat:"other"},
+{n:"Pâtes linguine",em:"🍝",cat:"other"},{n:"Gnocchi",em:"🥟",cat:"other"},
+{n:"Pâtes fraîches",em:"🍝",cat:"other"},{n:"Farine de blé T55",em:"🌾",cat:"other"},
+{n:"Farine complète T110",em:"🌾",cat:"other"},{n:"Farine de seigle",em:"🌾",cat:"other"},
+{n:"Farine de riz",em:"🌾",cat:"other"},{n:"Farine de maïs",em:"🌽",cat:"other"},
+{n:"Maïzena",em:"🌽",cat:"other"},{n:"Pain baguette",em:"🥖",cat:"bakery"},
+{n:"Pain de campagne",em:"🍞",cat:"bakery"},{n:"Pain aux céréales",em:"🍞",cat:"bakery"},
+{n:"Pain de seigle",em:"🍞",cat:"bakery"},{n:"Pain sans gluten",em:"🍞",cat:"bakery"},
+{n:"Brioche",em:"🥐",cat:"bakery"},{n:"Croissant",em:"🥐",cat:"bakery"},
+{n:"Pain au chocolat",em:"🥐",cat:"bakery"},{n:"Baguette viennoise",em:"🥐",cat:"bakery"},
+// BOISSONS
+{n:"Eau pétillante",em:"💧",cat:"drinks"},{n:"Eau plate",em:"💧",cat:"drinks"},
+{n:"Jus d'orange pressé",em:"🍊",cat:"drinks"},{n:"Jus de pomme",em:"🍎",cat:"drinks"},
+{n:"Jus de raisin",em:"🍇",cat:"drinks"},{n:"Jus de pamplemousse",em:"🍊",cat:"drinks"},
+{n:"Limonade",em:"🥤",cat:"drinks"},{n:"Soda cola",em:"🥤",cat:"drinks"},
+{n:"Soda orange",em:"🥤",cat:"drinks"},{n:"Soda citron",em:"🥤",cat:"drinks"},
+{n:"Bière blonde",em:"🍺",cat:"drinks"},{n:"Bière brune",em:"🍺",cat:"drinks"},
+{n:"Bière sans alcool",em:"🍺",cat:"drinks"},{n:"Cidre",em:"🍺",cat:"drinks"},
+{n:"Vin rouge",em:"🍷",cat:"drinks"},{n:"Vin blanc",em:"🥂",cat:"drinks"},
+{n:"Champagne",em:"🍾",cat:"drinks"},{n:"Café moulu",em:"☕",cat:"drinks"},
+{n:"Café capsules",em:"☕",cat:"drinks"},{n:"Café soluble",em:"☕",cat:"drinks"},
+{n:"Thé vert",em:"🍵",cat:"drinks"},{n:"Thé noir",em:"🍵",cat:"drinks"},
+{n:"Tisane",em:"🌿",cat:"drinks"},{n:"Chocolat en poudre",em:"🍫",cat:"drinks"},
+{n:"Lait concentré sucré",em:"🥛",cat:"drinks"},
+// HYGIÈNE & ENTRETIEN
+{n:"Gel douche",em:"🧴",cat:"hygiene"},{n:"Shampoing",em:"🧴",cat:"hygiene"},
+{n:"Après-shampoing",em:"🧴",cat:"hygiene"},{n:"Savon solide",em:"🧼",cat:"hygiene"},
+{n:"Savon liquide",em:"🧼",cat:"hygiene"},{n:"Dentifrice",em:"🦷",cat:"hygiene"},
+{n:"Brosse à dents",em:"🦷",cat:"hygiene"},{n:"Fil dentaire",em:"🦷",cat:"hygiene"},
+{n:"Déodorant",em:"🧴",cat:"hygiene"},{n:"Rasoir",em:"🪒",cat:"hygiene"},
+{n:"Mousse à raser",em:"🧴",cat:"hygiene"},{n:"Coton-tige",em:"🪥",cat:"hygiene"},
+{n:"Coton démaquillant",em:"💆",cat:"hygiene"},{n:"Démaquillant",em:"🧴",cat:"hygiene"},
+{n:"Crème hydratante",em:"🧴",cat:"hygiene"},{n:"Crème solaire",em:"☀️",cat:"hygiene"},
+{n:"Lingettes bébé",em:"🧻",cat:"hygiene"},{n:"Couches",em:"👶",cat:"hygiene"},
+{n:"Protège-slip",em:"🩲",cat:"hygiene"},{n:"Tampon",em:"🩸",cat:"hygiene"},
+{n:"Serviette hygiénique",em:"🩸",cat:"hygiene"},{n:"Mouchoirs",em:"🤧",cat:"hygiene"},
+{n:"Essuie-tout",em:"🧻",cat:"hygiene"},{n:"Papier toilette",em:"🧻",cat:"hygiene"},
+{n:"Éponge",em:"🧽",cat:"hygiene"},{n:"Liquide vaisselle",em:"🫧",cat:"hygiene"},
+{n:"Lessive liquide",em:"🫧",cat:"hygiene"},{n:"Lessive en poudre",em:"🫧",cat:"hygiene"},
+{n:"Adoucissant",em:"🌸",cat:"hygiene"},{n:"Nettoyant WC",em:"🚽",cat:"hygiene"},
+{n:"Spray désinfectant",em:"💨",cat:"hygiene"},{n:"Sac poubelle",em:"🗑️",cat:"hygiene"},
+];
+// Merge into FOODS_DB
+FOODS_DB.push(...FOODS_EXTRA);
+
+
+// ── RECETTES SUPPLÉMENTAIRES ──
+const MEALS_EXTRA = [
+  {id:"m72",em:"🍲",name:"Cassoulet maison",time:"3h",diet:["omni"],day:"Plat principal",sub:"Haricots blancs, confit, saucisse",ingr:[{n:"Haricots blancs",em:"🫘",q:"400g"},{n:"Confit de canard",em:"🦆",q:"2 cuisses"},{n:"Saucisse de Toulouse",em:"🌭",q:"200g"},{n:"Tomates pelées",em:"🍅",q:"1 boîte"},{n:"Bouillon cube",em:"🟡",q:"1"}]},
+  {id:"m73",em:"🥘",name:"Ratatouille niçoise",time:"45min",diet:["veg","vegan","omni"],day:"Plat principal",sub:"Légumes du soleil mijotés",ingr:[{n:"Aubergine",em:"🍆",q:"1"},{n:"Courgette",em:"🥒",q:"2"},{n:"Tomates",em:"🍅",q:"3"},{n:"Poivron rouge",em:"🫑",q:"1"},{n:"Oignons",em:"🧅",q:"1"},{n:"Ail",em:"🧄",q:"3 gousses"}]},
+  {id:"m74",em:"🍝",name:"Penne à l'arrabbiata",time:"20min",diet:["veg","vegan","omni"],day:"Plat principal",sub:"Pâtes épicées à la tomate",ingr:[{n:"Penne",em:"🍝",q:"320g"},{n:"Tomates pelées",em:"🍅",q:"1 boîte"},{n:"Ail",em:"🧄",q:"3 gousses"},{n:"Piment rouge",em:"🌶️",q:"1"},{n:"Huile olive",em:"🫒",q:"3 cs"}]},
+  {id:"m75",em:"🥗",name:"Salade grecque",time:"15min",diet:["veg","omni"],day:"Entrée/Plat",sub:"Feta, olives, concombre",ingr:[{n:"Concombre",em:"🥒",q:"1"},{n:"Tomates",em:"🍅",q:"2"},{n:"Feta",em:"🧀",q:"150g"},{n:"Olives noires",em:"🫒",q:"80g"},{n:"Oignon rouge",em:"🧅",q:"0.5"},{n:"Huile olive",em:"🫒",q:"2 cs"}]},
+  {id:"m76",em:"🍛",name:"Dal de lentilles",time:"30min",diet:["veg","vegan","omni"],day:"Plat principal",sub:"Lentilles corail au curcuma",ingr:[{n:"Lentilles corail",em:"🫘",q:"300g"},{n:"Tomates pelées",em:"🍅",q:"1 boîte"},{n:"Lait de coco",em:"🥥",q:"200ml"},{n:"Curcuma",em:"🟡",q:"1 cc"},{n:"Curry",em:"🟡",q:"1 cc"},{n:"Oignons",em:"🧅",q:"1"}]},
+  {id:"m77",em:"🥙",name:"Wrap poulet avocat",time:"15min",diet:["omni"],day:"Déjeuner",sub:"Tortilla, poulet grillé, avocat",ingr:[{n:"Tortilla blé",em:"🫓",q:"2"},{n:"Poulet",em:"🍗",q:"200g"},{n:"Avocats",em:"🥑",q:"1"},{n:"Salade verte",em:"🥗",q:"quelques feuilles"},{n:"Tomates",em:"🍅",q:"1"},{n:"Citron",em:"🍋",q:"0.5"}]},
+  {id:"m78",em:"🍜",name:"Soupe miso",time:"10min",diet:["veg","vegan","omni"],day:"Entrée",sub:"Bouillon miso, tofu, algues",ingr:[{n:"Pâte miso",em:"🍱",q:"2 cs"},{n:"Tofu ferme",em:"🫘",q:"100g"},{n:"Algues wakamé",em:"🌿",q:"5g"},{n:"Oignons nouveaux",em:"🧅",q:"2"}]},
+  {id:"m79",em:"🫔",name:"Falafel maison",time:"45min",diet:["veg","vegan","omni"],day:"Plat principal",sub:"Pois chiches, herbes fraîches",ingr:[{n:"Pois chiches",em:"🫘",q:"400g"},{n:"Persil",em:"🌿",q:"1 bouquet"},{n:"Coriandre",em:"🌿",q:"0.5 bouquet"},{n:"Ail",em:"🧄",q:"3 gousses"},{n:"Cumin",em:"🟤",q:"1 cc"},{n:"Farine",em:"🌾",q:"2 cs"}]},
+  {id:"m80",em:"🍤",name:"Tempura de crevettes",time:"25min",diet:["pesc","omni"],day:"Plat principal",sub:"Crevettes en beignet léger",ingr:[{n:"Crevettes",em:"🦐",q:"300g"},{n:"Farine",em:"🌾",q:"100g"},{n:"Maïzena",em:"🌽",q:"50g"},{n:"Eau gazeuse",em:"💧",q:"150ml"},{n:"Huile",em:"🫙",q:"pour friture"}]},
+  {id:"m81",em:"🥩",name:"Boeuf bourguignon",time:"2h30",diet:["omni"],day:"Plat principal",sub:"Boeuf mijoté au vin rouge",ingr:[{n:"Boeuf à braiser",em:"🥩",q:"800g"},{n:"Vin rouge",em:"🍷",q:"50cl"},{n:"Champignons",em:"🍄",q:"200g"},{n:"Lardons",em:"🥓",q:"150g"},{n:"Carottes",em:"🥕",q:"2"},{n:"Oignons",em:"🧅",q:"2"}]},
+  {id:"m82",em:"🫕",name:"Fondue savoyarde",time:"20min",diet:["veg","omni"],day:"Plat convivial",sub:"Gruyère, emmental fondus",ingr:[{n:"Gruyère râpé",em:"🧀",q:"400g"},{n:"Emmental",em:"🧀",q:"200g"},{n:"Vin blanc sec",em:"🥂",q:"20cl"},{n:"Ail",em:"🧄",q:"1 gousse"},{n:"Pain",em:"🍞",q:"1 baguette"}]},
+  {id:"m83",em:"🥐",name:"Croque-monsieur",time:"15min",diet:["omni"],day:"Déjeuner rapide",sub:"Pain de mie, jambon, béchamel",ingr:[{n:"Pain de mie",em:"🍞",q:"4 tranches"},{n:"Jambon",em:"🥩",q:"2 tranches"},{n:"Gruyère râpé",em:"🧀",q:"60g"},{n:"Beurre",em:"🧈",q:"20g"},{n:"Crème fraîche",em:"🥛",q:"2 cs"}]},
+  {id:"m84",em:"🍕",name:"Pizza maison",time:"45min",diet:["veg","omni"],day:"Plat principal",sub:"Pâte maison, sauce tomate, fromage",ingr:[{n:"Farine",em:"🌾",q:"300g"},{n:"Sauce tomate",em:"🍅",q:"200ml"},{n:"Mozzarella",em:"🧀",q:"200g"},{n:"Levure de boulanger",em:"🫙",q:"7g"},{n:"Huile olive",em:"🫒",q:"2 cs"}]},
+  {id:"m85",em:"🥧",name:"Tarte aux poireaux",time:"50min",diet:["veg","omni"],day:"Plat principal",sub:"Quiche crémeuse aux poireaux",ingr:[{n:"Pâte brisée",em:"🥧",q:"1 rouleau"},{n:"Poireau",em:"🥬",q:"3"},{n:"Crème fraîche",em:"🥛",q:"20cl"},{n:"Oeufs",em:"🥚",q:"3"},{n:"Gruyère râpé",em:"🧀",q:"100g"}]},
+  {id:"m86",em:"🍲",name:"Pot-au-feu",time:"2h",diet:["omni"],day:"Plat principal",sub:"Viande et légumes bouillis",ingr:[{n:"Boeuf à bouillir",em:"🥩",q:"800g"},{n:"Carottes",em:"🥕",q:"4"},{n:"Poireau",em:"🥬",q:"2"},{n:"Céleri branche",em:"🌿",q:"2"},{n:"Navets",em:"🧅",q:"2"},{n:"Pomme de terre",em:"🥔",q:"4"}]},
+  {id:"m87",em:"🍋",name:"Citron curd",time:"20min",diet:["veg","omni"],day:"Dessert",sub:"Crème au citron maison",ingr:[{n:"Citrons",em:"🍋",q:"3"},{n:"Oeufs",em:"🥚",q:"3"},{n:"Sucre",em:"🍚",q:"150g"},{n:"Beurre",em:"🧈",q:"80g"}]},
+  {id:"m88",em:"🍮",name:"Crème brûlée",time:"45min+4h",diet:["veg","omni"],day:"Dessert",sub:"Crème vanillée, sucre caramélisé",ingr:[{n:"Crème liquide",em:"🥛",q:"50cl"},{n:"Jaunes d'oeufs",em:"🥚",q:"6"},{n:"Sucre",em:"🍚",q:"80g"},{n:"Arôme vanille",em:"🍶",q:"1 cc"}]},
+  {id:"m89",em:"🫐",name:"Tarte aux myrtilles",time:"55min",diet:["veg","omni"],day:"Dessert",sub:"Fruits rouges sur pâte sablée",ingr:[{n:"Pâte sablée",em:"🥧",q:"1 rouleau"},{n:"Myrtilles",em:"🫐",q:"400g"},{n:"Sucre",em:"🍚",q:"80g"},{n:"Maïzena",em:"🌽",q:"2 cs"},{n:"Beurre",em:"🧈",q:"30g"}]},
+  {id:"m90",em:"🥗",name:"Bowl açaï",time:"10min",diet:["veg","vegan","omni"],day:"Petit-déjeuner",sub:"Base açaï, granola, fruits frais",ingr:[{n:"Banane",em:"🍌",q:"1 congelée"},{n:"Myrtilles",em:"🫐",q:"100g"},{n:"Granola",em:"🌾",q:"50g"},{n:"Miel",em:"🍯",q:"1 cs"},{n:"Lait végétal",em:"🥛",q:"100ml"}]},
+  {id:"m91",em:"🍳",name:"Shakshuka",time:"25min",diet:["veg","omni"],day:"Brunch",sub:"Oeufs pochés dans sauce tomate épicée",ingr:[{n:"Oeufs",em:"🥚",q:"4"},{n:"Tomates pelées",em:"🍅",q:"1 boîte"},{n:"Poivron rouge",em:"🫑",q:"1"},{n:"Oignons",em:"🧅",q:"1"},{n:"Cumin",em:"🟤",q:"1 cc"},{n:"Paprika",em:"🔴",q:"1 cc"}]},
+  {id:"m92",em:"🥜",name:"Houmous maison",time:"10min",diet:["veg","vegan","omni"],day:"Entrée/Apéro",sub:"Purée de pois chiches au tahini",ingr:[{n:"Pois chiches",em:"🫘",q:"400g en boîte"},{n:"Tahini",em:"🫙",q:"2 cs"},{n:"Citrons",em:"🍋",q:"1"},{n:"Ail",em:"🧄",q:"1 gousse"},{n:"Huile olive",em:"🫒",q:"3 cs"},{n:"Cumin",em:"🟤",q:"0.5 cc"}]},
+  {id:"m93",em:"🐟",name:"Brandade de morue",time:"40min",diet:["pesc","omni"],day:"Plat principal",sub:"Morue, purée de pommes de terre",ingr:[{n:"Morue dessalée",em:"🐟",q:"500g"},{n:"Pomme de terre",em:"🥔",q:"500g"},{n:"Ail",em:"🧄",q:"4 gousses"},{n:"Huile olive",em:"🫒",q:"10cl"},{n:"Crème fraîche",em:"🥛",q:"5cl"}]},
+  {id:"m94",em:"🧆",name:"Taboulé libanais",time:"20min+1h",diet:["veg","vegan","omni"],day:"Entrée/Plat",sub:"Persil, boulgour, citron frais",ingr:[{n:"Persil",em:"🌿",q:"2 bouquets"},{n:"Boulgour fin",em:"🌾",q:"100g"},{n:"Tomates",em:"🍅",q:"3"},{n:"Citrons",em:"🍋",q:"2"},{n:"Menthe fraîche",em:"🌿",q:"0.5 bouquet"},{n:"Huile olive",em:"🫒",q:"4 cs"}]},
+  {id:"m95",em:"🍗",name:"Poulet tikka masala",time:"45min",diet:["omni"],day:"Plat principal",sub:"Poulet mariné, sauce curry crémeuse",ingr:[{n:"Poulet",em:"🍗",q:"600g"},{n:"Lait de coco",em:"🥥",q:"40cl"},{n:"Tomates pelées",em:"🍅",q:"1 boîte"},{n:"Curry",em:"🟡",q:"2 cc"},{n:"Gingembre",em:"🟡",q:"1 cc"},{n:"Oignons",em:"🧅",q:"2"},{n:"Yaourt nature",em:"🫙",q:"100ml"}]},
+  {id:"m96",em:"🥬",name:"Buddha bowl vegan",time:"20min",diet:["veg","vegan","omni"],day:"Plat principal",sub:"Riz, légumes rôtis, pois chiches",ingr:[{n:"Riz complet",em:"🍚",q:"200g"},{n:"Pois chiches",em:"🫘",q:"200g"},{n:"Patate douce",em:"🍠",q:"1"},{n:"Épinards",em:"🥬",q:"100g"},{n:"Avocat",em:"🥑",q:"1"},{n:"Tahini",em:"🫙",q:"2 cs"}]},
+  {id:"m97",em:"🥩",name:"Tartare de boeuf",time:"15min",diet:["omni"],day:"Plat principal",sub:"Boeuf cru, câpres, moutarde",ingr:[{n:"Boeuf haché",em:"🥩",q:"400g"},{n:"Câpres",em:"🌿",q:"1 cs"},{n:"Cornichons",em:"🥒",q:"3"},{n:"Moutarde forte",em:"🟡",q:"1 cs"},{n:"Jaunes d'oeufs",em:"🥚",q:"2"},{n:"Échalotes",em:"🧅",q:"2"}]},
+  {id:"m98",em:"🍜",name:"Ramen maison",time:"1h30",diet:["omni"],day:"Plat principal",sub:"Bouillon dashi, oeuf mollet, porc",ingr:[{n:"Bouillon de poulet",em:"🍲",q:"1.5L"},{n:"Oeufs",em:"🥚",q:"2"},{n:"Poitrine de porc",em:"🥩",q:"300g"},{n:"Pâtes ramen",em:"🍜",q:"200g"},{n:"Sauce soja",em:"🍱",q:"3 cs"},{n:"Oignons nouveaux",em:"🧅",q:"3"}]},
+  {id:"m99",em:"🫕",name:"Tajine poulet citron",time:"1h",diet:["omni"],day:"Plat principal",sub:"Poulet, citron confit, olives",ingr:[{n:"Poulet",em:"🍗",q:"1 entier"},{n:"Citrons confits",em:"🍋",q:"2"},{n:"Olives vertes",em:"🫒",q:"100g"},{n:"Cumin",em:"🟤",q:"1 cc"},{n:"Coriandre",em:"🌿",q:"1 bouquet"},{n:"Oignons",em:"🧅",q:"2"}]},
+  {id:"m100",em:"🥞",name:"Pancakes moelleux",time:"20min",diet:["veg","omni"],day:"Petit-déjeuner",sub:"Pancakes épais, sirop d'érable",ingr:[{n:"Farine",em:"🌾",q:"200g"},{n:"Lait",em:"🥛",q:"250ml"},{n:"Oeufs",em:"🥚",q:"2"},{n:"Beurre",em:"🧈",q:"40g"},{n:"Levure chimique",em:"🫙",q:"1 sachet"},{n:"Sirop d'érable",em:"🍁",q:"pour servir"}]},
+];
+MEALS_DB.push(...MEALS_EXTRA);
+
 function initApp() {
   updateUI();
   applyProfile();
   renderList();
+  renderListModeTabs();
   renderFridge();
   renderPantry();
   renderRecipes();
@@ -2428,7 +2697,9 @@ async function deleteEditItem() {
 
 // ═══════ CONFIRM DIALOG ═══════
 let confCallback = null;
-function showConfirm(icon, title, msg, btnLabel, cb) {
+let confCancelCb = null;
+function showConfirm(icon, title, msg, btnLabel, cb, cancelCb) {
+  confCancelCb = cancelCb||null;
   document.getElementById("confIcon").textContent = icon;
   document.getElementById("confTitle").textContent = title;
   document.getElementById("confMsg").textContent = msg;
@@ -2474,6 +2745,75 @@ function setActiveListItems(items) {
   const idx = localLists.findIndex(l => l.id === currentListId);
   if(idx !== -1) localLists[idx].items = items;
   else localItems = items;
+}
+
+function renderListModeTabs() {
+  const el = document.getElementById("listModeTabs");
+  if(!el) return;
+  const todoCount = localItems.filter(i => !i.ck).length;
+  const cartCount = localItems.filter(i => i.ck).length;
+  el.innerHTML = `
+    <button class="lmt ${listViewMode==="todo"?"on":""}" onclick="setListMode('todo')">
+      📋 À faire${todoCount ? ` <span class="lmt-badge">${todoCount}</span>` : ""}
+    </button>
+    <button class="lmt ${listViewMode==="cart"?"on":""}" onclick="setListMode('cart')">
+      🛒 Chariot${cartCount ? ` <span class="lmt-badge">${cartCount}</span>` : ""}
+    </button>
+  `;
+  // Show/hide finish button
+  const finishBtn = document.getElementById("finishShoppingBtn");
+  if(finishBtn) finishBtn.style.display = cartCount > 0 ? "block" : "none";
+}
+
+function setListMode(mode) {
+  listViewMode = mode;
+  renderList();
+}
+
+async function finishShopping() {
+  const checked = localItems.filter(i => i.ck);
+  if(!checked.length) return toast("ℹ️","Aucun article","Cochez des articles d'abord.");
+  
+  // Save to history as a shopping session
+  const session = {
+    id: Date.now()+"",
+    date: new Date().toLocaleDateString("fr-FR", {day:"numeric",month:"long",year:"numeric"}),
+    dateTs: Date.now(),
+    items: checked.map(i => ({...i})),
+    total: checked.reduce((s,i) => s + (parseFloat(i.price)||0), 0)
+  };
+  if(!localHistory) localHistory = [];
+  localHistory.unshift(session);
+  if(localHistory.length > 20) localHistory = localHistory.slice(0,20);
+  
+  // Add checked items to fridge
+  checked.forEach(it => {
+    const target = ["dairy","fruits","meat"].includes(it.cat) ? localFridge : localPantry;
+    const exists = target.findIndex(f => f.n.toLowerCase().includes(it.name.toLowerCase().split(" ")[0]));
+    if(exists >= 0) {
+      target[exists].q = it.qty || target[exists].q;
+    } else {
+      target.unshift({ em: it.em || "🛍️", n: it.name, q: it.qty || "1", low: false });
+    }
+  });
+  
+  // Remove checked items from list
+  localItems = localItems.filter(i => !i.ck);
+  listViewMode = "todo";
+  
+  await writeHousehold("items", localItems);
+  await writeHousehold("fridge", localFridge);
+  await writeHousehold("pantry", localPantry);
+  await writeHousehold("history", localHistory);
+  
+  renderList();
+  renderListModeTabs();
+  renderFridge();
+  renderPantry();
+  renderRecipes();
+  
+  toast("✅", `Courses terminées !`, `${checked.length} articles ajoutés au frigo/placard.`);
+  await addActivity("a terminé ses courses (" + checked.length + " articles)");
 }
 
 function renderListTabs() {
@@ -2586,25 +2926,56 @@ function renderHistory() {
   const el = document.getElementById("historyWrap");
   if(!el) return;
   if(!localHistory || !localHistory.length) {
-    el.innerHTML = '<div class="empty" style="padding:24px 0;"><div class="empty-ic">🕐</div><div class="empty-ti">Aucun historique</div><div class="empty-su">Supprimez des articles par glissement pour les retrouver ici.</div></div>';
+    el.innerHTML = '<div class="empty" style="padding:24px 0;"><div class="empty-ic">🛒</div><div class="empty-ti">Aucun historique</div><div class="empty-su">Terminez vos courses pour les voir ici.</div></div>';
     return;
   }
-  el.innerHTML = localHistory.slice(0, 50).map(it => {
-    const d = new Date(it.deletedAt || Date.now());
-    const dateStr = d.toLocaleDateString("fr-FR", { day:"numeric", month:"short" });
-    const safeName = (it.name||"").replace(/'/g,"&#39;").replace(/"/g,"&quot;");
-    const safeEm = (it.em||"🛍️").replace(/'/g,"&#39;");
-    const safeCat = (it.cat||"other");
-    const safePrice = parseFloat(it.price)||0;
-    return `<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--bg);border-radius:var(--rs);box-shadow:var(--so);">
-      <div style="font-size:1.2rem;flex-shrink:0;">${it.em||"🛍️"}</div>
-      <div style="flex:1;min-width:0;">
-        <div style="font-weight:700;font-size:.85rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${it.name||"Article"}</div>
-        <div style="font-size:.65rem;color:var(--tx3);margin-top:2px;">${dateStr}</div>
-      </div>
-      <button onclick="reAddFromHistory('${safeName}','${safeEm}','${safeCat}',${safePrice})" style="flex-shrink:0;background:linear-gradient(135deg,var(--ac),#8b5cf6);color:#fff;border:none;border-radius:var(--rp);padding:7px 13px;font-size:.75rem;font-weight:700;cursor:pointer;">+ Remettre</button>
-    </div>`;
-  }).join("");
+  
+  // Check if history contains shopping sessions (have .items array) or old format (individual items)
+  const hasSessions = localHistory.some(h => Array.isArray(h.items));
+  
+  if(hasSessions) {
+    // New format: shopping sessions
+    el.innerHTML = localHistory.slice(0, 10).map(session => {
+      if(!session.items) {
+        // Old individual item format — show as simple item
+        const d = new Date(session.deletedAt || Date.now());
+        const safeName = (session.name||"").replace(/'/g,"&#39;");
+        return `<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--bg);border-radius:var(--rs);box-shadow:var(--so);">
+          <div style="font-size:1.1rem;">${session.em||"🛍️"}</div>
+          <div style="flex:1;font-size:.83rem;font-weight:700;">${session.name||"Article"}</div>
+          <button onclick="reAddFromHistory('${safeName}','${session.em||"🛍️"}','${session.cat||"other"}',${parseFloat(session.price)||0})" style="background:var(--ac);color:#fff;border:none;border-radius:var(--rp);padding:6px 12px;font-size:.73rem;font-weight:700;cursor:pointer;">+ Remettre</button>
+        </div>`;
+      }
+      // Shopping session
+      const total = session.total || session.items.reduce((s,i) => s+(parseFloat(i.price)||0),0);
+      return `<div style="background:var(--bg);border-radius:var(--r);box-shadow:var(--so);margin-bottom:10px;overflow:hidden;">
+        <div style="padding:12px 14px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--bg2);">
+          <div style="font-size:1.4rem;">🛒</div>
+          <div style="flex:1;">
+            <div style="font-weight:800;font-size:.88rem;">Courses du ${session.date||"?"}</div>
+            <div style="font-size:.7rem;color:var(--tx2);">${session.items.length} articles · ${total.toFixed(2).replace(".",",")}€</div>
+          </div>
+        </div>
+        <div style="padding:10px 14px;display:flex;flex-wrap:wrap;gap:6px;">
+          ${session.items.slice(0,8).map(it => {
+            const safeName = (it.name||"").replace(/'/g,"&#39;");
+            return `<button onclick="reAddFromHistory('${safeName}','${it.em||"🛍️"}','${it.cat||"other"}',${parseFloat(it.price)||0})" style="background:var(--bg2);border:none;border-radius:var(--rp);padding:5px 10px;font-size:.72rem;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:4px;">${it.em||"🛍️"} ${it.name||""}</button>`;
+          }).join("")}
+          ${session.items.length > 8 ? `<span style="font-size:.68rem;color:var(--tx3);padding:5px;">+${session.items.length-8} autres</span>` : ""}
+        </div>
+      </div>`;
+    }).join("");
+  } else {
+    // Old format: individual deleted items
+    el.innerHTML = localHistory.slice(0, 30).map(it => {
+      const safeName = (it.name||"").replace(/'/g,"&#39;");
+      return `<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--bg);border-radius:var(--rs);box-shadow:var(--so);">
+        <div style="font-size:1.1rem;">${it.em||"🛍️"}</div>
+        <div style="flex:1;font-size:.83rem;font-weight:700;">${it.name||"Article"}</div>
+        <button onclick="reAddFromHistory('${safeName}','${it.em||"🛍️"}','${it.cat||"other"}',${parseFloat(it.price)||0})" style="background:var(--ac);color:#fff;border:none;border-radius:var(--rp);padding:6px 12px;font-size:.73rem;font-weight:700;cursor:pointer;">+ Remettre</button>
+      </div>`;
+    }).join("");
+  }
 }
 
 async function reAddFromHistory(name, em, cat, price) {
@@ -2625,12 +2996,26 @@ let curCat = "all";
 const TMAP = { ai:"IA",pr:"Promo",al:"⚠",se:"Saison",nw:"Nouveau" };
 const TCLS = { ai:"tg-ai",pr:"tg-pr",al:"tg-al",se:"tg-se",nw:"tg-nw" };
 
+let listViewMode = "todo"; // "todo" | "cart" | "done"
+
 function renderList() {
   const w = document.getElementById("itemsWrap");
   renderListTabs();
-  const f = curCat === "all" ? localItems : localItems.filter(i => i.cat === curCat);
+  renderListModeTabs();
+
+  let items = localItems;
+  if(curCat !== "all") items = items.filter(i => i.cat === curCat);
+  
+  // Filter by view mode
+  const f = listViewMode === "todo" ? items.filter(i => !i.ck)
+           : listViewMode === "cart" ? items.filter(i => i.ck)
+           : items; // "all" shows everything
+
   if(!f.length) {
-    w.innerHTML = '<div class="empty"><div class="empty-ic">🛒</div><div class="empty-ti">Liste vide</div><div class="empty-su">Ajoutez des articles ci-dessus ou demandez à l\'IA !</div></div>';
+    const emptyMsg = listViewMode === "cart" 
+      ? "Aucun article coché.<br>Cochez des articles pour les voir ici."
+      : "Liste vide — ajoutez des articles ci-dessus !";
+    w.innerHTML = `<div class="empty"><div class="empty-ic">${listViewMode === "cart" ? "🛒" : "📋"}</div><div class="empty-su">${emptyMsg}</div></div>`;
     updH(); return;
   }
   w.innerHTML = f.map(it => {
@@ -2683,15 +3068,11 @@ function updH() {
 }
 
 async function tItem(id) {
-  const idx = localItems.findIndex(i => i.id === id);
-  if(idx === -1) return;
-  localItems[idx].ck = !localItems[idx].ck;
+  const item = localItems.find(i => i.id === id);
+  if(!item) return;
+  item.ck = !item.ck;
   renderList();
-  await writeHousehold("items", localItems);
-  if(localItems[idx].ck) {
-    toast("✅", localItems[idx].name, "Coché !");
-    addActivity("a coché " + localItems[idx].name);
-  }
+  writeHousehold("items", localItems).catch(()=>{});
 }
 
 // State for pending add
@@ -2776,17 +3157,23 @@ async function qAdd(forceName, forceEm, forceCat) {
   }
   inp.value = "";
   document.getElementById("acList").style.display = "none";
-  // Duplicate check — merge quantity
-  const dup = localItems.find(i => i.name.toLowerCase() === n.toLowerCase());
-  if(dup) {
-    dup.qty = String((parseInt(dup.qty)||1) + 1);
-    renderList();
-    await writeHousehold("items", localItems);
-    toast("🔄", n, "Déjà dans la liste — quantité +1");
+  // Duplicate: ask user before incrementing
+  const dupIdx = localItems.findIndex(i => i.name.toLowerCase() === n.toLowerCase());
+  if(dupIdx !== -1) {
+    const cur = parseInt(localItems[dupIdx].qty) || 1;
+    showConfirm("🔄", n + " déjà dans la liste",
+      "Quantité actuelle : " + cur + ". Incrémenter à " + (cur+1) + " ?",
+      "Oui → quantité " + (cur+1),
+      async () => {
+        localItems[dupIdx].qty = String(cur + 1);
+        renderList();
+        await writeHousehold("items", localItems);
+        toast("🔄", n, "Quantité : " + (cur+1));
+      });
     return;
   }
   const item = {
-    id: Date.now()+"",
+    id: Date.now() + Math.random().toString(36).slice(2),
     name: n, em, cat, qty: "1", price: 0,
     pkg:"—", store:"—", ck:false,
     tags:["nw"], alert:"",
@@ -2811,7 +3198,7 @@ function fCat(cat, el) {
     const suggestions = FOODS_DB.filter(f => f.cat === cat).slice(0, 8);
     if(suggestions.length) {
       panel.innerHTML = '<div class="xs t2 mb8" style="font-weight:700;">Suggestions ' + cat + ' :</div><div class="f wrap g8">' +
-        suggestions.map(f => `<button class="chip" onclick="openAddModal('${f.n.replace(/'/g,"&#39;")}','${f.em}','${f.cat}')">${f.em} ${f.n}</button>`).join("") + "</div>";
+        suggestions.map(f => `<button class="chip" onclick="qAdd('${f.n.replace(/'/g,"&#39;")}','${f.em}','${f.cat}')">${f.em} ${f.n}</button>`).join("") + "</div>";
       panel.style.display = "block";
     } else {
       panel.style.display = "none";
@@ -3051,17 +3438,34 @@ function renderScanHist() {
 // FRIDGE — realtime
 // ════════════════════════════════════════
 function renderFridge() {
-  document.getElementById("fGrid").innerHTML = localFridge.map((it, idx) => {
+  document.getElementById("fGrid").innerHTML = localFridge.map((it, i) => {
     const lw = it.low ? " lw" : "";
-    const addBtn = it.low ? `<div onclick="addFI('${it.n.replace(/'/g,"&#39;")}','${it.em}')" style="font-size:.5rem;color:var(--or);font-weight:700;margin-top:2px;">+ Liste</div>` : "";
-    return `<div class="fi${lw}" style="cursor:default;">
+    return `<div class="fi${lw}" style="cursor:pointer;" onclick="fridgeItemMenu('fridge',${i})">
       <span class="fi-em">${it.em}</span>
       <div class="fi-nm">${it.n}</div>
-      <div class="fi-qt">${it.q}</div>
-      ${addBtn}
-      <div onclick="deleteFridgeItem('fridge',${idx})" style="position:absolute;top:3px;left:3px;width:14px;height:14px;border-radius:50%;background:var(--bg);box-shadow:var(--ss);display:grid;place-items:center;font-size:.5rem;cursor:pointer;color:var(--tx3);">✕</div>
+      <div class="fi-qt" style="color:${it.low?"var(--or)":"inherit"};">${it.low?"⚠️ ":""}${it.q}</div>
     </div>`;
   }).join("");
+}
+
+function fridgeItemMenu(type, idx) {
+  const arr = type === "fridge" ? localFridge : localPantry;
+  const it = arr[idx];
+  if(!it) return;
+  const label = type === "fridge" ? "frigo" : "placard";
+  const safeName = it.n.replace(/'/g,"&#39;");
+  const box = document.createElement("div");
+  box.style.cssText = "position:fixed;inset:0;z-index:800;background:rgba(0,0,0,.5);display:flex;align-items:flex-end;justify-content:center;padding:0 0 env(safe-area-inset-bottom);";
+  box.innerHTML = `<div style="background:var(--bg);border-radius:22px 22px 0 0;padding:20px 18px 24px;width:100%;max-width:480px;">
+    <div style="font-size:2rem;text-align:center;margin-bottom:4px;">${it.em}</div>
+    <div style="font-weight:900;text-align:center;font-size:1rem;margin-bottom:2px;">${it.n}</div>
+    <div style="font-size:.72rem;color:var(--tx2);text-align:center;margin-bottom:18px;">${it.q}${it.low?" · ⚠️ niveau bas":""}</div>
+    <button onclick="this.closest('[style*=fixed]').remove();addFI('${safeName}','${it.em}')" style="width:100%;padding:13px;margin-bottom:8px;border-radius:14px;background:linear-gradient(135deg,var(--ac),#8b5cf6);color:#fff;font-weight:800;border:none;cursor:pointer;">🛒 Ajouter à la liste de courses</button>
+    <button onclick="this.closest('[style*=fixed]').remove();deleteFridgeItem('${type}',${idx},true)" style="width:100%;padding:13px;margin-bottom:8px;border-radius:14px;background:rgba(214,63,49,.1);color:var(--rd);font-weight:800;border:none;cursor:pointer;">🗑️ Supprimer du ${label}</button>
+    <button onclick="this.closest('[style*=fixed]').remove()" style="width:100%;padding:12px;border-radius:14px;background:var(--bg2);color:var(--tx2);font-weight:700;border:none;cursor:pointer;">Annuler</button>
+  </div>`;
+  box.onclick = (e)=>{ if(e.target===box) box.remove(); };
+  document.body.appendChild(box);
 }
 
 function renderPantry() {
@@ -3076,19 +3480,52 @@ function renderPantry() {
   }).join("");
 }
 
-async function deleteFridgeItem(type, idx) {
-  if(type === "fridge") {
-    localFridge.splice(idx, 1);
-    await writeHousehold("fridge", localFridge);
-    renderFridge();
-    toast("🗑️","Retiré du frigo","Synchronisé avec votre logement.");
-  } else {
-    localPantry.splice(idx, 1);
-    await writeHousehold("pantry", localPantry);
-    renderPantry();
-    toast("🗑️","Retiré du placard","Synchronisé avec votre logement.");
+async function deleteFridgeItem(type, idx, askList) {
+  const arr = type === "fridge" ? localFridge : localPantry;
+  const it = arr[idx];
+  if(!it) return;
+  if(askList) {
+    showConfirm("❓","Ajouter à la liste ?",
+      "Voulez-vous ajouter " + it.n + " à la prochaine liste de courses ?",
+      "Supprimer + Ajouter liste",
+      async () => {
+        localItems.unshift({id:Date.now()+"",name:it.n,em:it.em,cat:"other",qty:"1",price:0,pkg:"—",store:"—",ck:false,tags:["nw"],alert:"",addedBy:currentUser?.displayName||"Vous"});
+        arr.splice(idx,1);
+        await writeHousehold(type==="fridge"?"fridge":"pantry",arr);
+        await writeHousehold("items",localItems);
+        type==="fridge"?renderFridge():renderPantry();
+        renderList(); renderRecipes();
+        toast("✅",it.n,"Retiré + ajouté à la liste !");
+      });
+    return;
   }
+  arr.splice(idx,1);
+  await writeHousehold(type==="fridge"?"fridge":"pantry",arr);
+  type==="fridge"?renderFridge():renderPantry();
   renderRecipes();
+  toast("🗑️",it.n,"Retiré.");
+}
+
+async function addFridgeManual() {
+  const inp = document.getElementById("fridgeManualInp");
+  if(!inp) return;
+  const name = inp.value.trim();
+  if(!name) return;
+  const match = FOODS_DB.find(f => f.n.toLowerCase() === name.toLowerCase() || f.n.toLowerCase().includes(name.toLowerCase()));
+  const em = match ? match.em : "🍽️";
+  const cat = match ? match.cat : "other";
+  const isFridge = !["pantry","bakery","hygiene","drinks","other"].includes(cat);
+  const target = isFridge ? localFridge : localPantry;
+  if(!target.find(f => f.n.toLowerCase().includes(name.toLowerCase().split(" ")[0]))) {
+    target.unshift({ em, n: name, q: "1", low: false });
+    isFridge ? renderFridge() : renderPantry();
+    await writeHousehold(isFridge ? "fridge" : "pantry", isFridge ? localFridge : localPantry);
+    renderRecipes();
+    inp.value = "";
+    toast("✅", name, "Ajouté au " + (isFridge ? "frigo" : "placard") + " !");
+  } else {
+    toast("ℹ️", name, "Déjà dans le frigo/placard.");
+  }
 }
 
 async function addFI(n, em) {
@@ -3124,6 +3561,17 @@ function renderRecipes() {
   else if(P.diet.includes("veg")) filtered = filtered.filter(r => r.diet.includes("veg") || r.diet.includes("vegan"));
   else if(P.diet.includes("pesc")) filtered = filtered.filter(r => r.diet.includes("pesc") || r.diet.includes("veg"));
   filtered = filtered.map(r => ({ ...r, av: getRecipeAvailability(r) })).sort((a, b) => b.av.pct - a.av.pct);
+  // Only show recipes if fridge has items
+  if(localFridge.length === 0 && localPantry.length === 0) {
+    document.getElementById("rCards").innerHTML = `<div class="empty"><div class="empty-ic">🍽️</div><div class="empty-ti">Pas assez d&#39;ingrédients</div><div class="empty-su">Ajoutez plus d&#39;aliments au frigo.</div></div>`;
+    return;
+  }
+  // Only show recipes where we have at least 30% of ingredients
+  filtered = filtered.filter(r => r.av.pct >= 30);
+  if(!filtered.length) {
+    document.getElementById("rCards").innerHTML = `<div class="empty"><div class="empty-ic">🍽️</div><div class="empty-ti">Pas assez d'ingrédients</div><div class="empty-su">Ajoutez plus d'aliments au frigo.</div></div>`;
+    return;
+  }
   document.getElementById("rCards").innerHTML = filtered.slice(0, 8).map(r => {
     const missing = r.av.details.filter(i => !i.inStock);
     const cls = r.av.pct >= 80 ? "hi" : r.av.pct >= 50 ? "md" : "lo";
@@ -3166,22 +3614,26 @@ async function confirmRecipeAdd() {
   const av = getRecipeAvailability(recipe);
   const missing = av.details.filter(i => !i.inStock);
   if(missing.length === 0) { closeOv("recipeOv"); toast("🍳", "Bon appétit !", "Vous avez tous les ingrédients pour " + recipe.name + " !"); return; }
+  let added = 0, merged = 0;
   missing.forEach(ingr => {
-    // Check for duplicate before adding
+    const norm = ingr.n.toLowerCase().split(" ")[0];
     const dupIdx = localItems.findIndex(i =>
       i.name.toLowerCase() === ingr.n.toLowerCase() ||
-      i.name.toLowerCase().replace(/\s*\([^)]*\)/g,"").trim() === ingr.n.toLowerCase()
+      i.name.toLowerCase().includes(norm) ||
+      norm.length > 3 && i.name.toLowerCase().startsWith(norm)
     );
     if(dupIdx !== -1) {
       localItems[dupIdx].qty = String((parseInt(localItems[dupIdx].qty)||1) + 1);
-      return; // merged
+      merged++;
+      return;
     }
-    localItems.unshift({ id: Date.now() + Math.random() + "", name: ingr.n, em: ingr.em, cat: "other", qty: ingr.q, price: 2.5, pkg: "—", store: "—", ck: false, tags: ["ai"], alert: "", addedBy: "Recette IA" });
+    localItems.unshift({id:Date.now()+Math.random()+"",name:ingr.n,em:ingr.em,cat:"other",qty:ingr.q||"1",price:2.5,pkg:"—",store:"—",ck:false,tags:["ai"],alert:"",addedBy:"Recette IA"});
+    added++;
   });
   renderList();
   await writeHousehold("items", localItems);
   closeOv("recipeOv"); goTab(0);
-  toast("🛒", missing.length + " ajoutés", "Ingrédients pour " + recipe.name + " — synchronisés !");
+  toast("🛒", added + " ajoutés" + (merged ? " · " + merged + " fusionné(s)" : ""), "Ingrédients pour " + recipe.name + " !");
   await addActivity("a ajouté " + missing.length + " ingrédients pour " + recipe.name);
 }
 
@@ -3391,35 +3843,46 @@ async function addMealAll() {
   toast("🛒", n + " ajoutés", "Ingrédients manquants de la semaine — synchronisés !");
 }
 
+
+const SEASONAL = {
+  1:  [{em:"🥕",n:"Carottes"},{em:"🥬",n:"Poireaux"},{em:"🧅",n:"Oignons"},{em:"🥔",n:"Pommes de terre"},{em:"🍎",n:"Pommes"},{em:"🍐",n:"Poires"},{em:"🫛",n:"Endives"},{em:"🌿",n:"Mâche"}],
+  2:  [{em:"🥦",n:"Brocolis"},{em:"🥬",n:"Épinards"},{em:"🥕",n:"Carottes"},{em:"🧅",n:"Échalotes"},{em:"🍋",n:"Citrons"},{em:"🍊",n:"Oranges"},{em:"🫛",n:"Endives"},{em:"🌿",n:"Persil"}],
+  3:  [{em:"🥦",n:"Brocolis"},{em:"🥬",n:"Épinards"},{em:"🥕",n:"Carottes"},{em:"🌱",n:"Asperges"},{em:"🍓",n:"Fraises"},{em:"🍋",n:"Citrons"},{em:"🧅",n:"Oignons nouveaux"},{em:"🌿",n:"Ciboulette"}],
+  4:  [{em:"🌱",n:"Asperges"},{em:"🫛",n:"Petits pois"},{em:"🥬",n:"Roquette"},{em:"🍓",n:"Fraises"},{em:"🥦",n:"Brocolis"},{em:"🌿",n:"Radis"},{em:"🧅",n:"Oignons nouveaux"},{em:"🥗",n:"Salade"}],
+  5:  [{em:"🍓",n:"Fraises"},{em:"🌱",n:"Asperges"},{em:"🫛",n:"Petits pois"},{em:"🥒",n:"Courgettes"},{em:"🍒",n:"Cerises"},{em:"🥗",n:"Laitue"},{em:"🌿",n:"Basilic"},{em:"🧅",n:"Oignons nouveaux"}],
+  6:  [{em:"🍓",n:"Fraises"},{em:"🍒",n:"Cerises"},{em:"🫐",n:"Myrtilles"},{em:"🥒",n:"Concombres"},{em:"🍅",n:"Tomates"},{em:"🫑",n:"Poivrons"},{em:"🌽",n:"Maïs"},{em:"🍑",n:"Pêches"}],
+  7:  [{em:"🍅",n:"Tomates"},{em:"🥒",n:"Courgettes"},{em:"🫑",n:"Poivrons"},{em:"🍆",n:"Aubergines"},{em:"🫐",n:"Myrtilles"},{em:"🍑",n:"Pêches"},{em:"🍈",n:"Melons"},{em:"🌽",n:"Maïs"}],
+  8:  [{em:"🍅",n:"Tomates"},{em:"🍆",n:"Aubergines"},{em:"🫑",n:"Poivrons"},{em:"🫐",n:"Myrtilles"},{em:"🍇",n:"Raisins"},{em:"🍑",n:"Pêches"},{em:"🍈",n:"Melons"},{em:"🌽",n:"Maïs"}],
+  9:  [{em:"🍇",n:"Raisins"},{em:"🍎",n:"Pommes"},{em:"🍐",n:"Poires"},{em:"🥕",n:"Carottes"},{em:"🥦",n:"Brocolis"},{em:"🍄",n:"Champignons"},{em:"🥜",n:"Noix"},{em:"🌰",n:"Châtaignes"}],
+  10: [{em:"🍎",n:"Pommes"},{em:"🍐",n:"Poires"},{em:"🥕",n:"Carottes"},{em:"🥔",n:"Pommes de terre"},{em:"🍄",n:"Champignons"},{em:"🌰",n:"Châtaignes"},{em:"🥜",n:"Noix"},{em:"🥦",n:"Brocolis"}],
+  11: [{em:"🥕",n:"Carottes"},{em:"🥬",n:"Poireaux"},{em:"🥔",n:"Pommes de terre"},{em:"🍎",n:"Pommes"},{em:"🥦",n:"Brocolis"},{em:"🧅",n:"Oignons"},{em:"🌰",n:"Châtaignes"},{em:"🍄",n:"Champignons"}],
+  12: [{em:"🥕",n:"Carottes"},{em:"🥬",n:"Poireaux"},{em:"🧅",n:"Oignons"},{em:"🥔",n:"Pommes de terre"},{em:"🍎",n:"Pommes"},{em:"🍊",n:"Oranges"},{em:"🫛",n:"Endives"},{em:"🌿",n:"Mâche"}]
+};
+
 function renderSeason() {
-  const s = [
-    {em:"🥦",n:"Brocoli",b:"Top"},
-    {em:"🥬",n:"Epinards",b:"Saison"},
-    {em:"🥕",n:"Carottes",b:"Saison"},
-    {em:"🧅",n:"Oignons",b:"Saison"},
-    {em:"🥬",n:"Poireaux",b:"Fin"},
-    {em:"🍋",n:"Citrons",b:"Saison"},
-    {em:"🥦",n:"Brocoli fleur",b:"Top"},
-    {em:"🌿",n:"Persil",b:"Saison"}
-  ];
+  const month = new Date().getMonth() + 1;
+  const s = SEASONAL[month] || SEASONAL[4];
+  const monthNames = ["","Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
   const grid = document.getElementById("sGrid");
-  grid.innerHTML = s.map((v,i) => `<div class="si" data-idx="${i}"><span class="si-em">${v.em}</span><div class="si-nm">${v.n}</div><div class="si-bg">${v.b}</div></div>`).join("");
-  // Use event delegation - no inline onclick with special chars
+  const header = document.getElementById("seasonHeader");
+  if(header) header.textContent = "🌱 De saison en " + monthNames[month];
+  grid.innerHTML = s.map((v,i) => `<div class="si" data-idx="${i}"><span class="si-em">${v.em}</span><div class="si-nm">${v.n}</div></div>`).join("");
   grid.onclick = (e) => {
     const si = e.target.closest(".si");
     if(!si) return;
-    const idx = parseInt(si.dataset.idx);
-    if(isNaN(idx)) return;
-    const item = s[idx];
+    const item = s[parseInt(si.dataset.idx)];
     if(!item) return;
-    // Direct add without confirm dialog (confirm dialog was broken on mobile)
-    localItems.unshift({ id: Date.now()+"", name: item.n, em: item.em, cat:"fruits", qty:"1", price:2, pkg:"—", store:"—", ck:false, tags:["se"], alert:"", addedBy: currentUser?.displayName||"Vous" });
-    renderList();
-    writeHousehold("items", localItems);
-    toast("🌱", item.n, "Ajouté à la liste !");
+    const dupIdx = localItems.findIndex(i => i.name.toLowerCase() === item.n.toLowerCase());
+    if(dupIdx !== -1) {
+      const cur = parseInt(localItems[dupIdx].qty)||1;
+      showConfirm("🔄",item.n+" déjà dans la liste","Quantité actuelle: "+cur+". Incrémenter ?","Oui → "+(cur+1),async()=>{
+        localItems[dupIdx].qty=String(cur+1);renderList();writeHousehold("items",localItems);
+      }); return;
+    }
+    localItems.unshift({id:Date.now()+"",name:item.n,em:item.em,cat:"fruits",qty:"1",price:2,pkg:"—",store:"—",ck:false,tags:["se"],alert:"",addedBy:currentUser?.displayName||"Vous"});
+    renderList(); writeHousehold("items",localItems);
+    toast("🌱",item.n,"Ajouté à la liste !");
   };
-  // Keep the grid reference for re-render
-  grid._seasons = s;
 }
 
 
@@ -3431,16 +3894,116 @@ async function addSeason(n, em) {
   toast("🌱", n, "Ajouté à la liste !");
 }
 
+
+// Nutritional values per 100g {kcal, p:protein, c:carbs, f:fat}
+const NUTRI_DB = {
+  "Lait demi-écrémé":{kcal:46,p:3.3,c:4.9,f:1.5},
+  "Lait entier":{kcal:61,p:3.2,c:4.8,f:3.2},
+  "Yaourt nature":{kcal:56,p:3.5,c:4.9,f:3.0},
+  "Beurre":{kcal:717,p:0.7,c:0.6,f:81},
+  "Fromage blanc":{kcal:53,p:7.2,c:3.8,f:0.8},
+  "Gruyère":{kcal:413,p:30,c:0.4,f:32},
+  "Camembert":{kcal:300,p:19,c:0.5,f:24},
+  "Oeuf":{kcal:147,p:13,c:0.7,f:10},
+  "Poulet":{kcal:165,p:31,c:0,f:3.6},
+  "Boeuf haché":{kcal:254,p:17,c:0,f:20},
+  "Saumon":{kcal:208,p:20,c:0,f:13},
+  "Thon en boîte":{kcal:116,p:26,c:0,f:1},
+  "Pâtes":{kcal:357,p:12,c:71,f:1.8},
+  "Riz":{kcal:349,p:7,c:78,f:0.6},
+  "Pain de mie":{kcal:265,p:8,c:50,f:3},
+  "Pain complet":{kcal:247,p:9,c:45,f:3},
+  "Flocons d'avoine":{kcal:367,p:13,c:58,f:7},
+  "Pomme de terre":{kcal:77,p:2,c:17,f:0.1},
+  "Carotte":{kcal:41,p:0.9,c:10,f:0.2},
+  "Tomate":{kcal:18,p:0.9,c:3.9,f:0.2},
+  "Épinards":{kcal:23,p:2.9,c:1.4,f:0.4},
+  "Brocoli":{kcal:34,p:2.8,c:5,f:0.4},
+  "Courgette":{kcal:17,p:1.2,c:3.1,f:0.3},
+  "Concombre":{kcal:12,p:0.6,c:2.2,f:0.1},
+  "Salade verte":{kcal:15,p:1.4,c:2.2,f:0.2},
+  "Pomme":{kcal:52,p:0.3,c:14,f:0.2},
+  "Banane":{kcal:89,p:1.1,c:23,f:0.3},
+  "Orange":{kcal:47,p:0.9,c:12,f:0.1},
+  "Fraise":{kcal:32,p:0.7,c:7.7,f:0.3},
+  "Raisin":{kcal:69,p:0.7,c:18,f:0.2},
+  "Lentilles":{kcal:116,p:9,c:20,f:0.4},
+  "Pois chiches":{kcal:164,p:8.9,c:27,f:2.6},
+  "Huile olive":{kcal:884,p:0,c:0,f:100},
+  "Sucre":{kcal:400,p:0,c:100,f:0},
+  "Farine":{kcal:364,p:10,c:76,f:1},
+  "Tomates pelées":{kcal:24,p:1.1,c:5,f:0.2},
+  "Haricots verts":{kcal:31,p:1.8,c:7,f:0.1},
+  "Poivron":{kcal:31,p:1,c:6,f:0.3},
+  "Champignons":{kcal:22,p:3.1,c:3.3,f:0.3},
+  "Aubergine":{kcal:25,p:1,c:5.9,f:0.2},
+  "Avocats":{kcal:160,p:2,c:9,f:15},
+  "Noix":{kcal:654,p:15,c:14,f:65},
+  "Amandes":{kcal:575,p:21,c:20,f:50},
+  "Chocolat noir":{kcal:546,p:4.9,c:60,f:31},
+  "Jambon":{kcal:107,p:17,c:1,f:4},
+  "Saucisse":{kcal:301,p:11,c:1,f:28},
+  "Crevettes":{kcal:99,p:24,c:0.2,f:1.1},
+  "Moules":{kcal:86,p:12,c:4,f:2.2},
+  "Crème fraîche":{kcal:300,p:2.5,c:2.8,f:30},
+  "Miel":{kcal:304,p:0.3,c:82,f:0},
+  "Confiture":{kcal:249,p:0.4,c:63,f:0.1}
+};
+
+function getNutri(name) {
+  const key = Object.keys(NUTRI_DB).find(k =>
+    name.toLowerCase().includes(k.toLowerCase().split(" ")[0]) ||
+    k.toLowerCase().includes(name.toLowerCase().split(" ")[0])
+  );
+  return key ? NUTRI_DB[key] : null;
+}
+
 function renderNutri() {
-  let bars = [
-    { l:"Calories", v:1850, mx:2000, c:"linear-gradient(90deg,var(--ac),#8b5cf6)" },
-    { l:"Protéines", v:72, mx:80, c:"linear-gradient(90deg,var(--tl),var(--gn))" },
-    { l:"Fibres", v:18, mx:30, c:"linear-gradient(90deg,var(--yl),var(--or))" },
-    { l:"F&L/jour", v:3, mx:5, c:"linear-gradient(90deg,var(--gn),var(--tl))" }
+  // Calculate from current shopping list items
+  let totalKcal = 0, totalProt = 0, totalCarb = 0, totalFat = 0;
+  localItems.forEach(it => {
+    const n = getNutri(it.name);
+    if(n) {
+      const qty = parseFloat(it.qty) || 1;
+      // Assume ~100g per unit for estimation
+      totalKcal += n.kcal * qty;
+      totalProt += n.p * qty;
+      totalCarb += n.c * qty;
+      totalFat += n.f * qty;
+    }
+  });
+  // Per-day estimate (divide by 7 for week)
+  const kcalDay = Math.round(totalKcal / 7);
+  const protDay = Math.round(totalProt / 7);
+  const carbDay = Math.round(totalCarb / 7);
+  const fatDay = Math.round(totalFat / 7);
+  
+  const target = P.calorieTarget || (P.goals.includes("poids") ? 1600 : P.goals.includes("sport") ? 2400 : 2000);
+  const protTarget = P.goals.includes("sport") ? 120 : 80;
+  
+  const bars = [
+    {l:"Calories/jour (estimé)",v:kcalDay,mx:target,c:"linear-gradient(90deg,var(--ac),#8b5cf6)"},
+    {l:"Protéines g/j",v:protDay,mx:protTarget,c:"linear-gradient(90deg,var(--tl),var(--gn))"},
+    {l:"Glucides g/j",v:carbDay,mx:300,c:"linear-gradient(90deg,var(--yl),var(--or))"},
+    {l:"Lipides g/j",v:fatDay,mx:80,c:"linear-gradient(90deg,var(--gn),var(--tl))"}
   ];
-  if(P.goals.includes("poids")) bars[0].mx = 1800;
-  if(P.goals.includes("sport")) { bars[1].v = 85; bars[1].mx = 120; }
-  document.getElementById("nutriBars").innerHTML = bars.map(b => `<div class="nbr"><div class="nbh"><span>${b.l}</span><span>${b.v}/${b.mx}</span></div><div class="nbt"><div class="nbf" style="width:${Math.round(b.v/b.mx*100)}%;background:${b.c}"></div></div></div>`).join("");
+  
+  const bmiEl = document.getElementById("bmiInfo");
+  if(bmiEl && P.weight && P.height) {
+    const bmi = (P.weight / ((P.height/100)**2)).toFixed(1);
+    const bmiLabel = bmi < 18.5 ? "Insuffisance pondérale" : bmi < 25 ? "Poids normal ✅" : bmi < 30 ? "Surpoids" : "Obésité";
+    bmiEl.innerHTML = `<div style="font-size:.75rem;color:var(--tx2);margin-bottom:12px;">
+      IMC: <strong>${bmi}</strong> · ${bmiLabel}
+      ${P.calorieTarget ? ` · Objectif: <strong>${P.calorieTarget} kcal/j</strong>` : ""}
+      ${P.tdee ? ` · TDEE: <strong>${P.tdee} kcal/j</strong>` : ""}
+    </div>`;
+  }
+  
+  document.getElementById("nutriBars").innerHTML = bars.map(b => {
+    const pct = Math.min(100, Math.round(b.v / (b.mx||1) * 100));
+    const col = pct > 110 ? "#d63031" : pct > 85 ? b.c : b.c;
+    return `<div class="nbr"><div class="nbh"><span>${b.l}</span><span style="color:${pct>110?"var(--rd)":"var(--tx)"};">${b.v}/${b.mx}</span></div><div class="nbt"><div class="nbf" style="width:${pct}%;background:${col}"></div></div></div>`;
+  }).join("");
 }
 
 // ════════════════════════════════════════
@@ -3818,4 +4381,57 @@ function rmT(id) {
   <div id="historyWrap" style="overflow-y:auto;flex:1;padding:0 14px 14px;display:flex;flex-direction:column;gap:6px;"></div>
 </div>
 </body>
-</html>
+</html<div id="ob0" class="ob-pg on">
+        <div class="ob-em">👤</div>
+        <h2 class="ob-ti">Bienvenue dans SmartCart !</h2>
+        <p class="ob-su">Quelques infos pour personnaliser votre expérience.</p>
+        <div class="ob-field">
+          <label class="ob-lbl">Votre prénom</label>
+          <input class="inp" id="obName" placeholder="Prénom ou pseudo" autocomplete="given-name">
+        </div>
+        <div class="ob-field">
+          <label class="ob-lbl">Sexe</label>
+          <div class="ob-chips" id="obSexChips">
+            <div class="chip" data-v="m" onclick="obSel(this,'sex')">👨 Homme</div>
+            <div class="chip" data-v="f" onclick="obSel(this,'sex')">👩 Femme</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:10px;">
+          <div class="ob-field" style="flex:1;">
+            <label class="ob-lbl">Âge</label>
+            <input class="inp" id="obAge" type="number" placeholder="28" min="10" max="100">
+          </div>
+          <div class="ob-field" style="flex:1;">
+            <label class="ob-lbl">Taille (cm)</label>
+            <input class="inp" id="obHeight" type="number" placeholder="170" min="140" max="220">
+          </div>
+        </div>
+        <div class="ob-field">
+          <label class="ob-lbl">Poids actuel (kg)</label>
+          <input class="inp" id="obWeight" type="number" placeholder="70" min="40" max="200">
+        </div>
+      </div>
+        <div id="ob3b" class="ob-pg">
+        <div class="ob-em">🏃</div>
+        <h2 class="ob-ti">Activité sportive</h2>
+        <p class="ob-su">Pour calculer vos besoins caloriques précis.</p>
+        <div class="ob-chips" id="obSportChips">
+          <div class="chip" data-v="none" onclick="obMultiSel(this,'sport')">🛋️ Sédentaire</div>
+          <div class="chip" data-v="walking" onclick="obMultiSel(this,'sport')">🚶 Marche</div>
+          <div class="chip" data-v="running" onclick="obMultiSel(this,'sport')">🏃 Course</div>
+          <div class="chip" data-v="cycling" onclick="obMultiSel(this,'sport')">🚴 Vélo</div>
+          <div class="chip" data-v="gym" onclick="obMultiSel(this,'sport')">💪 Musculation</div>
+          <div class="chip" data-v="yoga" onclick="obMultiSel(this,'sport')">🧘 Yoga/Pilates</div>
+          <div class="chip" data-v="swim" onclick="obMultiSel(this,'sport')">🏊 Natation</div>
+          <div class="chip" data-v="team" onclick="obMultiSel(this,'sport')">⚽ Sport collectif</div>
+        </div>
+        <div class="ob-field" style="margin-top:14px;">
+          <label class="ob-lbl">Minutes de sport par semaine</label>
+          <input class="inp" id="obSportMin" type="number" placeholder="150" min="0" max="3000" value="150">
+        </div>
+        <div id="obSportGoal" style="display:none;margin-top:12px;">
+          <label class="ob-lbl">Poids objectif (kg) — optionnel</label>
+          <input class="inp" id="obTargetWeight" type="number" placeholder="65" min="40" max="200">
+        </div>
+      </div>
+        >

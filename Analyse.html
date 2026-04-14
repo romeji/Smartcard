@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Smart Receipt AI V4</title>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
+
+  <style>
+    body {
+      font-family: Arial;
+      background: #0f172a;
+      color: white;
+      padding: 20px;
+    }
+
+    h1 {
+      text-align: center;
+    }
+
+    .container {
+      max-width: 900px;
+      margin: auto;
+      background: #1e293b;
+      padding: 20px;
+      border-radius: 12px;
+    }
+
+    input, button {
+      padding: 10px;
+      margin: 5px;
+      border-radius: 8px;
+      border: none;
+    }
+
+    button {
+      background: #22c55e;
+      color: white;
+      cursor: pointer;
+    }
+
+    table {
+      width: 100%;
+      margin-top: 20px;
+      border-collapse: collapse;
+    }
+
+    th, td {
+      border-bottom: 1px solid #334155;
+      padding: 10px;
+      text-align: left;
+    }
+
+    td[contenteditable] {
+      background: #0f172a;
+    }
+
+    .badge {
+      padding: 4px 8px;
+      border-radius: 6px;
+      background: #334155;
+    }
+
+    #loader {
+      text-align: center;
+      margin-top: 10px;
+    }
+  </style>
+</head>
+
+<body>
+
+<div class="container">
+  <h1>🧾 Smart Receipt AI V4</h1>
+
+  <input type="file" id="receiptInput" accept="image/*">
+  <button onclick="analyze()">Analyser</button>
+  <button onclick="exportJSON()">Exporter JSON</button>
+  <button onclick="addToShoppingList()">🛒 Ajouter aux courses</button>
+
+  <div id="loader"></div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Produit</th>
+        <th>Qté</th>
+        <th>Prix</th>
+        <th>Catégorie</th>
+        <th>Magasin</th>
+        <th>Confiance</th>
+      </tr>
+    </thead>
+    <tbody id="tableBody"></tbody>
+  </table>
+</div>
+
+<script>
+class SmartAI {
+  constructor() {
+    this.memory = JSON.parse(localStorage.getItem("memory") || "{}");
+
+    this.dictionary = [
+      "pomme","banane","lait","fromage","yaourt",
+      "poulet","boeuf","eau","jus","coca","riz","pates"
+    ];
+  }
+
+  levenshtein(a, b) {
+    const matrix = [];
+    for (let i = 0; i <= b.length; i++) matrix[i] = [i];
+    for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
+
+    for (let i = 1; i <= b.length; i++) {
+      for (let j = 1; j <= a.length; j++) {
+        matrix[i][j] = b[i-1] === a[j-1]
+          ? matrix[i-1][j-1]
+          : Math.min(
+              matrix[i-1][j-1] + 1,
+              matrix[i][j-1] + 1,
+              matrix[i-1][j] + 1
+            );
+      }
+    }
+    return matrix[b.length][a.length];
+  }
+
+  correct(word) {
+    word = word.toLowerCase();
+
+    if (this.memory[word]) return this.memory[word];
+
+    let best = word;
+    let min = 999;
+
+    this.dictionary.forEach(d => {
+      const dist = this.levenshtein(word, d);
+      if (dist < min && dist <= 3) {
+        min = dist;
+        best = d;
+      }
+    });
+
+    return best;
+  }
+
+  learn(wrong, correct) {
+    this.memory[wrong] = correct;
+    localStorage.setItem("memory", JSON.stringify(this.memory));
+  }
+}
+
+const ai = new SmartAI();
+let results = [];
+
+function detectStore(text) {
+  text = text.toLowerCase();
+  if (text.includes("carrefour")) return "Carrefour";
+  if (text.includes("lidl")) return "Lidl";
+  if (text.includes("auchan")) return "Auchan";
+  return "Inconnu";
+}
+
+async function preprocess(file) {
+  return new Promise(res => {
+    const img = new Image();
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+
+    img.onload = () => {
+      canvas.width = img.width;
+      canvas.height = img.height;
+
+      ctx.drawImage(img, 0, 0);
+
+      let imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      let d = imgData.data;
+
+      for (let i = 0; i < d.length; i += 4) {
+        let avg = (d[i] + d[i+1] + d[i+2]) / 3;
+        avg = avg > 140 ? 255 : 0;
+        d[i] = d[i+1] = d[i+2] = avg;
+      }
+
+      ctx.putImageData(imgData, 0, 0);
+      res(canvas);
+    };
+
+    img.src = URL.createObjectURL(file);
+  });
+}
+
+async function analyze() {
+  const file = document.getElementById("receiptInput").files[0];
+  if (!file) return alert("Ajoute une image");
+
+  document.getElementById("loader").innerText = "Analyse en cours...";
+
+  const canvas = await preprocess(file);
+  const ocr = await Tesseract.recognize(canvas, 'fra');
+
+  const text = ocr.data.text;
+  const store = detectStore(text);
+
+  results = [];
+
+  text.split("\n").forEach(line => {
+    if (!line.match(/\d/)) return;
+
+    const priceMatch = line.match(/(\d+[,.]\d{2})/);
+    if (!priceMatch) return;
+
+    const price = parseFloat(priceMatch[1].replace(",", "."));
+    let name = line.replace(priceMatch[0], "").trim().toLowerCase();
+
+    name = name.replace(/[0-9]/g, "").replace(/kg|g|x/g, "").trim();
+
+    const corrected = ai.correct(name);
+
+    results.push({
+      original: name,
+      name: corrected,
+      price,
+      quantity: 1,
+      category: "auto",
+      store,
+      confidence: name === corrected ? 1 : 0.7
+    });
+  });
+
+  render();
+  document.getElementById("loader").innerText = "";
+}
+
+function render() {
+  const tbody = document.getElementById("tableBody");
+  tbody.innerHTML = "";
+
+  results.forEach(item => {
+    const tr = document.createElement("tr");
+
+    tr.innerHTML = `
+      <td contenteditable>${item.name}</td>
+      <td contenteditable>${item.quantity}</td>
+      <td contenteditable>${item.price}</td>
+      <td>${item.category}</td>
+      <td>${item.store}</td>
+      <td>${Math.round(item.confidence * 100)}%</td>
+    `;
+
+    tr.cells[0].addEventListener("blur", (e) => {
+      ai.learn(item.original, e.target.innerText);
+    });
+
+    tbody.appendChild(tr);
+  });
+}
+
+function exportJSON() {
+  const data = JSON.stringify(results, null, 2);
+  const a = document.createElement("a");
+  a.href = "data:text/json;charset=utf-8," + encodeURIComponent(data);
+  a.download = "ticket.json";
+  a.click();
+}
+
+function addToShoppingList() {
+  let list = JSON.parse(localStorage.getItem("courses") || "[]");
+
+  results.forEach(r => {
+    list.push({ name: r.name, qty: r.quantity });
+  });
+
+  localStorage.setItem("courses", JSON.stringify(list));
+  alert("Ajouté à la liste !");
+}
+</script>
+
+</body>
+</html>

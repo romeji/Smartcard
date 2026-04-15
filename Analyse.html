@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-<title>Smart Receipt AI V5</title>
+<title>Smart Receipt AI V6 (Mistral)</title>
 
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
 
@@ -13,22 +13,24 @@ button { padding:10px; margin:5px; border:none; border-radius:8px; background:#2
 table { width:100%; margin-top:20px; border-collapse:collapse;}
 td,th { padding:10px; border-bottom:1px solid #334155;}
 td[contenteditable] { background:#0f172a;}
+#status { margin-top:10px; }
 </style>
 </head>
 
 <body>
 
 <div class="container">
-<h1>🧾 Smart Receipt AI V5</h1>
+<h1>🧾 Smart Receipt AI V6 (Mistral)</h1>
 
 <input type="file" id="file">
 <button onclick="analyze()">Analyser</button>
+
+<div id="status"></div>
 
 <table>
 <thead>
 <tr>
 <th>Produit</th>
-<th>Qté</th>
 <th>Prix</th>
 <th>Confiance</th>
 </tr>
@@ -40,56 +42,13 @@ td[contenteditable] { background:#0f172a;}
 
 <script>
 
-// 🔥 DICTIONNAIRE ABRÉVIATIONS
-const abbr = {
-  "bq":"barquette","tom":"tomate","cerise":"cerise",
-  "ssn":"sans","chocola":"chocolat","comp":"compote",
-  "pom":"pomme","lpm":"lait","rech":"recharge",
-  "cre":"creme","bat":"baton","pap":"papier",
-  "mais":"mais","poivron":"poivron"
-};
+// 🔥 CONFIG
+const API_KEY = "jOTJWyqoNRUtmbd0KL5QP2ncDmBofky2";
 
-// 🔥 DICTIONNAIRE PRODUITS
-const dict = [
- "barquette tomate cerise",
- "barres sans chocolat",
- "compote pomme",
- "cereales crunchy",
- "kombucha peche",
- "kombucha menthe",
- "mais poivron"
-];
+// 🔥 CACHE LOCAL
+let cache = JSON.parse(localStorage.getItem("ai_cache") || "{}");
 
-// 🔥 LEVENSHTEIN
-function lev(a,b){
- const m=[];
- for(let i=0;i<=b.length;i++){m[i]=[i]}
- for(let j=0;j<=a.length;j++){m[0][j]=j}
- for(let i=1;i<=b.length;i++){
-  for(let j=1;j<=a.length;j++){
-   m[i][j]=b[i-1]==a[j-1]?m[i-1][j-1]:
-   Math.min(m[i-1][j-1]+1,m[i][j-1]+1,m[i-1][j]+1)
-  }
- }
- return m[b.length][a.length]
-}
-
-// 🔥 EXPANSION
-function expand(name){
- return name.split(" ").map(w=>abbr[w]||w).join(" ")
-}
-
-// 🔥 CORRECTION IA
-function correct(name){
- let best=name,score=999
- dict.forEach(d=>{
-  const s=lev(name,d)
-  if(s<score){score=s;best=d}
- })
- return score<=5?best:name
-}
-
-// 🔥 CLEAN
+// 🔥 OCR CLEAN
 function clean(line){
  return line.toLowerCase()
  .replace(/[^a-z0-9\s.,]/g,"")
@@ -97,56 +56,89 @@ function clean(line){
  .trim()
 }
 
-// 🔥 EXTRACTION PRO
-function parse(text){
- const lines=text.split("\n")
- const res=[]
-
- lines.forEach(l=>{
-  l=clean(l)
-
-  if(!l.match(/\d+[.,]\d{2}$/)) return
-
-  const price=l.match(/(\d+[.,]\d{2})$/)[1]
-  let name=l.replace(price,"").trim()
-
-  name=expand(name)
-  name=correct(name)
-
-  if(name.length<3) return
-
-  res.push({
-    name,
-    qty:1,
-    price:parseFloat(price.replace(",", ".")),
-    confidence: name.length>5?0.9:0.7
-  })
- })
-
- return res
+// 🔥 PARSE PRIX
+function extractLines(text){
+ const lines = text.split("\n");
+ return lines.filter(l => l.match(/\d+[.,]\d{2}/));
 }
 
-// 🔥 OCR + ANALYSE
+// 🔥 APPEL IA MISTRAL
+async function askAI(text){
+
+  // cache
+  if(cache[text]) return cache[text];
+
+  document.getElementById("status").innerText = "🧠 IA en cours...";
+
+  const res = await fetch("https://api.mistral.ai/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Authorization": "Bearer " + API_KEY,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      model: "mistral-small",
+      messages: [
+        {
+          role: "system",
+          content: "Tu es un expert des tickets de caisse français. Corrige et reformule les noms de produits de manière claire."
+        },
+        {
+          role: "user",
+          content: `Corrige ce produit de ticket OCR: "${text}". Répond uniquement avec le vrai nom.`
+        }
+      ]
+    })
+  });
+
+  const data = await res.json();
+  const result = data.choices[0].message.content.trim();
+
+  cache[text] = result;
+  localStorage.setItem("ai_cache", JSON.stringify(cache));
+
+  return result;
+}
+
+// 🔥 ANALYSE PRINCIPALE
 async function analyze(){
- const f=document.getElementById("file").files[0]
- if(!f) return alert("Ajoute image")
+  const file = document.getElementById("file").files[0];
+  if(!file) return alert("Ajoute une image");
 
- const r=await Tesseract.recognize(f,'fra')
- const data=parse(r.data.text)
+  document.getElementById("status").innerText = "📸 OCR en cours...";
 
- const tbody=document.getElementById("out")
- tbody.innerHTML=""
+  const ocr = await Tesseract.recognize(file, 'fra');
+  const lines = extractLines(ocr.data.text);
 
- data.forEach(p=>{
-  const tr=document.createElement("tr")
-  tr.innerHTML=`
-  <td contenteditable>${p.name}</td>
-  <td contenteditable>${p.qty}</td>
-  <td>${p.price}</td>
-  <td>${Math.round(p.confidence*100)}%</td>
-  `
-  tbody.appendChild(tr)
- })
+  const tbody = document.getElementById("out");
+  tbody.innerHTML = "";
+
+  for(let line of lines){
+
+    line = clean(line);
+
+    const priceMatch = line.match(/(\d+[.,]\d{2})/);
+    if(!priceMatch) continue;
+
+    const price = priceMatch[1];
+    let name = line.replace(price, "").trim();
+
+    if(name.length < 3) continue;
+
+    // 🧠 IA
+    const interpreted = await askAI(name);
+
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${interpreted}</td>
+      <td>${price}</td>
+      <td>IA</td>
+    `;
+
+    tbody.appendChild(tr);
+  }
+
+  document.getElementById("status").innerText = "✅ Terminé";
 }
 
 </script>

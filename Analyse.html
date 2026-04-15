@@ -1,278 +1,154 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-  <meta charset="UTF-8">
-  <title>Smart Receipt AI V4</title>
-  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
+<meta charset="UTF-8">
+<title>Smart Receipt AI V5</title>
 
-  <style>
-    body {
-      font-family: Arial;
-      background: #0f172a;
-      color: white;
-      padding: 20px;
-    }
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
 
-    h1 {
-      text-align: center;
-    }
-
-    .container {
-      max-width: 900px;
-      margin: auto;
-      background: #1e293b;
-      padding: 20px;
-      border-radius: 12px;
-    }
-
-    input, button {
-      padding: 10px;
-      margin: 5px;
-      border-radius: 8px;
-      border: none;
-    }
-
-    button {
-      background: #22c55e;
-      color: white;
-      cursor: pointer;
-    }
-
-    table {
-      width: 100%;
-      margin-top: 20px;
-      border-collapse: collapse;
-    }
-
-    th, td {
-      border-bottom: 1px solid #334155;
-      padding: 10px;
-      text-align: left;
-    }
-
-    td[contenteditable] {
-      background: #0f172a;
-    }
-
-    .badge {
-      padding: 4px 8px;
-      border-radius: 6px;
-      background: #334155;
-    }
-
-    #loader {
-      text-align: center;
-      margin-top: 10px;
-    }
-  </style>
+<style>
+body { font-family: Arial; background:#0f172a; color:white; padding:20px;}
+.container { max-width:900px; margin:auto; background:#1e293b; padding:20px; border-radius:12px;}
+button { padding:10px; margin:5px; border:none; border-radius:8px; background:#22c55e; color:white;}
+table { width:100%; margin-top:20px; border-collapse:collapse;}
+td,th { padding:10px; border-bottom:1px solid #334155;}
+td[contenteditable] { background:#0f172a;}
+</style>
 </head>
 
 <body>
 
 <div class="container">
-  <h1>🧾 Smart Receipt AI V4</h1>
+<h1>🧾 Smart Receipt AI V5</h1>
 
-  <input type="file" id="receiptInput" accept="image/*">
-  <button onclick="analyze()">Analyser</button>
-  <button onclick="exportJSON()">Exporter JSON</button>
-  <button onclick="addToShoppingList()">🛒 Ajouter aux courses</button>
+<input type="file" id="file">
+<button onclick="analyze()">Analyser</button>
 
-  <div id="loader"></div>
+<table>
+<thead>
+<tr>
+<th>Produit</th>
+<th>Qté</th>
+<th>Prix</th>
+<th>Confiance</th>
+</tr>
+</thead>
+<tbody id="out"></tbody>
+</table>
 
-  <table>
-    <thead>
-      <tr>
-        <th>Produit</th>
-        <th>Qté</th>
-        <th>Prix</th>
-        <th>Catégorie</th>
-        <th>Magasin</th>
-        <th>Confiance</th>
-      </tr>
-    </thead>
-    <tbody id="tableBody"></tbody>
-  </table>
 </div>
 
 <script>
-class SmartAI {
-  constructor() {
-    this.memory = JSON.parse(localStorage.getItem("memory") || "{}");
 
-    this.dictionary = [
-      "pomme","banane","lait","fromage","yaourt",
-      "poulet","boeuf","eau","jus","coca","riz","pates"
-    ];
+// 🔥 DICTIONNAIRE ABRÉVIATIONS
+const abbr = {
+  "bq":"barquette","tom":"tomate","cerise":"cerise",
+  "ssn":"sans","chocola":"chocolat","comp":"compote",
+  "pom":"pomme","lpm":"lait","rech":"recharge",
+  "cre":"creme","bat":"baton","pap":"papier",
+  "mais":"mais","poivron":"poivron"
+};
+
+// 🔥 DICTIONNAIRE PRODUITS
+const dict = [
+ "barquette tomate cerise",
+ "barres sans chocolat",
+ "compote pomme",
+ "cereales crunchy",
+ "kombucha peche",
+ "kombucha menthe",
+ "mais poivron"
+];
+
+// 🔥 LEVENSHTEIN
+function lev(a,b){
+ const m=[];
+ for(let i=0;i<=b.length;i++){m[i]=[i]}
+ for(let j=0;j<=a.length;j++){m[0][j]=j}
+ for(let i=1;i<=b.length;i++){
+  for(let j=1;j<=a.length;j++){
+   m[i][j]=b[i-1]==a[j-1]?m[i-1][j-1]:
+   Math.min(m[i-1][j-1]+1,m[i][j-1]+1,m[i-1][j]+1)
   }
-
-  levenshtein(a, b) {
-    const matrix = [];
-    for (let i = 0; i <= b.length; i++) matrix[i] = [i];
-    for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
-
-    for (let i = 1; i <= b.length; i++) {
-      for (let j = 1; j <= a.length; j++) {
-        matrix[i][j] = b[i-1] === a[j-1]
-          ? matrix[i-1][j-1]
-          : Math.min(
-              matrix[i-1][j-1] + 1,
-              matrix[i][j-1] + 1,
-              matrix[i-1][j] + 1
-            );
-      }
-    }
-    return matrix[b.length][a.length];
-  }
-
-  correct(word) {
-    word = word.toLowerCase();
-
-    if (this.memory[word]) return this.memory[word];
-
-    let best = word;
-    let min = 999;
-
-    this.dictionary.forEach(d => {
-      const dist = this.levenshtein(word, d);
-      if (dist < min && dist <= 3) {
-        min = dist;
-        best = d;
-      }
-    });
-
-    return best;
-  }
-
-  learn(wrong, correct) {
-    this.memory[wrong] = correct;
-    localStorage.setItem("memory", JSON.stringify(this.memory));
-  }
+ }
+ return m[b.length][a.length]
 }
 
-const ai = new SmartAI();
-let results = [];
-
-function detectStore(text) {
-  text = text.toLowerCase();
-  if (text.includes("carrefour")) return "Carrefour";
-  if (text.includes("lidl")) return "Lidl";
-  if (text.includes("auchan")) return "Auchan";
-  return "Inconnu";
+// 🔥 EXPANSION
+function expand(name){
+ return name.split(" ").map(w=>abbr[w]||w).join(" ")
 }
 
-async function preprocess(file) {
-  return new Promise(res => {
-    const img = new Image();
-    const canvas = document.createElement("canvas");
-    const ctx = canvas.getContext("2d");
-
-    img.onload = () => {
-      canvas.width = img.width;
-      canvas.height = img.height;
-
-      ctx.drawImage(img, 0, 0);
-
-      let imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      let d = imgData.data;
-
-      for (let i = 0; i < d.length; i += 4) {
-        let avg = (d[i] + d[i+1] + d[i+2]) / 3;
-        avg = avg > 140 ? 255 : 0;
-        d[i] = d[i+1] = d[i+2] = avg;
-      }
-
-      ctx.putImageData(imgData, 0, 0);
-      res(canvas);
-    };
-
-    img.src = URL.createObjectURL(file);
-  });
+// 🔥 CORRECTION IA
+function correct(name){
+ let best=name,score=999
+ dict.forEach(d=>{
+  const s=lev(name,d)
+  if(s<score){score=s;best=d}
+ })
+ return score<=5?best:name
 }
 
-async function analyze() {
-  const file = document.getElementById("receiptInput").files[0];
-  if (!file) return alert("Ajoute une image");
-
-  document.getElementById("loader").innerText = "Analyse en cours...";
-
-  const canvas = await preprocess(file);
-  const ocr = await Tesseract.recognize(canvas, 'fra');
-
-  const text = ocr.data.text;
-  const store = detectStore(text);
-
-  results = [];
-
-  text.split("\n").forEach(line => {
-    if (!line.match(/\d/)) return;
-
-    const priceMatch = line.match(/(\d+[,.]\d{2})/);
-    if (!priceMatch) return;
-
-    const price = parseFloat(priceMatch[1].replace(",", "."));
-    let name = line.replace(priceMatch[0], "").trim().toLowerCase();
-
-    name = name.replace(/[0-9]/g, "").replace(/kg|g|x/g, "").trim();
-
-    const corrected = ai.correct(name);
-
-    results.push({
-      original: name,
-      name: corrected,
-      price,
-      quantity: 1,
-      category: "auto",
-      store,
-      confidence: name === corrected ? 1 : 0.7
-    });
-  });
-
-  render();
-  document.getElementById("loader").innerText = "";
+// 🔥 CLEAN
+function clean(line){
+ return line.toLowerCase()
+ .replace(/[^a-z0-9\s.,]/g,"")
+ .replace(/\s+/g," ")
+ .trim()
 }
 
-function render() {
-  const tbody = document.getElementById("tableBody");
-  tbody.innerHTML = "";
+// 🔥 EXTRACTION PRO
+function parse(text){
+ const lines=text.split("\n")
+ const res=[]
 
-  results.forEach(item => {
-    const tr = document.createElement("tr");
+ lines.forEach(l=>{
+  l=clean(l)
 
-    tr.innerHTML = `
-      <td contenteditable>${item.name}</td>
-      <td contenteditable>${item.quantity}</td>
-      <td contenteditable>${item.price}</td>
-      <td>${item.category}</td>
-      <td>${item.store}</td>
-      <td>${Math.round(item.confidence * 100)}%</td>
-    `;
+  if(!l.match(/\d+[.,]\d{2}$/)) return
 
-    tr.cells[0].addEventListener("blur", (e) => {
-      ai.learn(item.original, e.target.innerText);
-    });
+  const price=l.match(/(\d+[.,]\d{2})$/)[1]
+  let name=l.replace(price,"").trim()
 
-    tbody.appendChild(tr);
-  });
+  name=expand(name)
+  name=correct(name)
+
+  if(name.length<3) return
+
+  res.push({
+    name,
+    qty:1,
+    price:parseFloat(price.replace(",", ".")),
+    confidence: name.length>5?0.9:0.7
+  })
+ })
+
+ return res
 }
 
-function exportJSON() {
-  const data = JSON.stringify(results, null, 2);
-  const a = document.createElement("a");
-  a.href = "data:text/json;charset=utf-8," + encodeURIComponent(data);
-  a.download = "ticket.json";
-  a.click();
+// 🔥 OCR + ANALYSE
+async function analyze(){
+ const f=document.getElementById("file").files[0]
+ if(!f) return alert("Ajoute image")
+
+ const r=await Tesseract.recognize(f,'fra')
+ const data=parse(r.data.text)
+
+ const tbody=document.getElementById("out")
+ tbody.innerHTML=""
+
+ data.forEach(p=>{
+  const tr=document.createElement("tr")
+  tr.innerHTML=`
+  <td contenteditable>${p.name}</td>
+  <td contenteditable>${p.qty}</td>
+  <td>${p.price}</td>
+  <td>${Math.round(p.confidence*100)}%</td>
+  `
+  tbody.appendChild(tr)
+ })
 }
 
-function addToShoppingList() {
-  let list = JSON.parse(localStorage.getItem("courses") || "[]");
-
-  results.forEach(r => {
-    list.push({ name: r.name, qty: r.quantity });
-  });
-
-  localStorage.setItem("courses", JSON.stringify(list));
-  alert("Ajouté à la liste !");
-}
 </script>
 
 </body>

@@ -502,6 +502,7 @@ svg{display:block;flex-shrink:0;}
 }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.19.1/umd/index.min.js"></script>
 </head>
 <body>
 
@@ -3856,108 +3857,181 @@ function renderAlternatives(products) {
 }
 
 // ── Scan caméra avec fallback fichier ────────────
+// ═══════════════════════════════════════════════
+// SCAN CAMÉRA — ZXing-js (universel iOS/Android/Desktop)
+// ═══════════════════════════════════════════════
+let zxingReader = null;  // instance ZXing réutilisable
+let barcodeRafId = null; // requestAnimationFrame id
+let barcodeCanvas = null;
+let barcodeCtx = null;
+
 async function startBarcodeCamera() {
   stopBarcodeCamera();
 
-  // Vérifier BarcodeDetector natif
-  if(!('BarcodeDetector' in window)) {
-    // Fallback : input file avec capture caméra (comme le module ticket)
-    const fallbackInput = document.getElementById('barcodeFileInput');
-    if(fallbackInput) {
-      fallbackInput.click();
-    } else {
-      // Créer dynamiquement
-      const inp = document.createElement('input');
-      inp.type='file'; inp.accept='image/*'; inp.capture='environment'; inp.style.display='none'; inp.id='barcodeFileInput';
-      inp.onchange = async e => {
-        const file = e.target.files[0]; if(!file) return;
-        showBarcodeLoading('Lecture du code-barres...');
-        // Essayer de lire via canvas + BarcodeDetector de nouveau
-        // Sinon demander saisie manuelle
-        showBarcodeError('Lecture automatique non disponible.<br>Saisissez le code-barres manuellement ci-dessus.<br><span style="font-size:.65rem;color:var(--tx3);">Le code est imprimé sous le code-barres.</span>');
-        document.getElementById('barcodeInput').focus();
-      };
-      document.body.appendChild(inp);
-      inp.click();
-    }
-    showToast('ℹ️','Conseil','Saisissez le code à 13 chiffres sous le code-barres du produit.');
+  const camZone  = document.getElementById('barcodeCamera');
+  const video    = document.getElementById('barcodeVideo');
+  const statusEl = document.getElementById('barcodeScanStatus');
+
+  // Vérifier accès caméra disponible
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    showToast('⚠️','Caméra non disponible','Saisissez le code manuellement.');
     return;
   }
 
-  const camZone = document.getElementById('barcodeCamera');
-  const video = document.getElementById('barcodeVideo');
-  const statusEl = document.getElementById('barcodeScanStatus');
-
   try {
+    // Démarrer le flux vidéo — caméra arrière en priorité
     barcodeStream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: {ideal:'environment'}, width:{ideal:1280}, height:{ideal:720} }
+      video: {
+        facingMode: { ideal: 'environment' },
+        width:  { ideal: 1280 },
+        height: { ideal: 720 }
+      },
+      audio: false
     });
+
     video.srcObject = barcodeStream;
-    await video.play();
+    video.setAttribute('playsinline', true);
+    video.setAttribute('muted', true);
+    await video.play().catch(() => {});
+
     camZone.style.display = 'block';
-    statusEl.textContent = '🔍 Centrez le code-barres dans le cadre...';
+    if(statusEl) statusEl.textContent = '🔍 Pointez vers un code-barres…';
 
-    const formats = ['ean_13','ean_8','upc_a','upc_e','code_128','code_39'];
-    let supported = formats;
-    try { const sf = await BarcodeDetector.getSupportedFormats(); if(sf.length) supported = sf; } catch(e) {}
-    const validFormats = formats.filter(f => supported.includes(f));
-    const detector = new BarcodeDetector({ formats: validFormats.length ? validFormats : formats });
+    // Préparer le canvas de décodage (hors DOM, invisible)
+    barcodeCanvas = document.createElement('canvas');
+    barcodeCtx    = barcodeCanvas.getContext('2d', { willReadFrequently: true });
 
-    let lastCode = '';
-    let scanning = true;
-    const statusEl = document.getElementById('barcodeScanStatus');
-    if(statusEl) statusEl.textContent = '🔍 Pointez vers un code-barres...';
+    // Initialiser ZXing
+    let zxingOk = false;
+    if(typeof ZXing !== 'undefined') {
+      try {
+        zxingReader = new ZXing.BrowserMultiFormatReader();
+        zxingOk = true;
+      } catch(e) { zxingOk = false; }
+    }
 
-    // Utiliser requestAnimationFrame pour une détection instantanée
-    const scanFrame = async () => {
+    let lastCode  = '';
+    let scanning  = true;
+    let frameCount = 0;
+
+    // Boucle de scan — capture frame vidéo → ZXing → résultat
+    const scanLoop = async () => {
       if(!scanning || !barcodeStream) return;
-      if(video.readyState >= 2 && !video.paused) {
-        try {
-          const barcodes = await detector.detect(video);
-          if(barcodes.length > 0) {
-            const raw = barcodes[0].rawValue;
-            const code = raw.replace(/\D/g,'') || raw;
-            if(code && code !== lastCode && code.length >= 8) {
-              lastCode = code;
-              scanning = false;
-              if(statusEl) statusEl.textContent = '✅ ' + code;
-              // Flash vert sur le cadre
-              const laser = document.getElementById('barcodeLaser');
-              if(laser) laser.style.background = '#2ecc71';
-              setTimeout(() => {
-                stopBarcodeCamera();
-                const inp = document.getElementById('barcodeInput');
-                if(inp) inp.value = code;
-                lookupBarcode(code);
-              }, 280);
-              return;
-            }
-          }
-        } catch(e) {}
+
+      frameCount++;
+      // Limiter à ~15 fps pour économiser la batterie
+      if(frameCount % 2 === 0) {
+        requestAnimationFrame(scanLoop);
+        return;
       }
-      requestAnimationFrame(scanFrame);
+
+      if(video.readyState < 2 || video.paused || video.videoWidth === 0) {
+        requestAnimationFrame(scanLoop);
+        return;
+      }
+
+      try {
+        // Copier la frame vidéo sur le canvas
+        barcodeCanvas.width  = video.videoWidth;
+        barcodeCanvas.height = video.videoHeight;
+        barcodeCtx.drawImage(video, 0, 0);
+
+        let code = null;
+
+        // ----- Méthode 1 : ZXing -----
+        if(zxingOk && zxingReader) {
+          try {
+            const imageData = barcodeCtx.getImageData(0, 0, barcodeCanvas.width, barcodeCanvas.height);
+            const luminance = new ZXing.RGBLuminanceSource(imageData.data, barcodeCanvas.width, barcodeCanvas.height);
+            const bitmap    = new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(luminance));
+            const result    = new ZXing.MultiFormatReader().decode(bitmap);
+            if(result && result.getText()) {
+              code = result.getText().replace(/[^0-9A-Za-z]/g,'');
+            }
+          } catch(e) {
+            // ZXing lance une exception quand aucun code n'est trouvé — c'est normal
+          }
+        }
+
+        // ----- Méthode 2 : BarcodeDetector natif (Chrome/Android) -----
+        if(!code && 'BarcodeDetector' in window) {
+          try {
+            const det = new BarcodeDetector({ formats: ['ean_13','ean_8','upc_a','upc_e','code_128','qr_code'] });
+            const found = await det.detect(video);
+            if(found.length > 0) code = found[0].rawValue.replace(/\D/g,'') || found[0].rawValue;
+          } catch(e) {}
+        }
+
+        // ----- Code trouvé -----
+        if(code && code.length >= 8 && code !== lastCode) {
+          lastCode  = code;
+          scanning  = false;
+
+          if(statusEl) statusEl.textContent = '✅ Code : ' + code;
+
+          // Flash vert sur le laser
+          const laser = document.getElementById('barcodeLaser');
+          if(laser) { laser.style.background = '#2ecc71'; laser.style.boxShadow = '0 0 12px #2ecc71'; }
+
+          // Vibration retour haptique
+          try { navigator.vibrate && navigator.vibrate(80); } catch(e) {}
+
+          setTimeout(() => {
+            stopBarcodeCamera();
+            const inp = document.getElementById('barcodeInput');
+            if(inp) inp.value = code;
+            lookupBarcode(code);
+          }, 320);
+          return;
+        }
+      } catch(e) {}
+
+      requestAnimationFrame(scanLoop);
     };
-    requestAnimationFrame(scanFrame);
-    // Stocker la ref pour pouvoir annuler
-    barcodeStream._scanActive = () => { scanning = false; };
-  } catch(e) {
+
+    barcodeRafId = requestAnimationFrame(scanLoop);
+    barcodeStream._stopScan = () => { scanning = false; };
+
+  } catch(err) {
     if(camZone) camZone.style.display = 'none';
-    showToast('❌','Accès refusé','Autorisez la caméra dans les réglages du navigateur.');
+    const msg = err.name === 'NotAllowedError'
+      ? 'Autorisez la caméra dans les réglages de votre navigateur.'
+      : err.name === 'NotFoundError'
+        ? 'Aucune caméra détectée sur cet appareil.'
+        : 'Impossible d\'accéder à la caméra : ' + err.message;
+    showToast('❌', 'Caméra indisponible', msg);
   }
 }
 
 function stopBarcodeCamera() {
+  // Arrêter la boucle rAF
+  if(barcodeRafId) { cancelAnimationFrame(barcodeRafId); barcodeRafId = null; }
   if(barcodeScanInterval) { clearInterval(barcodeScanInterval); barcodeScanInterval = null; }
+
+  // Stopper le flux vidéo
   if(barcodeStream) {
-    if(typeof barcodeStream._scanActive === 'function') barcodeStream._scanActive();
-    barcodeStream.getTracks().forEach(t=>t.stop());
+    if(typeof barcodeStream._stopScan === 'function') barcodeStream._stopScan();
+    barcodeStream.getTracks().forEach(t => t.stop());
     barcodeStream = null;
   }
+
+  // Libérer ZXing
+  if(zxingReader) {
+    try { zxingReader.reset(); } catch(e) {}
+  }
+
+  // Cacher la zone caméra
   const camZone = document.getElementById('barcodeCamera');
   if(camZone) camZone.style.display = 'none';
+
+  // Libérer la vidéo
   const video = document.getElementById('barcodeVideo');
-  if(video && video.srcObject) { video.srcObject = null; }
+  if(video) { video.srcObject = null; video.load(); }
+
+  barcodeCanvas = null;
+  barcodeCtx    = null;
 }
+
 
 // ── Historique ────────────────────────────────────
 function saveBarcodeHistory(product) {

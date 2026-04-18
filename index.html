@@ -3146,6 +3146,8 @@ function renderSpoonResults(recipes) {
 }
 
 function openSpoonRecipe(id) {
+  window._currentSpoonKcal = null;
+  window._currentSpoonPortions = null;
   const recipe = Object.values(state.spoonCache).flat().find(r => r.id === id);
   if(!recipe) return;
   
@@ -3158,6 +3160,13 @@ function openSpoonRecipe(id) {
     <div class="mhdl"></div>
     ${recipe.photo ? `<img src="${recipe.photo}" style="width:100%;height:200px;object-fit:cover;border-radius:var(--r) var(--r) 0 0;margin:-20px -18px 16px;width:calc(100% + 36px);">` : ''}
     <div style="font-size:1.15rem;font-weight:900;margin-bottom:6px;">${translateRecipeName(recipe.name)}</div>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;background:var(--bg2);border-radius:var(--rs);padding:10px 14px;">
+      <span style="font-size:.78rem;font-weight:700;">👥 Portions :</span>
+      <div style="display:flex;gap:4px;">
+        ${[1,2,3,4,6].map(n=>`<button onclick="adjustPortions(${n})" id="portionBtn${n}" class="btn sm${recipe.portions===n?' acc':''}" style="padding:5px 10px;font-size:.75rem;">${n}</button>`).join('')}
+      </div>
+      <span id="portionKcalDisplay" style="margin-left:auto;font-size:.72rem;color:var(--tx2);">~${recipe.kcal} kcal/p.</span>
+    </div>
     <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;">
       ${recipe.time ? `<span class="spoon-recipe-tag">⏱ ${recipe.time}min</span>` : ''}
       ${recipe.kcal ? `<span class="spoon-recipe-tag">🔥 ${recipe.kcal} kcal/portion</span>` : ''}
@@ -3293,29 +3302,35 @@ function openCreateRecipeModal() {
         <div class="modal-ti">✏️ Créer ma recette</div>
         <button class="btn ico" onclick="document.getElementById('createRecipeModal').remove()">✕</button>
       </div>
-      <div class="a-field">
-        <label class="a-lbl">Nom de la recette *</label>
-        <input class="inp" id="crName" placeholder="Ex: Gratin dauphinois">
-      </div>
       <div style="display:flex;gap:8px;">
+        <div class="a-field" style="flex:2;">
+          <label class="a-lbl">Nom de la recette *</label>
+          <input class="inp" id="crName" placeholder="Ex: Gratin dauphinois">
+        </div>
         <div class="a-field" style="flex:1;">
           <label class="a-lbl">Emoji</label>
-          <input class="inp" id="crEmoji" placeholder="🍽️" value="🍽️" style="font-size:1.2rem;">
-        </div>
-        <div class="a-field" style="flex:2;">
-          <label class="a-lbl">Temps (min)</label>
-          <input class="inp" id="crTime" type="number" placeholder="30" value="30">
+          <input class="inp" id="crEmoji" value="🍽️" style="font-size:1.2rem;">
         </div>
       </div>
       <div style="display:flex;gap:8px;">
         <div class="a-field" style="flex:1;">
-          <label class="a-lbl">Kcal/portion</label>
-          <input class="inp" id="crKcal" type="number" placeholder="450">
+          <label class="a-lbl">⏱ Temps (min)</label>
+          <input class="inp" id="crTime" type="number" placeholder="30" value="30">
         </div>
         <div class="a-field" style="flex:1;">
-          <label class="a-lbl">Portions</label>
+          <label class="a-lbl">👥 Portions</label>
           <input class="inp" id="crPortions" type="number" placeholder="4" value="4">
+          <div id="crAutoKcal" style="font-size:.65rem;color:var(--ac);margin-top:3px;font-weight:700;"></div>
         </div>
+      </div>
+      <div class="a-field">
+        <label class="a-lbl">🍽️ Type de repas</label>
+        <div style="display:flex;gap:6px;margin-top:4px;flex-wrap:wrap;">
+          <button class="meal-type-btn on" id="crMt-l" onclick="toggleCrMt('l',this)">☀️ Déjeuner</button>
+          <button class="meal-type-btn on" id="crMt-d" onclick="toggleCrMt('d',this)">🌙 Dîner</button>
+          <button class="meal-type-btn" id="crMt-snack" onclick="toggleCrMt('snack',this)">🍎 Collation</button>
+        </div>
+        <div style="font-size:.65rem;color:var(--tx3);margin-top:4px;">💡 Le petit-déjeuner est géré séparément</div>
       </div>
       <div class="a-field">
         <label class="a-lbl">Régime</label>
@@ -3326,46 +3341,234 @@ function openCreateRecipeModal() {
           <div class="diet-chip" data-v="pesc" onclick="this.parentElement.querySelectorAll('.diet-chip').forEach(c=>c.classList.remove('on'));this.classList.add('on')">🐟 Pesc</div>
         </div>
       </div>
+
+      <!-- Ingrédients avec autocomplète -->
       <div class="a-field">
-        <label class="a-lbl">Ingrédients * (un par ligne: quantité + nom)</label>
-        <textarea class="inp" id="crIngr" placeholder="400g Poulet&#10;200ml Crème fraîche&#10;3 Gousses d'ail&#10;1 Citron" style="min-height:110px;resize:vertical;"></textarea>
+        <label class="a-lbl">📋 Ingrédients</label>
+        <div id="crIngrList" style="display:flex;flex-direction:column;gap:6px;margin-top:6px;max-height:200px;overflow-y:auto;"></div>
+        <div style="display:flex;gap:6px;margin-top:8px;position:relative;">
+          <input class="inp" id="crIngrInput" placeholder="🔍 Chercher un ingrédient..." style="flex:1;"
+            oninput="crSearchIngr(this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();crAddIngrFromInput();}">
+          <select class="inp" id="crIngrQty" style="width:70px;padding:8px 4px;">
+            <option>50g</option><option>100g</option><option selected>150g</option><option>200g</option>
+            <option>250g</option><option>300g</option><option>400g</option><option>500g</option>
+            <option>1 u.</option><option>2 u.</option><option>3 u.</option><option>1 cs</option><option>1 cc</option>
+          </select>
+          <button class="btn acc sm" onclick="crAddIngrFromInput()" style="flex-shrink:0;padding:9px 12px;">+</button>
+        </div>
+        <div id="crIngrAC" style="display:none;position:absolute;background:var(--bg);border:1px solid var(--bg2);border-radius:var(--rs);box-shadow:var(--so);z-index:999;width:calc(100% - 36px);max-height:160px;overflow-y:auto;"></div>
       </div>
+
       <div class="a-field">
-        <label class="a-lbl">Instructions (optionnel)</label>
-        <textarea class="inp" id="crInstructions" placeholder="1. Préchauffer le four à 180°C&#10;2. Couper le poulet en morceaux..." style="min-height:80px;resize:vertical;"></textarea>
+        <label class="a-lbl">👨‍🍳 Instructions (optionnel)</label>
+        <textarea class="inp" id="crInstructions" placeholder="1. Préchauffer le four à 180°C&#10;2. Mélanger les ingrédients..." style="min-height:70px;resize:vertical;"></textarea>
       </div>
+
       <div style="display:flex;gap:8px;margin-top:8px;">
         <button class="btn acc" onclick="saveCustomRecipeFull()" style="flex:1;padding:13px;border-radius:14px;font-weight:800;">💾 Enregistrer</button>
         <button class="btn" onclick="addCustomIngrToListFromModal()" style="flex:1;padding:13px;border-radius:14px;font-weight:700;">🛒 → Liste</button>
       </div>
     </div>`;
+  // State for ingredients
+  window._crIngredients = [];
   document.body.appendChild(modal);
 }
 
+function toggleCrMt(mt, el) {
+  el.classList.toggle('on');
+}
+
+function getCrMealTypes() {
+  return ['l','d','snack'].filter(mt => document.getElementById('crMt-'+mt)?.classList.contains('on'));
+}
+
+// Autocomplete for recipe ingredients using PRODUCTS
+const NUTRI_APPROX = {
+  'Lait':{'kcal':46,'prot':3.3,'carb':4.9,'fat':1.5},
+  'Yaourt':{'kcal':59,'prot':3.5,'carb':4.9,'fat':3},
+  'Fromage':{'kcal':350,'prot':25,'carb':1,'fat':28},
+  'Beurre':{'kcal':717,'prot':0.7,'carb':0.6,'fat':81},
+  'Crème':{'kcal':300,'prot':2.5,'carb':2.8,'fat':30},
+  'Oeuf':{'kcal':155,'prot':13,'carb':1.1,'fat':11},
+  'Poulet':{'kcal':165,'prot':31,'carb':0,'fat':3.6},
+  'Boeuf':{'kcal':250,'prot':26,'carb':0,'fat':15},
+  'Porc':{'kcal':242,'prot':27,'carb':0,'fat':14},
+  'Poisson':{'kcal':120,'prot':22,'carb':0,'fat':3},
+  'Saumon':{'kcal':208,'prot':20,'carb':0,'fat':13},
+  'Thon':{'kcal':116,'prot':26,'carb':0,'fat':1},
+  'Crevettes':{'kcal':99,'prot':24,'carb':0.2,'fat':1.1},
+  'Pâtes':{'kcal':157,'prot':5.5,'carb':31,'fat':0.9},
+  'Riz':{'kcal':130,'prot':2.7,'carb':28,'fat':0.3},
+  'Pain':{'kcal':265,'prot':9,'carb':49,'fat':3.2},
+  'Farine':{'kcal':364,'prot':10,'carb':76,'fat':1},
+  'Pomme de terre':{'kcal':77,'prot':2,'carb':17,'fat':0.1},
+  'Carotte':{'kcal':41,'prot':0.9,'carb':10,'fat':0.2},
+  'Tomate':{'kcal':18,'prot':0.9,'carb':3.9,'fat':0.2},
+  'Courgette':{'kcal':17,'prot':1.2,'carb':3.1,'fat':0.3},
+  'Oignon':{'kcal':40,'prot':1.1,'carb':9.3,'fat':0.1},
+  'Ail':{'kcal':149,'prot':6.4,'carb':33,'fat':0.5},
+  'Épinards':{'kcal':23,'prot':2.9,'carb':1.4,'fat':0.4},
+  'Salade':{'kcal':15,'prot':1.4,'carb':2.2,'fat':0.2},
+  'Champignon':{'kcal':22,'prot':3.1,'carb':3.3,'fat':0.3},
+  'Avocat':{'kcal':160,'prot':2,'carb':9,'fat':15},
+  'Pomme':{'kcal':52,'prot':0.3,'carb':14,'fat':0.2},
+  'Banane':{'kcal':89,'prot':1.1,'carb':23,'fat':0.3},
+  'Noix':{'kcal':654,'prot':15,'carb':14,'fat':65},
+  'Huile':{'kcal':884,'prot':0,'carb':0,'fat':100},
+  'Sucre':{'kcal':400,'prot':0,'carb':100,'fat':0},
+  'Chocolat':{'kcal':546,'prot':5,'carb':60,'fat':31},
+  'Quinoa':{'kcal':120,'prot':4.4,'carb':22,'fat':1.9},
+  'Lentilles':{'kcal':116,'prot':9,'carb':20,'fat':0.4},
+};
+
+function getNutriForIngr(name) {
+  const key = Object.keys(NUTRI_APPROX).find(k =>
+    name.toLowerCase().includes(k.toLowerCase()) ||
+    k.toLowerCase().includes(name.toLowerCase().split(' ')[0])
+  );
+  return key ? NUTRI_APPROX[key] : null;
+}
+
+function parseQty(qtyStr) {
+  // "150g" -> 150, "1 u." -> 100 (assume ~100g per unit), "1 cs" -> 15
+  const match = qtyStr.match(/^(\d+(?:\.\d+)?)/);
+  const num = match ? parseFloat(match[1]) : 1;
+  if(qtyStr.includes('kg')) return num * 1000;
+  if(qtyStr.includes('cs') || qtyStr.includes('cuil')) return num * 15;
+  if(qtyStr.includes('cc')) return num * 5;
+  if(qtyStr.includes('u.') || qtyStr.includes('unité') || qtyStr.includes('pièce')) return num * 100;
+  if(qtyStr.includes('ml') || qtyStr.includes('mL')) return num;
+  if(qtyStr.includes('cl')) return num * 10;
+  if(qtyStr.includes('L') && !qtyStr.includes('ml')) return num * 1000;
+  if(qtyStr.includes('g')) return num;
+  return num * 100; // default: treat as grams
+}
+
+function crCalcAutoKcal() {
+  const ingrs = window._crIngredients || [];
+  const portions = parseInt(document.getElementById('crPortions')?.value) || 4;
+  let total = {kcal:0, prot:0, carb:0, fat:0};
+  ingrs.forEach(ing => {
+    const nutri = getNutriForIngr(ing.name);
+    if(nutri) {
+      const grams = parseQty(ing.qty) / 100; // nutri values are per 100g
+      total.kcal += nutri.kcal * grams;
+      total.prot += nutri.prot * grams;
+      total.carb += nutri.carb * grams;
+      total.fat  += nutri.fat  * grams;
+    }
+  });
+  const perPortion = {
+    kcal: Math.round(total.kcal / portions),
+    prot: Math.round(total.prot / portions),
+    carb: Math.round(total.carb / portions),
+    fat:  Math.round(total.fat  / portions),
+  };
+  const el = document.getElementById('crAutoKcal');
+  if(el && total.kcal > 0) {
+    el.textContent = `🔥 ~${perPortion.kcal} kcal · 💪 ${perPortion.prot}g prot · 🍞 ${perPortion.carb}g gluc`;
+  }
+  return perPortion;
+}
+
+function crSearchIngr(query) {
+  const ac = document.getElementById('crIngrAC');
+  if(!ac) return;
+  if(!query || query.length < 2) { ac.style.display = 'none'; return; }
+  const q = query.toLowerCase();
+  const matches = PRODUCTS.filter(p => p.name.toLowerCase().includes(q)).slice(0, 8);
+  if(!matches.length) { ac.style.display = 'none'; return; }
+  ac.style.display = 'block';
+  ac.innerHTML = matches.map(p => `
+    <div style="display:flex;align-items:center;gap:8px;padding:9px 12px;cursor:pointer;border-bottom:1px solid var(--bg2);font-size:.82rem;"
+      onclick="crSelectIngr('${p.name.replace(/'/g,"\'")}','${p.emoji||'🛍️'}')">
+      <span style="font-size:1.1rem;">${p.emoji||'🛍️'}</span>
+      <span style="font-weight:700;">${p.name}</span>
+      ${p.price?`<span style="margin-left:auto;font-size:.68rem;color:var(--tx3);">${p.price}€</span>`:''}
+    </div>`).join('');
+  // Position below input
+  const inp = document.getElementById('crIngrInput');
+  if(inp) {
+    const rect = inp.getBoundingClientRect();
+    const modalEl = document.querySelector('#createRecipeModal .modal');
+    if(modalEl) {
+      const mRect = modalEl.getBoundingClientRect();
+      ac.style.top = (rect.bottom - mRect.top + 4) + 'px';
+      ac.style.left = (rect.left - mRect.left) + 'px';
+      ac.style.width = rect.width + 'px';
+      ac.style.position = 'absolute';
+    }
+  }
+}
+
+function crSelectIngr(name, emoji) {
+  document.getElementById('crIngrInput').value = name;
+  document.getElementById('crIngrAC').style.display = 'none';
+}
+
+function crAddIngrFromInput() {
+  const inp = document.getElementById('crIngrInput');
+  const qtyEl = document.getElementById('crIngrQty');
+  const name = inp?.value?.trim();
+  const qty = qtyEl?.value || '100g';
+  if(!name) return;
+  const product = PRODUCTS.find(p => p.name.toLowerCase() === name.toLowerCase());
+  const emoji = product?.emoji || '🛍️';
+  const ingr = {name, qty, emoji};
+  if(!window._crIngredients) window._crIngredients = [];
+  window._crIngredients.push(ingr);
+  inp.value = '';
+  document.getElementById('crIngrAC').style.display = 'none';
+  crRenderIngrList();
+  crCalcAutoKcal();
+}
+
+function crRenderIngrList() {
+  const el = document.getElementById('crIngrList');
+  if(!el) return;
+  const ingrs = window._crIngredients || [];
+  if(!ingrs.length) {
+    el.innerHTML = '<div style="font-size:.75rem;color:var(--tx3);text-align:center;padding:8px;">Aucun ingrédient ajouté</div>';
+    return;
+  }
+  el.innerHTML = ingrs.map((ing, i) => `
+    <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--bg);border-radius:var(--rs);">
+      <span style="font-size:1rem;">${ing.emoji}</span>
+      <span style="flex:1;font-size:.82rem;font-weight:700;">${ing.name}</span>
+      <select onchange="window._crIngredients[${i}].qty=this.value;crCalcAutoKcal()" style="font-size:.72rem;padding:3px 6px;border-radius:var(--rs);border:1px solid var(--bg2);background:var(--bg);color:var(--tx);">
+        ${['10g','25g','50g','75g','100g','150g','200g','250g','300g','400g','500g','1 u.','2 u.','3 u.','1 cs','1 cc'].map(q=>`<option${q===ing.qty?' selected':''}>${q}</option>`).join('')}
+      </select>
+      <button onclick="window._crIngredients.splice(${i},1);crRenderIngrList();crCalcAutoKcal();" style="background:none;border:none;cursor:pointer;color:var(--tx3);font-size:.9rem;">✕</button>
+    </div>`).join('');
+}
+
+
 async function saveCustomRecipeFull() {
   const name = document.getElementById('crName')?.value?.trim();
-  const ingrRaw = document.getElementById('crIngr')?.value?.trim();
-  if(!name || !ingrRaw) { showToast('⚠️','Incomplet','Entrez un nom et des ingrédients.'); return; }
+  const ingrs = window._crIngredients || [];
+  if(!name) { showToast('⚠️','Incomplet','Entrez un nom de recette.'); return; }
+  if(!ingrs.length) { showToast('⚠️','Incomplet','Ajoutez au moins un ingrédient.'); return; }
   
   const emoji = document.getElementById('crEmoji')?.value?.trim() || '🍽️';
   const time = parseInt(document.getElementById('crTime')?.value) || 30;
-  const kcal = parseInt(document.getElementById('crKcal')?.value) || 0;
   const portions = parseInt(document.getElementById('crPortions')?.value) || 4;
   const diet = document.querySelector('#crDietChips .diet-chip.on')?.dataset?.v || 'omnivore';
   const instrRaw = document.getElementById('crInstructions')?.value?.trim() || '';
+  const mealTypes = getCrMealTypes().length ? getCrMealTypes() : ['l','d'];
   
-  const ingredients = ingrRaw.split('\n').filter(l=>l.trim()).map(l => {
-    const parts = l.trim().match(/^([\d.,/]+[\s]*[a-zA-ZÀ-ÿ]*)?\s*(.+)$/);
-    if(parts) return {name: parts[2]?.trim()||l, qty: parts[1]?.trim()||'', unit:''};
-    return {name:l.trim(), qty:'', unit:''};
-  });
+  // Auto-calculate kcal
+  const autoNutri = crCalcAutoKcal();
+  const kcal = autoNutri.kcal || 0;
   
   const instructions = instrRaw ? instrRaw.split('\n').filter(l=>l.trim()).map(l=>l.replace(/^\d+\.\s*/,'')) : [];
   
   const recipe = {
     id: 'custom_' + Date.now(),
     emoji, name, time, portions, kcal,
-    diet, ingredients, instructions,
+    prot: autoNutri.prot, carb: autoNutri.carb, fat: autoNutri.fat,
+    diet, mealTypes,
+    ingredients: ingrs.map(i=>({name:i.name,qty:i.qty,unit:'',emoji:i.emoji})),
+    instructions,
     source: 'custom',
     createdAt: Date.now()
   };
@@ -3373,7 +3576,7 @@ async function saveCustomRecipeFull() {
   state.customRecipes.unshift(recipe);
   await saveState();
   document.getElementById('createRecipeModal')?.remove();
-  showToast('✅',name,'Recette créée ! Disponible dans "Mes recettes"');
+  showToast('✅', emoji+' '+name, kcal?'Recette créée · '+kcal+' kcal/portion':'Recette créée !');
   renderRecipesGrid();
 }
 
@@ -3817,8 +4020,8 @@ function renderWeek() {
     return `<div class="dc${dn===todayNum?' tod':''}${isSel?' sel':''}" onclick="selectDay(${dn})">
       ${menu?`<div class="dc-quality" style="background:${qualColor};"></div>`:''}
       <div class="dc-lb">${d}</div>
-      <div class="dc-em">${menu?menu.b?.[0]||'🍽️':'➕'}</div>
-      <div class="dc-ml">${menu?(menu.l.split(' ').slice(1,3).join(' ')||'Planifié'):'Vide'}</div>
+      <div class="dc-em">${menu?([...( menu.b||'🍽️')][0]||'🍽️'):'➕'}</div>
+      <div class="dc-ml">${menu?((menu.l||'').replace(/^[\u{1F300}-\u{1FFFF}\u{2600}-\u{26FF}]\s*/u,'').split(' ').slice(0,2).join(' ')||'Menu planifié'):'Vide'}</div>
     </div>`;
   }).join('');
   renderDayDetail();
@@ -3913,7 +4116,158 @@ function renderDayDetail() {
 }
 
 // ── Édition manuelle d'un repas ──────────────────────────────
+
+function openBreakfastBuilder(day) {
+  const menu = state.weekMenu[day] || {};
+  const current = menu.b || '';
+  const BREAKFAST_OPTIONS = [
+    {emoji:'☕',name:'Café + tartines beurre confiture'},
+    {emoji:'🥣',name:'Porridge avoine lait banane miel'},
+    {emoji:'🍳',name:'Œufs brouillés toast avocat'},
+    {emoji:'🥐',name:"Croissant jus d'orange frais"},
+    {emoji:'🫙',name:'Yaourt grec granola myrtilles'},
+    {emoji:'🍌',name:"Smoothie banane fraise lait d'amande"},
+    {emoji:'🧇',name:"Pancakes sirop d'érable"},
+    {emoji:'🥞',name:"Crêpes confiture citron"},
+    {emoji:'🫐',name:'Bol de fruits frais'},
+    {emoji:'🥖',name:'Pain complet fromage blanc miel'},
+  ];
+  const BREAKFAST_ITEMS = [
+    'Café','Thé',"Jus d'orange",'Lait','Yaourt','Fromage blanc',
+    'Pain','Tartines','Toast','Croissant','Brioche','Biscotte',
+    'Beurre','Confiture','Miel','Pâte à tartiner',
+    'Œuf à la coque','Œufs brouillés','Omelette',
+    'Avocat','Banane','Pomme','Orange','Fraise','Myrtilles',
+    'Granola','Muesli',"Flocons d'avoine",'Porridge',
+    'Smoothie','Jus de fruit',"Lait d'amande",
+  ];
+  
+  const box = document.createElement('div');
+  box.className = 'overlay on';
+  box.id = 'breakfastModal';
+  box.innerHTML = `
+    <div class="modal">
+      <div class="modal-hd">
+        <div>
+          <div class="modal-ti">🌅 Petit-déjeuner</div>
+          <div class="modal-su">${(window.DAYS||['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'])[day-1]||'Jour '+day}</div>
+        </div>
+        <button class="btn ico" onclick="document.getElementById('breakfastModal').remove()">✕</button>
+      </div>
+
+      <!-- Saisie libre -->
+      <div style="display:flex;gap:8px;margin-bottom:14px;">
+        <input class="inp" id="bfInput" value="${current.replace(/['"]/g,'')}" placeholder="Description libre..." style="flex:1;">
+        <button class="btn acc sm" onclick="saveBf(${day})" style="flex-shrink:0;padding:10px 14px;">✓</button>
+      </div>
+
+      <!-- Suggestions rapides -->
+      <div style="font-size:.68rem;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:var(--tx3);margin-bottom:8px;">⚡ Suggestions rapides</div>
+      <div style="display:flex;flex-direction:column;gap:5px;max-height:150px;overflow-y:auto;margin-bottom:14px;">
+        ${BREAKFAST_OPTIONS.map(o=>`
+          <div class="meal-pick-item" onclick="document.getElementById('bfInput').value='${o.emoji} ${o.name.replace(/'/g,'\'')}'" style="border:1px solid var(--bg2);">
+            <span class="meal-pick-em">${o.emoji}</span>
+            <span class="meal-pick-name">${o.name}</span>
+          </div>`).join('')}
+      </div>
+
+      <!-- Composer son petit-dej -->
+      <div style="font-size:.68rem;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:var(--tx3);margin-bottom:8px;">🛒 Ajouter à la liste de courses</div>
+      <div style="display:flex;gap:6px;margin-bottom:8px;position:relative;">
+        <input class="inp" id="bfItemInput" placeholder="Chercher un aliment..." style="flex:1;font-size:.82rem;"
+          oninput="bfSearchItem(this.value)">
+        <button class="btn sm" onclick="bfAddItem()" style="flex-shrink:0;padding:9px 12px;
+function adjustPortions(n) {
+  // Update the displayed quantities and kcal
+  const allButtons = document.querySelectorAll('[id^=portionBtn]');
+  allButtons.forEach(btn => btn.classList.toggle('acc', btn.id === 'portionBtn'+n));
+  const display = document.getElementById('portionKcalDisplay');
+  // Recalculate if base kcal known
+  const baseKcal = window._currentSpoonKcal;
+  const basePortions = window._currentSpoonPortions || 4;
+  if(baseKcal && display) {
+    display.textContent = '~' + Math.round(baseKcal * basePortions / n) + ' kcal/p.';
+  }
+}
+
+">+ Liste</button>
+        <div id="bfItemAC" style="display:none;position:absolute;top:42px;left:0;right:48px;background:var(--bg);border:1px solid var(--bg2);border-radius:var(--rs);box-shadow:var(--so);z-index:999;max-height:150px;overflow-y:auto;"></div>
+      </div>
+      <div style="font-size:.65rem;color:var(--tx3);margin-bottom:14px;">Les ingrédients seront ajoutés directement à votre liste de courses.</div>
+
+      <button class="btn acc" onclick="saveBf(${day})" style="width:100%;padding:13px;border-radius:14px;font-weight:800;">✅ Confirmer</button>
+    </div>`;
+  document.body.appendChild(box);
+}
+
+
+function mealEditAC(q) {
+  if(!q || q.length < 2) return;
+  const all = getAllRecipes();
+  const matches = all.filter(r => r.name.toLowerCase().includes(q.toLowerCase())).slice(0, 5);
+  if(!matches.length) return;
+  // Show as quick picks above the input
+  const inp = document.getElementById('mealEditInput');
+  if(!inp) return;
+  let acEl = document.getElementById('mealInputAC');
+  if(!acEl) {
+    acEl = document.createElement('div');
+    acEl.id = 'mealInputAC';
+    acEl.style.cssText = 'margin-bottom:6px;display:flex;flex-direction:column;gap:4px;';
+    inp.parentElement?.insertAdjacentElement('afterend', acEl);
+  }
+  acEl.innerHTML = matches.map(r=>`
+    <div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:rgba(108,92,231,.08);border-radius:var(--rs);cursor:pointer;font-size:.8rem;border:1px solid rgba(108,92,231,.15);"
+      onclick="document.getElementById('mealEditInput').value='${(r.emoji||'🍽️')+' '+r.name}';document.getElementById('mealInputAC').innerHTML='';">
+      <span>${r.emoji||'🍽️'}</span><span style="font-weight:700;">${r.name}</span>
+      ${r.kcal?'<span style="margin-left:auto;font-size:.65rem;color:var(--tx3);">🔥'+r.kcal+'</span>':''}
+    </div>`).join('');
+}
+
+function bfSearchItem(q) {
+  const ac = document.getElementById('bfItemAC');
+  if(!ac||!q||q.length<2) { if(ac) ac.style.display='none'; return; }
+  const matches = PRODUCTS.filter(p=>p.name.toLowerCase().includes(q.toLowerCase())).slice(0,6);
+  if(!matches.length) { ac.style.display='none'; return; }
+  ac.style.display = 'block';
+  ac.innerHTML = matches.map(p=>`
+    <div style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--bg2);font-size:.8rem;display:flex;align-items:center;gap:8px;"
+      onclick="document.getElementById('bfItemInput').value='${p.name.replace(/'/g,"\'")}';document.getElementById('bfItemAC').style.display='none'">
+      <span>${p.emoji||'🛍️'}</span><span style="font-weight:700;">${p.name}</span>
+    </div>`).join('');
+}
+
+async function bfAddItem() {
+  const inp = document.getElementById('bfItemInput');
+  const name = inp?.value?.trim();
+  if(!name) return;
+  const product = PRODUCTS.find(p=>p.name.toLowerCase()===name.toLowerCase())||{name,emoji:'🛍️',cat:'🛒 Autre',price:0};
+  state.items.unshift({id:Date.now()+Math.random()+'',name:product.name,emoji:product.emoji||'🛍️',cat:product.cat||'🛒 Autre',price:product.price||0,qty:'1',checked:false,addedBy:'Petit-déjeuner'});
+  await saveState();
+  renderList?.();
+  inp.value = '';
+  document.getElementById('bfItemAC').style.display = 'none';
+  showToast('🛒', product.name, 'Ajouté à la liste de courses !');
+}
+
+function saveBf(day) {
+  const val = document.getElementById('bfInput')?.value?.trim();
+  if(!state.weekMenu[day]) state.weekMenu[day] = {};
+  state.weekMenu[day].b = val || '';
+  saveWeekMenu();
+  renderWeek();
+  renderDayDetail();
+  document.getElementById('breakfastModal')?.remove();
+  if(val) showToast('✅','Petit-déjeuner','Menu du matin mis à jour !');
+}
+
+
 function openMealEdit(day, slot) {
+  // Breakfast: special manual builder
+  if(slot === 'b') {
+    openBreakfastBuilder(day);
+    return;
+  }
   const slotNames = {b:'🌅 Petit-déjeuner',l:'☀️ Déjeuner',d:'🌙 Dîner',snack:'🍎 Collation'};
   const slotEmoji = {b:'🌅',l:'☀️',d:'🌙',snack:'🍎'};
   // Meal type filter: breakfast suggests lighter options, dinner more filling
@@ -3954,7 +4308,7 @@ function openMealEdit(day, slot) {
 
     <!-- Saisie rapide -->
     <div style="display:flex;gap:8px;margin-bottom:14px;">
-      <input class="inp" id="mealEditInput" value="${current.replace(/"/g,'&quot;')}" placeholder="Nom du repas, ex: Salade César..." style="flex:1;">
+      <input class="inp" id="mealEditInput" value="${current.replace(/"/g,'&quot;')}" placeholder="Nom du repas, ex: Salade César..." style="flex:1;" oninput="mealEditAC(this.value)">
       <button class="btn acc sm" onclick="saveMealEdit(${day},'${slot}')" style="flex-shrink:0;padding:10px 14px;">✓</button>
     </div>
 
@@ -4014,21 +4368,7 @@ function openMealEdit(day, slot) {
 
 // Translate a single recipe name from English to French using a local map
 // (avoids API calls for common words)
-const TRANSLATE_MAP = {
-  'pasta':'pâtes','chicken':'poulet','beef':'bœuf','salad':'salade',
-  'soup':'soupe','rice':'riz','salmon':'saumon','shrimp':'crevettes',
-  'cake':'gâteau','pie':'tarte','stew':'ragoût','roast':'rôti',
-  'grilled':'grillé','baked':'au four','fried':'poêlé','steamed':'vapeur',
-  'creamy':'crémeux','spicy':'épicé','garlic':'ail','onion':'oignon',
-  'tomato':'tomate','lemon':'citron','mushroom':'champignon',
-  'avocado':'avocat','cheese':'fromage','egg':'œuf','bread':'pain',
-  'butter':'beurre','cream':'crème','oil':'huile','flour':'farine',
-  'sugar':'sucre','salt':'sel','pepper':'poivre','basil':'basilic',
-  'parsley':'persil','thyme':'thym','rosemary':'romarin',
-  'breakfast':'petit-déjeuner','lunch':'déjeuner','dinner':'dîner',
-  'snack':'collation','dessert':'dessert','starter':'entrée',
-  'vegetarian':'végétarien','vegan':'vegan','gluten':'gluten',
-};
+
 
 
 function openMealRecipe(mealName) {
@@ -4044,15 +4384,97 @@ function openMealRecipe(mealName) {
   }
 }
 
+
+
+const TRANSLATE_MAP = {
+  // Protéines
+  'chicken':'poulet','beef':'bœuf','pork':'porc','lamb':'agneau',
+  'turkey':'dinde','duck':'canard','veal':'veau','rabbit':'lapin',
+  'salmon':'saumon','tuna':'thon','cod':'cabillaud','shrimp':'crevettes',
+  'prawn':'crevette','lobster':'homard','crab':'crabe','mussels':'moules',
+  'scallops':'saint-jacques','squid':'calmar','anchovy':'anchois',
+  'sardines':'sardines','herring':'hareng','tilapia':'tilapia',
+  // Légumes
+  'tomato':'tomate','onion':'oignon','garlic':'ail','potato':'pomme de terre',
+  'carrot':'carotte','zucchini':'courgette','eggplant':'aubergine',
+  'pepper':'poivron','spinach':'épinards','broccoli':'brocolis',
+  'cauliflower':'chou-fleur','cabbage':'chou','lettuce':'laitue',
+  'cucumber':'concombre','celery':'céleri','leek':'poireau',
+  'asparagus':'asperges','artichoke':'artichaut','fennel':'fenouil',
+  'mushroom':'champignon','pumpkin':'citrouille','squash':'courge',
+  'sweet potato':'patate douce','corn':'maïs','peas':'petits pois',
+  'green beans':'haricots verts','lentils':'lentilles','chickpeas':'pois chiches',
+  'beans':'haricots','kale':'chou kale','chard':'blette',
+  // Fruits
+  'apple':'pomme','orange':'orange','lemon':'citron','lime':'citron vert',
+  'banana':'banane','strawberry':'fraise','strawberries':'fraises',
+  'raspberry':'framboise','blueberry':'myrtille','cherry':'cerise',
+  'grape':'raisin','mango':'mangue','pineapple':'ananas','peach':'pêche',
+  'pear':'poire','plum':'prune','fig':'figue','avocado':'avocat',
+  'coconut':'noix de coco','melon':'melon','watermelon':'pastèque',
+  // Féculents
+  'pasta':'pâtes','spaghetti':'spaghettis','penne':'penne',
+  'rice':'riz','quinoa':'quinoa','couscous':'couscous',
+  'bread':'pain','flour':'farine','oats':'avoine','barley':'orge',
+  'noodles':'nouilles','gnocchi':'gnocchi','polenta':'polenta',
+  // Produits laitiers
+  'egg':'œuf','eggs':'œufs','cheese':'fromage','butter':'beurre',
+  'milk':'lait','cream':'crème','yogurt':'yaourt','yoghurt':'yaourt',
+  'feta':'feta','mozzarella':'mozzarella','parmesan':'parmesan',
+  'ricotta':'ricotta','brie':'brie','camembert':'camembert',
+  // Herbes & épices
+  'basil':'basilic','parsley':'persil','thyme':'thym','rosemary':'romarin',
+  'oregano':'origan','cilantro':'coriandre','mint':'menthe','sage':'sauge',
+  'cumin':'cumin','turmeric':'curcuma','paprika':'paprika','curry':'curry',
+  'ginger':'gingembre','cinnamon':'cannelle','nutmeg':'muscade',
+  'saffron':'safran','chili':'piment','cayenne':'cayenne',
+  // Condiments & sauces
+  'oil':'huile','olive oil':"huile d'olive",'vinegar':'vinaigre',
+  'mustard':'moutarde','ketchup':'ketchup','soy sauce':'sauce soja',
+  'honey':'miel','maple syrup':"sirop d'érable",'sugar':'sucre',
+  'salt':'sel','pepper':'poivre',
+  // Noix & graines
+  'walnut':'noix','almond':'amande','cashew':'cajou','peanut':'cacahuète',
+  'pistachio':'pistache','hazelnut':'noisette','sesame':'sésame',
+  'sunflower seeds':'graines de tournesol','pumpkin seeds':'graines de courge',
+  // Méthodes de cuisson
+  'grilled':'grillé','baked':'au four','fried':'poêlé','steamed':'vapeur',
+  'roasted':'rôti','braised':'braisé','poached':'poché','sautéed':'sauté',
+  'smoked':'fumé','marinated':'mariné','stuffed':'farci','breaded':'pané',
+  // Adjectifs
+  'creamy':'crémeux','spicy':'épicé','crispy':'croustillant','tender':'fondant',
+  'fresh':'frais','homemade':'maison','classic':'classique','light':'léger',
+  'hearty':'copieux','quick':'rapide','easy':'facile','healthy':'sain',
+  'sweet':'sucré','savory':'salé','tangy':'acidulé','smoky':'fumé',
+  // Plats types
+  'salad':'salade','soup':'soupe','stew':'ragoût','curry':'curry',
+  'stir-fry':'poêlée','casserole':'gratin','pie':'tarte','cake':'gâteau',
+  'tart':'tarte','pudding':'pudding','mousse':'mousse','crumble':'crumble',
+  'risotto':'risotto','paella':'paella','tagine':'tajine','ramen':'ramen',
+  'sushi':'sushi','tacos':'tacos','burger':'burger','sandwich':'sandwich',
+  'wrap':'wrap','bowl':'bowl','toast':'toast','bruschetta':'bruschetta',
+  // Repas
+  'breakfast':'petit-déjeuner','lunch':'déjeuner','dinner':'dîner',
+  'brunch':'brunch','snack':'collation','dessert':'dessert',
+  'appetizer':'entrée','starter':'entrée','side dish':'accompagnement',
+  // Régimes
+  'vegetarian':'végétarien','vegan':'vegan','gluten free':'sans gluten',
+  'keto':'keto','paleo':'paleo','low carb':'faible en glucides',
+};
+
 function translateRecipeName(name) {
-  // Only translate if name looks English (no accents)
-  if(/[àâäéèêëîïôùûü]/i.test(name)) return name;
+  if(!name) return '';
+  // Check if already French (has French accents)
+  if(/[àâäéèêëîïôùûüœæç]/i.test(name)) return name;
   let translated = name;
-  Object.entries(TRANSLATE_MAP).forEach(([en, fr]) => {
-    const re = new RegExp('\\b'+en+'\\b','gi');
-    translated = translated.replace(re, fr);
+  // Sort by length descending to match longer phrases first
+  const entries = Object.entries(TRANSLATE_MAP).sort((a,b)=>b[0].length-a[0].length);
+  entries.forEach(([en, fr]) => {
+    const regex = new RegExp('\\b'+en.replace(/[-]/g,'[-\\s]')+'\\b','gi');
+    translated = translated.replace(regex, fr);
   });
-  return translated;
+  // Capitalize first letter
+  return translated.charAt(0).toUpperCase() + translated.slice(1);
 }
 
 async function searchSpoonForMeal(day, slot) {

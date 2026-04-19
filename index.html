@@ -3026,6 +3026,49 @@ function generateAIMenu() { generateAIMenuFull(); } // compat alias
 // ══════════════════════════════════════════════════════
 
 
+
+async function searchWithTheMealDB(query) {
+  const grid = document.getElementById('spoonResults');
+  if(!grid) return;
+  try {
+    const qEn = translateQueryToEnglish(query);
+    const resp = await fetch(`https://www.themealdb.com/api/json/v1/1/search.php?s=${encodeURIComponent(qEn)}`);
+    const data = await resp.json();
+    let meals = data.meals || [];
+    
+    // If no results, try ingredient search
+    if(!meals.length) {
+      const resp2 = await fetch(`https://www.themealdb.com/api/json/v1/1/filter.php?i=${encodeURIComponent(qEn)}`);
+      const data2 = await resp2.json();
+      meals = (data2.meals || []).slice(0,12);
+    }
+    
+    if(!meals.length) {
+      await searchWithClaudeFallback(query);
+      return;
+    }
+    
+    // Convert to our recipe format
+    const recipes = meals.slice(0,12).map((m,i) => ({
+      id: 'mdb_' + m.idMeal,
+      mdbId: m.idMeal,
+      name: translateRecipeName(m.strMeal),
+      photo: m.strMealThumb,
+      time: 30, kcal: 0, prot: 0, carb: 0, fat: 0,
+      diet: 'omnivore',
+      diets: [],
+      source: 'mealdb',
+      emoji: '🌐',
+    }));
+    
+    state.spoonCache[(query||'').toLowerCase()] = recipes;
+    renderSpoonResults(recipes);
+    showToast('🌐','TheMealDB',recipes.length+' recettes trouvées');
+  } catch(e) {
+    await searchWithClaudeFallback(query);
+  }
+}
+
 async function searchWithClaudeFallback(q) {
   const grid = document.getElementById('spoonResults');
   if(!grid) return;
@@ -3153,8 +3196,8 @@ async function searchSpoonacular(query) {
     
   } catch(e) {
     console.error('Spoonacular error:', e);
-    // Fallback with Claude-generated suggestions
-    await searchWithClaudeFallback(q);
+    // Fallback: TheMealDB (free, no key needed)
+    await searchWithTheMealDB(rawQ || q);
   }
 }
 
@@ -3660,8 +3703,9 @@ async function analyzeWeekWithAI() {
   const menu = state.weekMenu;
   const days = Object.keys(menu);
   
-  if(days.length < 3) {
-    showToast('ℹ️','Pas assez de données','Générez d\'abord un menu complet.');
+  const filledDays = Object.values(menu).filter(m => m && (m.b || m.l || m.d));
+  if(filledDays.length < 1) {
+    showToast('ℹ️','Menu vide','Générez ou saisissez d\'abord vos repas.');
     return;
   }
   
@@ -3674,14 +3718,21 @@ async function analyzeWeekWithAI() {
   // Build week summary
   let weekSummary = '';
   const DAYS_FR = ['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche'];
+  let plannedCount = 0;
   for(let i=1;i<=7;i++) {
     const m = menu[i];
-    if(m) {
-      weekSummary += DAYS_FR[i-1] + ': ' + [m.b,m.l,m.d].filter(Boolean).join(' / ');
+    if(m && (m.b||m.l||m.d)) {
+      plannedCount++;
+      weekSummary += DAYS_FR[i-1] + ': ';
+      if(m.b) weekSummary += 'Matin='+m.b.replace(/^[^\s]+\s/,'')+' ';
+      if(m.l) weekSummary += 'Midi='+m.l.replace(/^[^\s]+\s/,'')+' ';
+      if(m.d) weekSummary += 'Soir='+m.d.replace(/^[^\s]+\s/,'');
+      if(m.snack) weekSummary += ' Collation='+m.snack;
       if(m.nutri?.kcal) weekSummary += ' ('+m.nutri.kcal+' kcal)';
       weekSummary += '\n';
     }
   }
+  if(!weekSummary.trim()) { showToast('ℹ️','Menu vide','Saisissez vos repas d\'abord.'); return; }
   
   const prompt = `Analyse ce plan alimentaire de la semaine pour un utilisateur avec ce profil:
 - Régime: ${p.diet||'omnivore'}
@@ -3732,8 +3783,9 @@ Réponds en JSON: {"score":"A","scoreColor":"good","summary":"...","strengths":[
     showToast('📊','Analyse terminée','Consultez l\'onglet Nutrition');
     
   } catch(e) {
-    if(el) el.innerHTML = '<div style="font-size:.78rem;color:var(--tx2);">Analyse non disponible pour le moment.</div>';
-    showToast('⚠️','Erreur','Analyse IA indisponible');
+    console.error('analyzeWeekWithAI error:', e);
+    if(el) el.innerHTML = `<div style="font-size:.78rem;color:var(--rd);">❌ Erreur : ${e.message||'Analyse IA indisponible'}</div>`;
+    showToast('⚠️','Erreur IA', e.message || 'Vérifiez votre connexion');
   }
 }
 
@@ -4186,63 +4238,482 @@ function renderDayDetail() {
 function openBreakfastBuilder(day) {
   const menu = state.weekMenu[day] || {};
   const current = menu.b || '';
-  const BREAKFAST_OPTIONS = [
-    {emoji:'☕',name:'Café + tartines beurre confiture'},
-    {emoji:'🥣',name:'Porridge avoine lait banane miel'},
-    {emoji:'🍳',name:'Œufs brouillés toast avocat'},
-    {emoji:'🥐',name:"Croissant jus d'orange frais"},
-    {emoji:'🫙',name:'Yaourt grec granola myrtilles'},
-    {emoji:'🍌',name:"Smoothie banane fraise lait d'amande"},
-    {emoji:'🧇',name:"Pancakes sirop d'érable"},
-    {emoji:'🥞',name:"Crêpes confiture citron"},
-    {emoji:'🫐',name:'Bol de fruits frais'},
-    {emoji:'🥖',name:'Pain complet fromage blanc miel'},
-  ];
-  const BREAKFAST_ITEMS = [
-    'Café','Thé',"Jus d'orange",'Lait','Yaourt','Fromage blanc',
-    'Pain','Tartines','Toast','Croissant','Brioche','Biscotte',
-    'Beurre','Confiture','Miel','Pâte à tartiner',
-    'Œuf à la coque','Œufs brouillés','Omelette',
-    'Avocat','Banane','Pomme','Orange','Fraise','Myrtilles',
-    'Granola','Muesli',"Flocons d'avoine",'Porridge',
-    'Smoothie','Jus de fruit',"Lait d'amande",
-  ];
+  const dayName = (window.DAYS||['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'])[day-1]||'Jour '+day;
   
+  // Breakfast food items - simple selection, multiple allowed
+  const BF_CATEGORIES = {
+    '☕ Boissons': ['Café','Thé','Chocolat chaud',"Jus d'orange",'Lait','Tisane','Café au lait'],
+    '🍞 Pains & Viennoiseries': ['Pain grillé','Baguette','Croissant','Brioche','Biscotte','Pain complet','Madeleine','Pain au chocolat'],
+    '🧈 Accompagnements': ['Beurre','Confiture','Miel','Pâte à tartiner','Fromage blanc','Ricotta'],
+    '🥚 Protéines': ['Œuf à la coque','Œufs brouillés','Omelette','Jambon','Fromage'],
+    '🍌 Fruits': ['Pomme','Banane','Orange','Clémentine','Fraise','Kiwi','Pamplemousse','Myrtilles'],
+    '🥣 Céréales': ['Granola','Muesli',"Flocons d'avoine",'Porridge','Corn flakes'],
+    '🫙 Laitages': ['Yaourt nature','Yaourt aux fruits','Yaourt grec','Fromage blanc','Petit-suisse'],
+  };
+
   const box = document.createElement('div');
   box.className = 'overlay on';
   box.id = 'breakfastModal';
-  box.innerHTML = `
-    <div class="modal">
-      <div class="modal-hd">
-        <div>
-          <div class="modal-ti">🌅 Petit-déjeuner</div>
-          <div class="modal-su">${(window.DAYS||['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'])[day-1]||'Jour '+day}</div>
+  
+  // Parse current selection
+  const _selected = current ? current.split(' + ').filter(Boolean) : [];
+  window._bfSelected = [..._selected];
+  
+  box.innerHTML = `<div class="modal">
+    <div class="modal-hd">
+      <div>
+        <div class="modal-ti">🌅 Petit-déjeuner</div>
+        <div class="modal-su">${dayName}</div>
+      </div>
+      <button class="btn ico" onclick="document.getElementById('breakfastModal').remove()">✕</button>
+    </div>
+
+    <!-- Sélection affichée -->
+    <div id="bfSelDisplay" style="min-height:36px;background:var(--bg2);border-radius:var(--rs);padding:8px 12px;margin-bottom:12px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;">
+      <span style="font-size:.7rem;color:var(--tx3);">Tapez pour chercher ou sélectionnez ci-dessous :</span>
+    </div>
+
+    <!-- Recherche avec autocomplète -->
+    <div style="position:relative;margin-bottom:14px;">
+      <input class="inp" id="bfSearchInp" placeholder="🔍 Chercher un aliment du petit-déjeuner..."
+        oninput="bfSearch(this.value)" autocomplete="off">
+      <div id="bfSearchAC" style="display:none;position:absolute;left:0;right:0;top:42px;background:var(--bg);border:1px solid var(--bg2);border-radius:var(--rs);box-shadow:0 8px 24px rgba(0,0,0,.15);z-index:50;max-height:160px;overflow-y:auto;"></div>
+    </div>
+
+    <!-- Catégories -->
+    <div style="max-height:250px;overflow-y:auto;">
+      ${Object.entries(BF_CATEGORIES).map(([cat, items]) => `
+        <div style="margin-bottom:10px;">
+          <div style="font-size:.65rem;font-weight:800;color:var(--tx3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px;">${cat}</div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px;">
+            ${items.map(item => `<button
+              class="spoon-recipe-tag"
+              id="bftag_${item.replace(/[^a-zA-Z0-9]/g,'_')}"
+              onclick="bfToggleItem('${item.replace(/'/g,"\'")}', this)"
+              style="cursor:pointer;padding:6px 12px;font-size:.78rem;transition:all .15s;">
+              ${item}
+            </button>`).join('')}
+          </div>
+        </div>`).join('')}
+    </div>
+
+    <div style="display:flex;gap:8px;margin-top:14px;">
+      <button onclick="window._bfSelected=[];bfRefreshDisplay()" class="btn" style="flex:1;padding:12px;">🗑️ Vider</button>
+      <button onclick="saveBfSelected(${day})" class="btn acc" style="flex:2;padding:12px;font-weight:800;">✅ Confirmer</button>
+    </div>
+  </div>`;
+  
+  box.onclick = e => { if(e.target===box) box.remove(); };
+  document.body.appendChild(box);
+  
+  // Restore previously selected items
+  window._bfSelected.forEach(item => {
+    const clean = item.replace(/^[^\s]+\s/, ''); // remove emoji prefix if any
+    const id = 'bftag_' + clean.replace(/[^a-zA-Z0-9]/g,'_');
+    const el = document.getElementById(id);
+    if(el) { el.style.background='var(--ac)'; el.style.color='#fff'; }
+  });
+  bfRefreshDisplay();
+}
+
+// Flatten all breakfast items for search
+function getAllBfItems() {
+  const cats = {
+    '☕ Boissons': ['Café','Thé','Chocolat chaud',"Jus d'orange",'Lait','Tisane','Café au lait'],
+    '🍞 Pains & Viennoiseries': ['Pain grillé','Baguette','Croissant','Brioche','Biscotte','Pain complet','Madeleine','Pain au chocolat'],
+    '🧈 Accompagnements': ['Beurre','Confiture','Miel','Pâte à tartiner','Fromage blanc','Ricotta'],
+    '🥚 Protéines': ['Œuf à la coque','Œufs brouillés','Omelette','Jambon','Fromage'],
+    '🍌 Fruits': ['Pomme','Banane','Orange','Clémentine','Fraise','Kiwi','Pamplemousse','Myrtilles'],
+    '🥣 Céréales': ['Granola','Muesli',"Flocons d'avoine",'Porridge','Corn flakes'],
+    '🫙 Laitages': ['Yaourt nature','Yaourt aux fruits','Yaourt grec','Fromage blanc','Petit-suisse'],
+  };
+  return Object.values(cats).flat();
+}
+
+function bfSearch(q) {
+  const ac = document.getElementById('bfSearchAC');
+  if(!ac) return;
+  if(!q || q.length < 1) { ac.style.display='none'; return; }
+  const all = getAllBfItems();
+  const matches = all.filter(i => i.toLowerCase().includes(q.toLowerCase())).slice(0,8);
+  if(!matches.length) { ac.style.display='none'; return; }
+  ac.style.display = 'block';
+  ac.innerHTML = matches.map(item => `
+    <div style="padding:9px 14px;cursor:pointer;border-bottom:1px solid var(--bg2);font-size:.83rem;font-weight:600;"
+      onclick="bfToggleItem('${item.replace(/'/g,"\'")}',null);document.getElementById('bfSearchInp').value='';document.getElementById('bfSearchAC').style.display='none';">
+      ${item}
+    </div>`).join('');
+}
+
+function bfToggleItem(item, btn) {
+  if(!window._bfSelected) window._bfSelected = [];
+  const idx = window._bfSelected.indexOf(item);
+  if(idx !== -1) {
+    window._bfSelected.splice(idx, 1);
+    if(btn) { btn.style.background=''; btn.style.color=''; }
+  } else {
+    window._bfSelected.push(item);
+    if(btn) { btn.style.background='var(--ac)'; btn.style.color='#fff'; }
+  }
+  bfRefreshDisplay();
+}
+
+function bfRefreshDisplay() {
+  const el = document.getElementById('bfSelDisplay');
+  if(!el) return;
+  const sel = window._bfSelected || [];
+  if(!sel.length) {
+    el.innerHTML = '<span style="font-size:.7rem;color:var(--tx3);">Aucun élément sélectionné</span>';
+    return;
+  }
+  el.innerHTML = sel.map(item => `
+    <div style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;background:var(--ac);color:#fff;border-radius:99px;font-size:.75rem;font-weight:700;">
+      ${item}
+      <span onclick="bfToggleItem('${item.replace(/'/g,"\'")}',null);bfRefreshTagBtn('${item.replace(/'/g,"\'")}',false)" style="cursor:pointer;opacity:.7;margin-left:2px;">✕</span>
+    </div>`).join('');
+}
+
+function bfRefreshTagBtn(item, selected) {
+  const id = 'bftag_' + item.replace(/[^a-zA-Z0-9]/g,'_');
+  const el = document.getElementById(id);
+  if(el) { el.style.background = selected?'var(--ac)':''; el.style.color = selected?'#fff':''; }
+}
+
+async function saveBfSelected(day) {
+  const items = window._bfSelected || [];
+  if(!state.weekMenu[day]) state.weekMenu[day] = {};
+  state.weekMenu[day].b = items.length ? items.join(' + ') : '';
+  saveWeekMenu(); renderWeek(); renderDayDetail();
+  document.getElementById('breakfastModal')?.remove();
+  if(items.length) showToast('🌅', items.slice(0,3).join(', '), 'Petit-déjeuner enregistré !');
+}
+
+// Keep saveBf for compatibility
+function saveBf(day) { saveBfSelected(day); }
+
+// ══ OPENMEALEDIT: LUNCH / DINNER — Clean search-only UI ══
+function openMealEdit(day, slot) {
+  if(slot === 'b') { openBreakfastBuilder(day); return; }
+  if(slot === 'snack') { openSnackBuilder(day); return; }
+
+  const SLOT = {l:{icon:'☀️',label:'Déjeuner'},d:{icon:'🌙',label:'Dîner'}};
+  const s = SLOT[slot] || {icon:'🍽️',label:'Repas'};
+  const menu = state.weekMenu[day] || {};
+  const current = menu[slot] || '';
+  const dayName = (window.DAYS||['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'])[day-1]||'Jour '+day;
+  const allRec = getAllRecipes();
+  // Filter by meal type
+  const slotRec = allRec.filter(r => !r.mealTypes || r.mealTypes.includes(slot));
+  
+  const modal = document.getElementById('mealEditModal');
+  if(!modal) return;
+
+  modal.innerHTML = `
+    <div class="mhdl"></div>
+    <div class="modal-hd" style="margin-bottom:12px;">
+      <div>
+        <div class="modal-ti">${s.icon} ${s.label}</div>
+        <div class="modal-su">${dayName}</div>
+      </div>
+      <button class="btn ico" onclick="closeMealEdit()">✕</button>
+    </div>
+
+    <!-- Zone actuelle -->
+    ${current ? `<div style="padding:10px 14px;background:rgba(108,92,231,.1);border-radius:var(--rs);border-left:3px solid var(--ac);margin-bottom:12px;font-size:.83rem;font-weight:700;">
+      📌 Actuel : ${current}
+    </div>` : ''}
+
+    <!-- Onglets : Mes recettes / TheMealDB / Saisie libre -->
+    <div style="display:flex;gap:0;margin-bottom:12px;background:var(--bg2);border-radius:var(--rs);padding:3px;">
+      <button id="metab-recipes" onclick="switchMeTab('recipes')" class="btn acc" style="flex:1;border-radius:var(--rs);font-size:.78rem;font-weight:800;padding:8px 4px;">📋 Mes recettes</button>
+      <button id="metab-search" onclick="switchMeTab('search')" class="btn ghost" style="flex:1;border-radius:var(--rs);font-size:.78rem;font-weight:700;padding:8px 4px;">🌐 Rechercher</button>
+      <button id="metab-free" onclick="switchMeTab('free')" class="btn ghost" style="flex:1;border-radius:var(--rs);font-size:.78rem;font-weight:700;padding:8px 4px;">✍️ Libre</button>
+    </div>
+
+    <!-- Panel MES RECETTES -->
+    <div id="mepanel-recipes">
+      <input class="inp" id="meRecipeSearch" placeholder="🔍 Chercher dans mes recettes..."
+        oninput="meLiveSearch(this.value)" style="margin-bottom:8px;">
+      <div id="meRecipeList" style="max-height:260px;overflow-y:auto;display:flex;flex-direction:column;gap:5px;">
+        ${slotRec.length ? slotRec.slice(0,25).map(r => meRecipeItem(r, day, slot)).join('') 
+          : '<div style="text-align:center;padding:20px;color:var(--tx3);font-size:.8rem;">Pas encore de recettes.<br><button class=\"btn acc sm\" style=\"margin-top:8px;\" onclick=\"closeMealEdit();openCreateRecipeModal()\">+ Créer une recette</button></div>'}
+      </div>
+    </div>
+
+    <!-- Panel RECHERCHE TheMealDB -->
+    <div id="mepanel-search" style="display:none;">
+      <div style="background:rgba(0,181,184,.1);border-radius:var(--rs);padding:8px 12px;margin-bottom:10px;font-size:.72rem;color:var(--tx);">
+        🌐 Recherche <strong>TheMealDB</strong> — des milliers de recettes en français
+      </div>
+      <div style="display:flex;gap:6px;margin-bottom:10px;">
+        <input class="inp" id="mealDbSearch" placeholder="Ex: Poulet, Saumon, Pâtes..." style="flex:1;"
+          onkeydown="if(event.key==='Enter')searchMealDB(${day},'${slot}')">
+        <button class="btn acc sm" onclick="searchMealDB(${day},'${slot}')" style="flex-shrink:0;padding:10px 14px;">🔍</button>
+      </div>
+      <!-- Quick tags -->
+      <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px;">
+        ${['Poulet','Saumon','Pâtes','Soupe','Risotto','Bœuf','Légumes','Crevettes'].map(q=>
+          `<button class="spoon-recipe-tag" onclick="document.getElementById('mealDbSearch').value='${q}';searchMealDB(${day},'${slot}')" style="cursor:pointer;padding:5px 10px;">${q}</button>`
+        ).join('')}
+      </div>
+      <div id="mealDbResults" style="max-height:220px;overflow-y:auto;display:flex;flex-direction:column;gap:5px;"></div>
+    </div>
+
+    <!-- Panel SAISIE LIBRE -->
+    <div id="mepanel-free" style="display:none;">
+      <div style="font-size:.75rem;color:var(--tx2);margin-bottom:10px;line-height:1.5;">Saisissez un nom de repas libre, même s'il n'est pas dans vos recettes.</div>
+      <input class="inp" id="mealFreeInput" value="${current.replace(/"/g,'&quot;')}"
+        placeholder="Ex: Gratin dauphinois maison, Pizza Regina..." style="margin-bottom:10px;">
+      <button class="btn acc" onclick="saveMealFree(${day},'${slot}')" style="width:100%;padding:13px;border-radius:14px;font-weight:800;">✅ Confirmer</button>
+    </div>
+
+    <div style="display:flex;gap:8px;margin-top:12px;">
+      <button class="btn" onclick="clearMealSlot(${day},'${slot}')" style="flex:1;padding:11px;">🗑️ Vider</button>
+      <button class="btn" onclick="closeMealEdit()" style="flex:1;padding:11px;">Annuler</button>
+    </div>
+  `;
+
+  document.getElementById('mealEditOverlay').classList.add('on');
+  window._meDaySlot = {day, slot};
+}
+
+function meRecipeItem(r, day, slot) {
+  const safeId = String(r.id||r.name).replace(/['"\\]/g,'_');
+  const badge = r.source==='bookmark'?'⭐':r.source==='custom'?'✏️':'';
+  return `<div class="meal-pick-item" onclick="selectRecipeForMeal('${safeId}',${day},'${slot}')">
+    <span class="meal-pick-em">${r.emoji||'🍽️'}</span>
+    <div style="flex:1;min-width:0;">
+      <div class="meal-pick-name">${r.name} ${badge}</div>
+      <div style="font-size:.62rem;color:var(--tx3);">${r.time?'⏱ '+r.time+'min':''} ${r.kcal?'· 🔥'+r.kcal+' kcal':''} ${r.prot?'· 💪'+r.prot+'g':''}</div>
+    </div>
+  </div>`;
+}
+
+function switchMeTab(tab) {
+  ['recipes','search','free'].forEach(t => {
+    document.getElementById('metab-'+t)?.classList.toggle('acc', t===tab);
+    document.getElementById('metab-'+t)?.classList.toggle('ghost', t!==tab);
+    const panel = document.getElementById('mepanel-'+t);
+    if(panel) panel.style.display = t===tab ? 'block' : 'none';
+  });
+  if(tab==='search') document.getElementById('mealDbSearch')?.focus();
+  if(tab==='free') document.getElementById('mealFreeInput')?.focus();
+  if(tab==='recipes') document.getElementById('meRecipeSearch')?.focus();
+}
+
+function meLiveSearch(q) {
+  const el = document.getElementById('meRecipeList');
+  if(!el) return;
+  const ds = window._meDaySlot || {};
+  const allRec = getAllRecipes().filter(r => !r.mealTypes || r.mealTypes.includes(ds.slot||'l'));
+  const filtered = q ? allRec.filter(r => r.name.toLowerCase().includes(q.toLowerCase())) : allRec;
+  el.innerHTML = filtered.slice(0,25).map(r => meRecipeItem(r, ds.day, ds.slot)).join('') 
+    || '<div style="text-align:center;padding:14px;color:var(--tx3);font-size:.8rem;">Aucune recette trouvée</div>';
+}
+
+async function searchMealDB(day, slot) {
+  const q = document.getElementById('mealDbSearch')?.value?.trim();
+  if(!q) return;
+  const res = document.getElementById('mealDbResults');
+  if(res) res.innerHTML = '<div style="padding:10px;font-size:.75rem;color:var(--tx2);text-align:center;">🔄 Recherche...</div>';
+  
+  try {
+    // TheMealDB — free, no API key needed
+    // TheMealDB works best with English, translate French query
+    const qEn = translateQueryToEnglish(q);
+    const resp = await fetch(`https://www.themealdb.com/api/json/v1/1/search.php?s=${encodeURIComponent(qEn)}`);
+    const data = await resp.json();
+    const meals = data.meals || [];
+    
+    if(!meals.length) {
+      // Fallback: search by category/ingredient
+      const resp2 = await fetch(`https://www.themealdb.com/api/json/v1/1/filter.php?i=${encodeURIComponent(q)}`);
+      const data2 = await resp2.json();
+      if(data2.meals) {
+        if(res) res.innerHTML = data2.meals.slice(0,6).map(m => `
+          <div class="meal-pick-item" style="background:rgba(0,181,184,.07);border:1px solid rgba(0,181,184,.15);"
+            onclick="selectMealDB('${m.idMeal}','${m.strMeal.replace(/'/g,"\'")}',${day},'${slot}')">
+            <img src="${m.strMealThumb}/preview" style="width:40px;height:40px;border-radius:var(--rs);object-fit:cover;flex-shrink:0;" loading="lazy">
+            <div style="flex:1;min-width:0;">
+              <div class="meal-pick-name">${translateRecipeName(m.strMeal)}</div>
+              <div style="font-size:.62rem;color:var(--tx3);">TheMealDB</div>
+            </div>
+          </div>`).join('');
+        return;
+      }
+      if(res) res.innerHTML = '<div style="text-align:center;padding:14px;color:var(--tx3);font-size:.8rem;">Aucun résultat. Essayez en anglais (chicken, pasta...)</div>';
+      return;
+    }
+    
+    if(res) res.innerHTML = meals.slice(0,8).map(m => `
+      <div class="meal-pick-item" style="background:rgba(0,181,184,.07);border:1px solid rgba(0,181,184,.15);"
+        onclick="selectMealDB('${m.idMeal}','${m.strMeal.replace(/'/g,"\'")}',${day},'${slot}')">
+        ${m.strMealThumb ? `<img src="${m.strMealThumb}/preview" style="width:44px;height:44px;border-radius:var(--rs);object-fit:cover;flex-shrink:0;" loading="lazy">` : '<span class="meal-pick-em">🍽️</span>'}
+        <div style="flex:1;min-width:0;">
+          <div class="meal-pick-name">${translateRecipeName(m.strMeal)}</div>
+          <div style="font-size:.62rem;color:var(--tx3);">${m.strCategory||''} ${m.strArea?'· '+m.strArea:''}</div>
         </div>
-        <button class="btn ico" onclick="document.getElementById('breakfastModal').remove()">✕</button>
-      </div>
+      </div>`).join('');
+  } catch(e) {
+    if(res) res.innerHTML = '<div style="text-align:center;padding:14px;color:var(--rd);font-size:.8rem;">Erreur de connexion. Vérifiez votre réseau.</div>';
+  }
+}
 
-      <!-- Saisie libre -->
-      <div style="display:flex;gap:8px;margin-bottom:14px;">
-        <input class="inp" id="bfInput" value="${current.replace(/['"]/g,'')}" placeholder="Description libre..." style="flex:1;">
-        <button class="btn acc sm" onclick="saveBf(${day})" style="flex-shrink:0;padding:10px 14px;">✓</button>
-      </div>
+async function selectMealDB(id, name, day, slot) {
+  const frName = translateRecipeName(name);
+  if(!state.weekMenu[day]) state.weekMenu[day] = {};
+  state.weekMenu[day][slot] = '🌐 ' + frName;
+  
+  // Optionally fetch full details for kcal etc
+  try {
+    const resp = await fetch(`https://www.themealdb.com/api/json/v1/1/lookup.php?i=${id}`);
+    const data = await resp.json();
+    const meal = data.meals?.[0];
+    if(meal) {
+      // Extract ingredients
+      const ingrs = [];
+      for(let i=1;i<=20;i++) {
+        const n = meal['strIngredient'+i];
+        const m = meal['strMeasure'+i];
+        if(n && n.trim()) ingrs.push({name:n, qty:m||'', unit:''});
+      }
+      // Save as custom recipe in session
+      const recipe = {id:'mdb_'+id, emoji:'🌐', name:frName, diet:'omnivore',
+        mealTypes:['l','d'], time:30, portions:4, kcal:0,
+        ingredients:ingrs, source:'mealdb'};
+      // Add to session cache
+      if(!state._mdbCache) state._mdbCache = [];
+      state._mdbCache.push(recipe);
+    }
+  } catch(e) {}
+  
+  saveWeekMenu(); renderWeek(); renderDayDetail();
+  closeMealEdit();
+  showToast('✅', frName, 'Menu mis à jour !');
+}
 
-      <!-- Suggestions rapides -->
-      <div style="font-size:.68rem;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:var(--tx3);margin-bottom:8px;">⚡ Suggestions rapides</div>
-      <div style="display:flex;flex-direction:column;gap:5px;max-height:150px;overflow-y:auto;margin-bottom:14px;">
-        ${BREAKFAST_OPTIONS.map(o=>`
-          <div class="meal-pick-item" onclick="document.getElementById('bfInput').value='${o.emoji} ${o.name.replace(/'/g,'\'')}'" style="border:1px solid var(--bg2);">
-            <span class="meal-pick-em">${o.emoji}</span>
-            <span class="meal-pick-name">${o.name}</span>
-          </div>`).join('')}
-      </div>
+// ══ SNACK BUILDER with autocomplete ══
+function openSnackBuilder(day) {
+  const menu = state.weekMenu[day] || {};
+  const current = menu.snack || '';
+  const dayName = (window.DAYS||['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'])[day-1]||'Jour '+day;
 
-      <!-- Composer son petit-dej -->
-      <div style="font-size:.68rem;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:var(--tx3);margin-bottom:8px;">🛒 Ajouter à la liste de courses</div>
-      <div style="display:flex;gap:6px;margin-bottom:8px;position:relative;">
-        <input class="inp" id="bfItemInput" placeholder="Chercher un aliment..." style="flex:1;font-size:.82rem;"
-          oninput="bfSearchItem(this.value)">
-        <button class="btn sm" onclick="bfAddItem()" style="flex-shrink:0;padding:9px 12px;
+  const box = document.createElement('div');
+  box.className = 'overlay on';
+  box.id = 'snackModal';
+  window._snackItems = current ? current.split(' + ').filter(Boolean) : [];
+  
+  box.innerHTML = `<div class="modal">
+    <div class="modal-hd">
+      <div>
+        <div class="modal-ti">🍎 Collation</div>
+        <div class="modal-su">${dayName}</div>
+      </div>
+      <button class="btn ico" onclick="document.getElementById('snackModal').remove()">✕</button>
+    </div>
+
+    <div id="snackItemList" style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px;min-height:36px;"></div>
+
+    <div style="position:relative;margin-bottom:8px;">
+      <input class="inp" id="snackInput" placeholder="🔍 Pomme, yaourt, noix, barre de céréales..."
+        oninput="snackAC(this.value)"
+        onkeydown="if(event.key==='Enter'){event.preventDefault();snackAddFromInput();}">
+      <div id="snackAC" style="display:none;position:absolute;left:0;right:0;top:44px;background:var(--bg);border:1px solid var(--bg2);border-radius:var(--rs);box-shadow:0 8px 24px rgba(0,0,0,.15);z-index:50;max-height:160px;overflow-y:auto;"></div>
+    </div>
+    <button class="btn acc sm" onclick="snackAddFromInput()" style="width:100%;margin-bottom:12px;padding:10px;">+ Ajouter</button>
+
+    <div style="display:flex;gap:8px;">
+      <button onclick="clearSnack(${day})" class="btn" style="flex:1;padding:12px;">🗑️ Vider</button>
+      <button onclick="saveSnack(${day})" class="btn acc" style="flex:2;padding:12px;font-weight:800;">✅ Confirmer</button>
+    </div>
+  </div>`;
+
+  box.onclick = e => { if(e.target===box) box.remove(); };
+  document.body.appendChild(box);
+  refreshSnackList();
+  document.getElementById('snackInput')?.focus();
+}
+
+function snackAC(q) {
+  const ac = document.getElementById('snackAC');
+  if(!ac) return;
+  if(!q || q.length < 1) { ac.style.display='none'; return; }
+  const matches = PRODUCTS.filter(p => p.name.toLowerCase().includes(q.toLowerCase())).slice(0,8);
+  if(!matches.length) { ac.style.display='none'; return; }
+  ac.style.display = 'block';
+  ac.innerHTML = matches.map(p => `
+    <div style="padding:9px 14px;cursor:pointer;border-bottom:1px solid var(--bg2);display:flex;align-items:center;gap:8px;"
+      onclick="snackSelectItem('${p.name.replace(/'/g,"\'")}');document.getElementById('snackAC').style.display='none';">
+      <span style="font-size:1.1rem;">${p.emoji||'🛍️'}</span>
+      <span style="font-size:.82rem;font-weight:700;">${p.name}</span>
+    </div>`).join('');
+}
+
+function snackSelectItem(name) {
+  if(!window._snackItems) window._snackItems = [];
+  if(!window._snackItems.includes(name)) {
+    window._snackItems.push(name);
+    refreshSnackList();
+  }
+  const inp = document.getElementById('snackInput');
+  if(inp) inp.value = '';
+}
+
+function snackAddFromInput() {
+  const inp = document.getElementById('snackInput');
+  const val = inp?.value?.trim();
+  if(!val) return;
+  snackSelectItem(val);
+}
+
+function removeSnackItem(idx) {
+  window._snackItems?.splice(idx, 1);
+  refreshSnackList();
+}
+
+function clearSnack(day) {
+  window._snackItems = [];
+  if(state.weekMenu[day]) delete state.weekMenu[day].snack;
+  saveWeekMenu(); renderWeek(); renderDayDetail();
+  document.getElementById('snackModal')?.remove();
+}
+
+function refreshSnackList() {
+  const el = document.getElementById('snackItemList');
+  if(!el) return;
+  const items = window._snackItems || [];
+  el.innerHTML = items.length ? items.map((s,i)=>`
+    <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--bg2);border-radius:var(--rs);">
+      <span style="flex:1;font-size:.85rem;font-weight:700;">${s}</span>
+      <button onclick="removeSnackItem(${i})" style="background:none;border:none;cursor:pointer;color:var(--tx3);font-size:.9rem;padding:2px 8px;">✕</button>
+    </div>`).join('')
+  : '<div style="font-size:.75rem;color:var(--tx3);text-align:center;padding:8px;">Ajoutez des aliments ci-dessous</div>';
+}
+
+async function saveSnack(day) {
+  const items = window._snackItems || [];
+  if(!state.weekMenu[day]) state.weekMenu[day] = {};
+  state.weekMenu[day].snack = items.join(' + ');
+  saveWeekMenu(); renderWeek(); renderDayDetail();
+  document.getElementById('snackModal')?.remove();
+  if(items.length) showToast('🍎', items.join(', '), 'Collation enregistrée !');
+}
+
+// Clear stale functions
+function saveMealFree(day, slot) {
+  const val = document.getElementById('mealFreeInput')?.value?.trim();
+  if(!val) return;
+  if(!state.weekMenu[day]) state.weekMenu[day] = {};
+  state.weekMenu[day][slot] = val;
+  saveWeekMenu(); renderWeek(); renderDayDetail();
+  closeMealEdit();
+  showToast('✅', val, 'Menu mis à jour !');
+}
+
+function renderMealRecipePicks() {} // stub - replaced
+function filterMealRecipes() {}    // stub - replaced
+function mealEditAC() {}           // stub - replaced
+
 function adjustPortions(n) {
   // Update the displayed quantities and kcal
   const allButtons = document.querySelectorAll('[id^=portionBtn]');
@@ -4254,16 +4725,6 @@ function adjustPortions(n) {
   if(baseKcal && display) {
     display.textContent = '~' + Math.round(baseKcal * basePortions / n) + ' kcal/p.';
   }
-}
-
-">+ Liste</button>
-        <div id="bfItemAC" style="display:none;position:absolute;top:42px;left:0;right:48px;background:var(--bg);border:1px solid var(--bg2);border-radius:var(--rs);box-shadow:var(--so);z-index:999;max-height:150px;overflow-y:auto;"></div>
-      </div>
-      <div style="font-size:.65rem;color:var(--tx3);margin-bottom:14px;">Les ingrédients seront ajoutés directement à votre liste de courses.</div>
-
-      <button class="btn acc" onclick="saveBf(${day})" style="width:100%;padding:13px;border-radius:14px;font-weight:800;">✅ Confirmer</button>
-    </div>`;
-  document.body.appendChild(box);
 }
 
 

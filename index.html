@@ -1256,25 +1256,29 @@ svg{display:block;flex-shrink:0;}
 
       <!-- ═══ TAB: NUTRITION ═══ -->
       <div id="menuPanelNutri" style="display:none;">
-        <!-- Calorie Hero -->
-        <div class="nutri-hero" id="nutriHero">
-          <div class="nutri-hero-val" id="nutriHeroKcal">— kcal</div>
-          <div class="nutri-hero-label">Objectif journalier</div>
-          <div class="nutri-hero-sub" id="nutriHeroSub">Complétez votre profil pour voir vos besoins</div>
-          <button class="btn" style="background:rgba(255,255,255,.2);color:#fff;margin-top:10px;backdrop-filter:blur(8px);" onclick="openMenuProfile()">⚙️ Mon profil</button>
-        </div>
-        <!-- Semaine chart -->
+        <!-- HEADER STATS -->
+        <div id="nutriStatsGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;"></div>
+        
+        <!-- SEMAINE CHART -->
         <div class="card mb14">
-          <div style="font-weight:900;font-size:.88rem;margin-bottom:12px;">📈 Calories semaine planifiée</div>
-          <div class="nutri-week-chart" id="nutriWeekChart"></div>
-          <div style="display:flex;gap:8px;justify-content:center;">
-            <div style="display:flex;align-items:center;gap:4px;font-size:.62rem;color:var(--tx2);"><div style="width:10px;height:10px;border-radius:2px;background:var(--ac);"></div>Planifié</div>
-            <div style="display:flex;align-items:center;gap:4px;font-size:.62rem;color:var(--tx2);"><div style="width:10px;height:10px;border-radius:2px;background:var(--bg2);border:1px dashed var(--tx3);"></div>Objectif</div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+            <div style="font-weight:900;font-size:.88rem;">📈 Calories / semaine</div>
+            <button class="btn ghost sm" onclick="openMenuProfile()" style="font-size:.7rem;">⚙️ Profil</button>
+          </div>
+          <div class="nutri-week-chart" id="nutriWeekChart" style="height:90px;"></div>
+          <div style="display:flex;gap:12px;justify-content:center;margin-top:6px;">
+            <div style="display:flex;align-items:center;gap:4px;font-size:.62rem;color:var(--tx2);">
+              <div style="width:8px;height:8px;border-radius:2px;background:var(--ac);"></div>Planifié
+            </div>
+            <div style="display:flex;align-items:center;gap:4px;font-size:.62rem;color:var(--tx2);">
+              <div style="width:8px;height:8px;border-radius:2px;border:1.5px dashed var(--tx3);"></div>Objectif
+            </div>
           </div>
         </div>
-        <!-- Macro rings -->
-        <div class="card mb14" id="macroCard">
-          <div style="font-weight:900;font-size:.88rem;margin-bottom:12px;">🎯 Macronutriments moyens/jour</div>
+
+        <!-- MACROS -->
+        <div class="card mb14">
+          <div style="font-weight:900;font-size:.88rem;margin-bottom:12px;">🎯 Macronutriments (moy/jour)</div>
           <div id="macroRings"></div>
         </div>
         <!-- AI Nutritional analysis -->
@@ -1753,7 +1757,14 @@ function subscribeToHousehold() {
 async function saveItems() { saveState(); await syncToFirestore('items', state.items); }
 async function saveFridge() { saveState(); await syncToFirestore('fridge', state.fridge); }
 async function saveHistory() { saveState(); await syncToFirestore('history', state.history); }
-async function saveWeekMenu() { saveState(); await syncToFirestore('weekMenu', state.weekMenu); }
+async function saveWeekMenu() {
+  saveState();
+  syncToFirestore('weekMenu', state.weekMenu);
+  // Real-time update nutrition panel if visible
+  if(window._menuTab === 'nutri') {
+    setTimeout(renderNutriPanel, 100);
+  }
+}
 async function saveProfile() {
   const p = state.profile || {};
   const get = (id) => { const el = document.getElementById(id); return el ? el.value : ''; };
@@ -3030,7 +3041,7 @@ Réponds UNIQUEMENT en JSON: {"recipes":[{"name":"Nom recette","emoji":"🍽️"
     });
     const data = await resp.json();
     const text = (data.content||[]).find(c=>c.type==='text')?.text||'';
-    const parsed = JSON.parse(text.replace(/\`\`\`json|\`\`\`/g,'').trim());
+    const parsed = JSON.parse(text.replace(/```json|```/g,'').trim());
     const recipes = (parsed.recipes||[]).map((r,i)=>({...r,id:'claude_'+Date.now()+'_'+i,source:'claude'}));
     if(recipes.length) {
       state.spoonCache[q.toLowerCase()] = recipes;
@@ -3042,9 +3053,46 @@ Réponds UNIQUEMENT en JSON: {"recipes":[{"name":"Nom recette","emoji":"🍽️"
   }
 }
 
+
+function translateQueryToEnglish(query) {
+  if(!query) return query;
+  const frToEn = {
+    'poulet':'chicken','boeuf':'beef','veau':'veal','agneau':'lamb',
+    'porc':'pork','dinde':'turkey','canard':'duck','lapin':'rabbit',
+    'saumon':'salmon','thon':'tuna','cabillaud':'cod','crevettes':'shrimp',
+    'moules':'mussels','saint-jacques':'scallops',
+    'pâtes':'pasta','riz':'rice','pain':'bread','farine':'flour',
+    'pomme de terre':'potato','patate douce':'sweet potato',
+    'tomate':'tomato','carotte':'carrot','courgette':'zucchini',
+    'aubergine':'eggplant','oignon':'onion','ail':'garlic',
+    'épinards':'spinach','brocolis':'broccoli','chou-fleur':'cauliflower',
+    'champignon':'mushroom','poivron':'pepper','concombre':'cucumber',
+    'salade':'salad','soupe':'soup','gratin':'gratin','tarte':'tart',
+    'rôti':'roast','grillé':'grilled','sauté':'sauteed','vapeur':'steamed',
+    'végétarien':'vegetarian','vegan':'vegan','sans gluten':'gluten free',
+    'poisson':'fish','viande':'meat','légumes':'vegetables','fruits':'fruits',
+    'rapide':'quick','facile':'easy','sain':'healthy','maison':'homemade',
+    'chocolat':'chocolate','fromage':'cheese','beurre':'butter','crème':'cream',
+    'quinoa':'quinoa','lentilles':'lentils','pois chiches':'chickpeas',
+    'avocats':'avocado','banane':'banana','pomme':'apple','citron':'lemon',
+    'curry':'curry','tajine':'tagine','risotto':'risotto','paella':'paella',
+    'quiche':'quiche','crêpe':'crepe','mousse':'mousse','gâteau':'cake',
+    'soupe de légumes':'vegetable soup','poulet rôti':'roasted chicken',
+    'steak':'steak','escalope':'escalope','filet':'fillet',
+  };
+  let translated = query.toLowerCase();
+  const entries = Object.entries(frToEn).sort((a,b) => b[0].length - a[0].length);
+  entries.forEach(([fr, en]) => {
+    const regex = new RegExp('\\b' + fr.replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + '\\b','gi');
+    translated = translated.replace(regex, en);
+  });
+  return translated.charAt(0).toUpperCase() + translated.slice(1);
+}
+
 async function searchSpoonacular(query) {
-  const q = query || document.getElementById('spoonSearchInp')?.value?.trim();
-  if(!q) return;
+  const rawQ = query || document.getElementById('spoonSearchInp')?.value?.trim();
+  if(!rawQ) return;
+  const q = translateQueryToEnglish(rawQ);
   
   const grid = document.getElementById('spoonResults');
   if(!grid) return;
@@ -3724,13 +3772,31 @@ function renderNutriPanel() {
   const macros = getMacroTargets(p, cals);
   
   // Update hero
-  const heroKcal = document.getElementById('nutriHeroKcal');
-  const heroSub = document.getElementById('nutriHeroSub');
-  if(heroKcal) heroKcal.textContent = cals ? cals+' kcal' : '— kcal';
-  if(heroSub && cals) {
-    const goal = p.goal||'equilibre';
-    const goalTxt = {equilibre:'Maintien du poids',perte:'Perte de poids (-500 kcal/j)',prise:'Prise de masse (+300 kcal/j)',perf:'Performance sportive'};
-    heroSub.textContent = (goalTxt[goal]||goal) + (macros ? ` · P:${macros.prot}g G:${macros.carb}g L:${macros.fat}g` : '');
+  // Stats grid: 4 cards
+  const statsGrid = document.getElementById('nutriStatsGrid');
+  if(statsGrid) {
+    const goal = p.goal || 'equilibre';
+    const goalTxt = {equilibre:'Équilibre',perte:'Perte de poids',prise:'Prise de masse',maintien:'Maintien',perf:'Performance'};
+    const daysPlanned = Object.values(state.weekMenu).filter(m=>m?.nutri?.kcal).length;
+    const avgKcal = daysPlanned
+      ? Math.round(Object.values(state.weekMenu).reduce((s,m)=>s+(m?.nutri?.kcal||0),0)/7)
+      : 0;
+    const diff = cals && avgKcal ? avgKcal - cals : null;
+    const diffColor = diff === null ? 'var(--tx2)' : Math.abs(diff)<100 ? 'var(--gn)' : diff>0 ? 'var(--rd)' : 'var(--yl)';
+    const diffLabel = diff === null ? '—' : (diff>0?'+':'')+diff+' kcal';
+    
+    statsGrid.innerHTML = [
+      {icon:'🎯',label:'Objectif/jour',val:cals?cals+' kcal':'Non défini',sub:goalTxt[goal]||goal,color:'var(--ac)'},
+      {icon:'📅',label:'Jours planifiés',val:daysPlanned+'/7',sub:daysPlanned<7?'Compléter le menu':'Semaine complète',color:'var(--tl)'},
+      {icon:'🔥',label:'Moyenne planifiée',val:avgKcal?avgKcal+' kcal':'—',sub:'Moy. des repas saisis',color:'var(--or)'},
+      {icon:'⚖️',label:'Écart vs objectif',val:diffLabel,sub:Math.abs(diff||0)<100?"Dans l'objectif ✅":'À ajuster',color:diffColor},
+    ].map(s=>`
+      <div class="card" style="padding:12px;text-align:center;">
+        <div style="font-size:1.4rem;margin-bottom:4px;">${s.icon}</div>
+        <div style="font-size:1rem;font-weight:900;color:${s.color};">${s.val}</div>
+        <div style="font-size:.6rem;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.6px;margin-top:2px;">${s.label}</div>
+        <div style="font-size:.62rem;color:var(--tx2);margin-top:2px;">${s.sub}</div>
+      </div>`).join('');
   }
   
   // Render week chart
@@ -4263,107 +4329,214 @@ function saveBf(day) {
 
 
 function openMealEdit(day, slot) {
-  // Breakfast: special manual builder
-  if(slot === 'b') {
-    openBreakfastBuilder(day);
-    return;
-  }
-  const slotNames = {b:'🌅 Petit-déjeuner',l:'☀️ Déjeuner',d:'🌙 Dîner',snack:'🍎 Collation'};
-  const slotEmoji = {b:'🌅',l:'☀️',d:'🌙',snack:'🍎'};
-  // Meal type filter: breakfast suggests lighter options, dinner more filling
-  const slotDietHints = {
-    b:['légumes','fromage blanc','yaourt','œuf','pain','céréales','smoothie','fruit','avoine','porridge'],
-    l:['salade','quinoa','riz','soupe','poulet','légumineuses','sandwich','wrap'],
-    d:['viande','poisson','pâtes','gratin','curry','tajine','rôti','wok'],
-    snack:['fruit','yaourt','noix','smoothie','barre','carré de chocolat']
-  };
+  if(slot === 'b') { openBreakfastBuilder(day); return; }
+  if(slot === 'snack') { openSnackBuilder(day); return; }
+
+  const SLOT = {l:{icon:'☀️',label:'Déjeuner'},d:{icon:'🌙',label:'Dîner'}};
+  const s = SLOT[slot] || {icon:'🍽️',label:'Repas'};
   const menu = state.weekMenu[day] || {};
   const current = menu[slot] || '';
+  const dayName = (window.DAYS||['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'])[day-1]||'Jour '+day;
   const allRec = getAllRecipes();
-  const bookmarked = state.recipeBookmarks || [];
-  const dayName = (window.DAYS || ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'])[day-1] || 'Jour '+day;
-
-  // Filter recipes by meal type hints
-  const hintWords = slotDietHints[slot] || [];
-  const suggestedRec = allRec.filter(r => {
-    // First check mealTypes array
-    if(r.mealTypes && r.mealTypes.includes(slot)) return true;
-    // Fallback: check name hints
-    const nameLower = r.name.toLowerCase();
-    return hintWords.some(h => nameLower.includes(h));
-  });
-  const otherRec = allRec.filter(r => !suggestedRec.includes(r));
 
   const modal = document.getElementById('mealEditModal');
   if(!modal) return;
 
   modal.innerHTML = `
     <div class="mhdl"></div>
-    <div class="modal-hd" style="margin-bottom:14px;">
+    <div class="modal-hd" style="margin-bottom:12px;">
       <div>
-        <div class="modal-ti">${slotEmoji[slot]||'🍽️'} ${(slotNames[slot]||slot).replace(/^[^\s]+\s/,'')}</div>
-        <div class="modal-su">${dayName} · Modifiez ou choisissez une recette</div>
+        <div class="modal-ti">${s.icon} ${s.label}</div>
+        <div class="modal-su">${dayName}</div>
+      </div>
+      <button class="btn ico" onclick="closeMealEdit()">✕</button>
+    </div>
+
+    <!-- Barre de recherche unique — recherche dans MES recettes -->
+    <div style="position:relative;margin-bottom:10px;">
+      <input class="inp" id="mealRecipeSearch"
+        placeholder="🔍 Chercher dans mes recettes..."
+        oninput="filterMealRecipes(this.value, ${day}, '${slot}')"
+        style="width:100%;padding-right:36px;">
+      <span style="position:absolute;right:12px;top:50%;transform:translateY(-50%);font-size:.75rem;color:var(--tx3);">Entrée pour confirmer</span>
+    </div>
+
+    <!-- Résultats filtrés -->
+    <div id="mealRecipeList" style="max-height:280px;overflow-y:auto;display:flex;flex-direction:column;gap:5px;margin-bottom:12px;">
+      ${renderMealRecipePicks(allRec, day, slot, '')}
+    </div>
+
+    <!-- Saisie libre -->
+    <div style="margin-bottom:12px;">
+      <div style="font-size:.65rem;font-weight:700;color:var(--tx3);margin-bottom:5px;text-transform:uppercase;letter-spacing:.8px;">Ou saisir un nom libre</div>
+      <div style="display:flex;gap:6px;">
+        <input class="inp" id="mealFreeInput" value="${current.replace(/"/g,'&quot;')}" placeholder="Ex: Quiche lorraine maison..." style="flex:1;font-size:.85rem;">
+        <button class="btn acc" onclick="saveMealFree(${day},'${slot}')" style="padding:10px 14px;">✓</button>
       </div>
     </div>
 
-    <!-- Saisie rapide -->
-    <div style="display:flex;gap:8px;margin-bottom:14px;">
-      <input class="inp" id="mealEditInput" value="${current.replace(/"/g,'&quot;')}" placeholder="Nom du repas, ex: Salade César..." style="flex:1;" oninput="mealEditAC(this.value)">
-      <button class="btn acc sm" onclick="saveMealEdit(${day},'${slot}')" style="flex-shrink:0;padding:10px 14px;">✓</button>
-    </div>
-
-    <!-- Recherche Spoonacular -->
-    <div style="display:flex;gap:8px;margin-bottom:12px;">
-      <input class="inp" id="mealSpoonSearch" placeholder="🌐 Rechercher sur Spoonacular..." style="flex:1;font-size:.82rem;"
-        onkeydown="if(event.key==='Enter')searchSpoonForMeal(${day},'${slot}')">
-      <button class="btn sm" onclick="searchSpoonForMeal(${day},'${slot}')" style="flex-shrink:0;padding:9px 12px;font-size:.75rem;">Chercher</button>
-    </div>
-    <div id="mealSpoonResults" style="max-height:160px;overflow-y:auto;margin-bottom:12px;display:none;"></div>
-
-    <!-- Suggestions selon type de repas -->
-    ${suggestedRec.length ? `
-    <div style="font-size:.68rem;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:var(--ac);margin-bottom:8px;">
-      ✨ Suggestions pour ce repas
-    </div>
-    <div style="max-height:180px;overflow-y:auto;display:flex;flex-direction:column;gap:5px;margin-bottom:12px;">
-      ${suggestedRec.slice(0,6).map(r => `
-        <div class="meal-pick-item" style="background:rgba(108,92,231,.07);border:1px solid rgba(108,92,231,.15);" onclick="selectRecipeForMeal('${(r.id||r.name).replace(/'/g,"\'")}',${day},'${slot}')">
-          <span class="meal-pick-em">${r.emoji||'🍽️'}</span>
-          <div style="flex:1;min-width:0;">
-            <div class="meal-pick-name">${r.name}</div>
-            ${r.time ? `<div style="font-size:.6rem;color:var(--tx3);">⏱ ${r.time}min${r.kcal?' · 🔥'+r.kcal+' kcal':''}</div>` : ''}
-          </div>
-          ${r.prot ? `<span style="font-size:.62rem;color:var(--tl);font-weight:700;flex-shrink:0;">💪${r.prot}g</span>` : ''}
-        </div>`).join('')}
-    </div>` : ''}
-
-    <!-- Toutes mes recettes -->
-    <div style="font-size:.68rem;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:var(--tx3);margin-bottom:8px;">
-      📚 Toutes mes recettes
-    </div>
-    <div style="max-height:160px;overflow-y:auto;display:flex;flex-direction:column;gap:5px;margin-bottom:12px;">
-      ${[...bookmarked, ...otherRec].slice(0,20).map(r => `
-        <div class="meal-pick-item" onclick="selectRecipeForMeal('${(r.id||r.name).replace(/'/g,"\'")}',${day},'${slot}')">
-          <span class="meal-pick-em">${r.emoji||r.photo?'📸':'🍽️'}</span>
-          <div style="flex:1;min-width:0;">
-            <div class="meal-pick-name">${r.name}</div>
-            ${r.kcal ? `<div style="font-size:.6rem;color:var(--tx3);">🔥 ${r.kcal} kcal${r.time?' · ⏱ '+r.time+'min':''}</div>` : ''}
-          </div>
-          ${r.source==='bookmark'?'<span style="font-size:.7rem;">⭐</span>':''}
-          ${r.source==='custom'?'<span style="font-size:.7rem;color:var(--ac);">✏️</span>':''}
-        </div>`).join('')}
-    </div>
-
-    <!-- Actions -->
     <div style="display:flex;gap:8px;">
       <button class="btn" style="flex:1;" onclick="clearMealSlot(${day},'${slot}')">🗑️ Vider</button>
       <button class="btn" style="flex:1;" onclick="closeMealEdit()">Annuler</button>
-      <button class="btn acc" style="flex:2;" onclick="saveMealEdit(${day},'${slot}')">✓ Confirmer</button>
     </div>
   `;
 
   document.getElementById('mealEditOverlay').classList.add('on');
+  document.getElementById('mealRecipeSearch')?.focus();
 }
+
+function renderMealRecipePicks(recipes, day, slot, query) {
+  // Filter by slot meal type + query
+  const q = query.toLowerCase();
+  const filtered = recipes.filter(r => {
+    const matchSlot = !r.mealTypes || r.mealTypes.includes(slot);
+    const matchQ = !q || r.name.toLowerCase().includes(q);
+    return matchSlot && matchQ;
+  });
+
+  if(!filtered.length && q) {
+    return `<div style="text-align:center;padding:16px;color:var(--tx3);font-size:.8rem;">
+      Aucune recette trouvée pour "<strong>${q}</strong>"<br>
+      <span style="font-size:.72rem;">Utilisez la saisie libre ci-dessous</span>
+    </div>`;
+  }
+  if(!filtered.length) {
+    return `<div style="text-align:center;padding:16px;color:var(--tx3);font-size:.8rem;">
+      <div style="font-size:1.5rem;margin-bottom:6px;">📋</div>
+      Aucune recette enregistrée<br>
+      <button class="btn acc sm" onclick="switchMenuTab('recipes')" style="margin-top:8px;">+ Créer une recette</button>
+    </div>`;
+  }
+
+  return filtered.slice(0, 20).map(r => {
+    const safeId = (r.id||r.name).replace(/['"]/g,'_');
+    const badge = r.source==='bookmark' ? '<span style="font-size:.65rem;margin-left:4px;">⭐</span>'
+                : r.source==='custom'   ? '<span style="font-size:.65rem;color:var(--ac);margin-left:4px;">✏️</span>' : '';
+    return `<div class="meal-pick-item" onclick="selectRecipeForMeal('${safeId}',${day},'${slot}')">
+      <span class="meal-pick-em">${r.emoji||'🍽️'}</span>
+      <div style="flex:1;min-width:0;">
+        <div class="meal-pick-name">${r.name}${badge}</div>
+        <div style="font-size:.62rem;color:var(--tx3);">${r.time?'⏱ '+r.time+'min':''}${r.kcal?' · 🔥'+r.kcal+' kcal':''}${r.prot?' · 💪'+r.prot+'g':''}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function filterMealRecipes(q, day, slot) {
+  const el = document.getElementById('mealRecipeList');
+  if(!el) return;
+  const allRec = getAllRecipes();
+  el.innerHTML = renderMealRecipePicks(allRec, day, slot, q);
+  // Also update free input with search value
+  const fi = document.getElementById('mealFreeInput');
+  if(fi && q) fi.value = q;
+}
+
+function saveMealFree(day, slot) {
+  const val = document.getElementById('mealFreeInput')?.value?.trim();
+  if(!val) return;
+  if(!state.weekMenu[day]) state.weekMenu[day] = {};
+  state.weekMenu[day][slot] = val;
+  saveWeekMenu();
+  renderWeek();
+  renderDayDetail();
+  closeMealEdit();
+  showToast('✅', val, 'Menu mis à jour !');
+}
+
+// ══ SNACK BUILDER — multiple items, no suggestions ══
+function openSnackBuilder(day) {
+  const menu = state.weekMenu[day] || {};
+  const current = menu.snack || '';
+  const dayName = (window.DAYS||['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'])[day-1]||'Jour '+day;
+
+  const box = document.createElement('div');
+  box.className = 'overlay on';
+  box.id = 'snackModal';
+  box.innerHTML = `
+    <div class="modal">
+      <div class="modal-hd">
+        <div>
+          <div class="modal-ti">🍎 Collation</div>
+          <div class="modal-su">${dayName}</div>
+        </div>
+        <button class="btn ico" onclick="document.getElementById('snackModal').remove()">✕</button>
+      </div>
+
+      <div style="font-size:.75rem;color:var(--tx2);margin-bottom:12px;line-height:1.5;">
+        Ajoutez un ou plusieurs aliments pour votre collation.
+      </div>
+
+      <!-- Liste des items ajoutés -->
+      <div id="snackItems" style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px;min-height:40px;">
+        ${current ? current.split(' + ').filter(Boolean).map((s,i)=>`
+          <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--bg);border-radius:var(--rs);border:1px solid var(--bg2);">
+            <span style="flex:1;font-size:.85rem;font-weight:700;">${s}</span>
+            <button onclick="removeSnackItem(${i})" style="background:none;border:none;cursor:pointer;color:var(--tx3);font-size:.9rem;padding:2px 6px;">✕</button>
+          </div>`).join('') : '<div style="font-size:.75rem;color:var(--tx3);text-align:center;padding:8px;">Aucun élément · ajoutez ci-dessous</div>'}
+      </div>
+
+      <!-- Ajout libre -->
+      <div style="display:flex;gap:6px;margin-bottom:8px;position:relative;">
+        <input class="inp" id="snackInput" placeholder="Ex: Yaourt, Pomme, Noix..." style="flex:1;"
+          onkeydown="if(event.key==='Enter'){event.preventDefault();addSnackItem();}">
+        <button class="btn acc sm" onclick="addSnackItem()" style="flex-shrink:0;padding:10px 14px;">+</button>
+      </div>
+
+      <div style="display:flex;gap:8px;margin-top:12px;">
+        <button onclick="clearSnack(${day})" class="btn" style="flex:1;padding:12px;">🗑️ Vider</button>
+        <button onclick="saveSnack(${day})" class="btn acc" style="flex:2;padding:12px;font-weight:800;">✅ Confirmer</button>
+      </div>
+    </div>`;
+
+  window._snackItems = current ? current.split(' + ').filter(Boolean) : [];
+  document.body.appendChild(box);
+  document.getElementById('snackInput')?.focus();
+}
+
+function addSnackItem() {
+  const inp = document.getElementById('snackInput');
+  const val = inp?.value?.trim();
+  if(!val) return;
+  if(!window._snackItems) window._snackItems = [];
+  window._snackItems.push(val);
+  inp.value = '';
+  refreshSnackList();
+}
+
+function removeSnackItem(idx) {
+  window._snackItems?.splice(idx, 1);
+  refreshSnackList();
+}
+
+function clearSnack(day) {
+  window._snackItems = [];
+  if(state.weekMenu[day]) delete state.weekMenu[day].snack;
+  saveWeekMenu(); renderWeek(); renderDayDetail();
+  document.getElementById('snackModal')?.remove();
+}
+
+function refreshSnackList() {
+  const el = document.getElementById('snackItems');
+  if(!el) return;
+  const items = window._snackItems || [];
+  el.innerHTML = items.length ? items.map((s,i)=>`
+    <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--bg);border-radius:var(--rs);border:1px solid var(--bg2);">
+      <span style="flex:1;font-size:.85rem;font-weight:700;">${s}</span>
+      <button onclick="removeSnackItem(${i})" style="background:none;border:none;cursor:pointer;color:var(--tx3);">✕</button>
+    </div>`).join('')
+  : '<div style="font-size:.75rem;color:var(--tx3);text-align:center;padding:8px;">Aucun élément</div>';
+}
+
+async function saveSnack(day) {
+  const items = window._snackItems || [];
+  if(!state.weekMenu[day]) state.weekMenu[day] = {};
+  state.weekMenu[day].snack = items.join(' + ');
+  saveWeekMenu(); renderWeek(); renderDayDetail();
+  document.getElementById('snackModal')?.remove();
+  if(items.length) showToast('🍎', items.join(', '), 'Collation enregistrée !');
+}
+
 
 
 // Translate a single recipe name from English to French using a local map

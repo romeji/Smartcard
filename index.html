@@ -2837,15 +2837,21 @@ function initMenuModule() {
 // ── Sous-onglets ────────────────────────────────────────────
 function switchMenuTab(tab) {
   _menuTab = tab;
-  if(tab === 'week') { typeof renderWeek !== 'undefined' && renderWeek(); }
-  ['week','recipes','nutri'].forEach(t => {
+  // All 4 tabs: week, recipes, search, nutri
+  ['week','recipes','search','nutri'].forEach(t => {
     const btn = document.getElementById('mtab-'+t);
     const panel = document.getElementById('menuPanel'+t.charAt(0).toUpperCase()+t.slice(1));
     if(btn) btn.classList.toggle('on', t===tab);
-    if(panel) panel.style.display = t===tab?'block':'none';
+    if(panel) panel.style.display = t===tab ? 'block' : 'none';
   });
-  if(tab==='nutri') renderNutriTab();
-  if(tab==='recipes') renderRecipesGrid();
+  if(tab==='week') { typeof renderWeek !== 'undefined' && renderWeek(); }
+  if(tab==='nutri') { typeof renderNutriPanel !== 'undefined' ? renderNutriPanel() : (typeof renderNutriTab !== 'undefined' && renderNutriTab()); }
+  if(tab==='recipes') { typeof renderRecipesGrid !== 'undefined' && renderRecipesGrid(); }
+  // Search tab: focus input
+  if(tab==='search') {
+    const inp = document.getElementById('spoonSearchInp');
+    if(inp) setTimeout(()=>inp.focus(), 100);
+  }
 }
 
 // ── Profil nutritionnel ─────────────────────────────────────
@@ -4241,8 +4247,49 @@ function renderSeason() {
 }
 
 // ── Recettes ─────────────────────────────────────────────────
+
+// ══════════════════════════════════════════════════════════════
+// FRENCH RECIPE DATABASE — Built from TheMealDB + Claude
+// ══════════════════════════════════════════════════════════════
+
+
+
+// Merge with existing RECIPES_DB
+function getAllFrenchRecipes() {
+  return [...(window.RECIPES_DB || []), ...RECIPES_FR, ...state.customRecipes].map((r,i) => ({...r, id: r.id || 'r_'+i}));
+}
+
+const RECIPES_FR = [
+  {id:"fr1",emoji:"\ud83e\udd57",name:"Salade C\u00e9sar",diet:"omnivore",mealTypes:["l", "d"],time:15,portions:2,kcal:380,prot:28,carb:12,fat:24,ingredients:[{name:"Laitue romaine",qty:"1",unit:"pi\u00e8ce"},{name:"Poulet grill\u00e9",qty:"200",unit:"g"},{name:"Parmesan",qty:"50",unit:"g"},{name:"Cro\u00fbtons",qty:"50",unit:"g"}],instructions:["Couper la laitue en morceaux.","Griller le poulet et le trancher.","M\u00e9langer avec la sauce C\u00e9sar, ajouter parmesan et cro\u00fbtons."]},
+  {id:"fr2",emoji:"\ud83e\udd57",name:"Salade Ni\u00e7oise",diet:"pesc",mealTypes:["l", "d"],time:20,portions:2,kcal:340,prot:26,carb:18,fat:18,ingredients:[{name:"Thon en bo\u00eete",qty:"160",unit:"g"},{name:"Haricots verts",qty:"150",unit:"g"},{name:"Tomates cerise",qty:"150",unit:"g"},{name:"Olives noires",qty:"60",unit:"g"},{name:"Oeufs",qty:"2",unit:"pi\u00e8ce"}],instructions:["Cuire les haricots verts 5 min \u00e0 la vapeur.","Faire durcir les oeufs 9 min.","Assembler tous les ingr\u00e9dients, assaisonner huile olive et citron."]},
+  {id:"fr3",emoji:"\ud83c\udf72",name:"Soupe \u00e0 Oignon Gratin\u00e9e",diet:"veg",mealTypes:["l", "d"],time:50,portions:4,kcal:290,prot:12,carb:32,fat:14,ingredients:[{name:"Oignons",qty:"800",unit:"g"},{name:"Beurre",qty:"40",unit:"g"},{name:"Vin blanc sec",qty:"150",unit:"ml"},{name:"Bouillon de boeuf",qty:"1",unit:"L"},{name:"Pain baguette",qty:"8",unit:"tranches"},{name:"Gruy\u00e8re r\u00e2p\u00e9",qty:"150",unit:"g"}],instructions:["Caram\u00e9liser les oignons au beurre 30 min \u00e0 feu doux.","D\u00e9glacer au vin blanc, ajouter le bouillon, mijoter 15 min.","Verser dans des bols, poser le pain, couvrir de gruy\u00e8re.","Gratiner 5 min sous le gril."]},
+  {id:"fr4",emoji:"\ud83c\udf57",name:"Poulet R\u00f4ti aux Herbes",diet:"omnivore",mealTypes:["l", "d"],time:90,portions:4,kcal:480,prot:42,carb:2,fat:32,ingredients:[{name:"Poulet entier",qty:"1.5",unit:"kg"},{name:"Beurre",qty:"60",unit:"g"},{name:"Ail",qty:"4",unit:"gousses"},{name:"Thym",qty:"4",unit:"branches"},{name:"Romarin",qty:"2",unit:"branches"},{name:"Citron",qty:"1",unit:"pi\u00e8ce"}],instructions:["Pr\u00e9chauffer le four \u00e0 200\u00b0C.","Frotter le poulet de beurre, herbes et ail.","Cuire 80 min en arrosant r\u00e9guli\u00e8rement.","Laisser reposer 10 min avant de d\u00e9couper."]},
+  {id:"fr5",emoji:"\ud83c\udf5b",name:"Poulet Tikka Masala",diet:"omnivore",mealTypes:["l", "d"],time:45,portions:4,kcal:520,prot:38,carb:22,fat:28,ingredients:[{name:"Poulet",qty:"700",unit:"g"},{name:"Cr\u00e8me fra\u00eeche",qty:"200",unit:"ml"},{name:"Tomates pel\u00e9es",qty:"400",unit:"g"},{name:"Oignons",qty:"2",unit:"pi\u00e8ce"},{name:"Curry",qty:"2",unit:"cc"},{name:"Curcuma",qty:"1",unit:"cc"}],instructions:["Faire revenir oignon et \u00e9pices 3 min.","Ajouter le poulet coup\u00e9 en cubes, dorer.","Incorporer tomates et cr\u00e8me, mijoter 25 min.","Servir avec du riz basmati."]},
+  {id:"fr6",emoji:"\ud83e\udd69",name:"Boeuf Bourguignon",diet:"omnivore",mealTypes:["d"],time:180,portions:6,kcal:580,prot:48,carb:18,fat:32,ingredients:[{name:"Boeuf \u00e0 braiser",qty:"1.2",unit:"kg"},{name:"Vin rouge",qty:"75",unit:"cl"},{name:"Lardons",qty:"150",unit:"g"},{name:"Champignons",qty:"250",unit:"g"},{name:"Carottes",qty:"3",unit:"pi\u00e8ce"},{name:"Oignons",qty:"2",unit:"pi\u00e8ce"}],instructions:["Faire mariner le boeuf dans le vin 12h.","Faire revenir les lardons, puis le boeuf.","Ajouter l\u00e9gumes et vin, mijoter 2h30 \u00e0 feu doux.","Ajouter les champignons 20 min avant la fin."]},
+  {id:"fr7",emoji:"\ud83e\udd69",name:"Steak Hach\u00e9 Maison",diet:"omnivore",mealTypes:["l", "d"],time:15,portions:2,kcal:420,prot:38,carb:6,fat:28,ingredients:[{name:"Boeuf hach\u00e9",qty:"300",unit:"g"},{name:"Echalotes",qty:"2",unit:"pi\u00e8ce"},{name:"Persil",qty:"1",unit:"cs"},{name:"Moutarde",qty:"1",unit:"cc"}],instructions:["M\u00e9langer boeuf, \u00e9chalotes hach\u00e9es, persil et moutarde.","Former 2 steaks, assaisonner.","Cuire 3 min par face \u00e0 feu vif."]},
+  {id:"fr8",emoji:"\ud83d\udc1f",name:"Saumon Teriyaki",diet:"pesc",mealTypes:["l", "d"],time:20,portions:2,kcal:460,prot:40,carb:18,fat:24,ingredients:[{name:"Saumon",qty:"400",unit:"g"},{name:"Sauce soja",qty:"4",unit:"cs"},{name:"Miel",qty:"2",unit:"cs"},{name:"Gingembre r\u00e2p\u00e9",qty:"1",unit:"cc"},{name:"Riz cuit",qty:"200",unit:"g"}],instructions:["M\u00e9langer sauce soja, miel et gingembre.","Faire mariner le saumon 15 min.","Cuire 4 min par face \u00e0 la po\u00eale.","Servir avec le riz."]},
+  {id:"fr9",emoji:"\ud83e\udd58",name:"Ratatouille Proven\u00e7ale",diet:"vegan",mealTypes:["l", "d"],time:60,portions:4,kcal:180,prot:4,carb:22,fat:9,ingredients:[{name:"Courgettes",qty:"2",unit:"pi\u00e8ce"},{name:"Aubergines",qty:"1",unit:"pi\u00e8ce"},{name:"Poivrons rouges",qty:"2",unit:"pi\u00e8ce"},{name:"Tomates",qty:"4",unit:"pi\u00e8ce"},{name:"Oignons",qty:"2",unit:"pi\u00e8ce"},{name:"Ail",qty:"3",unit:"gousses"},{name:"Herbes de Provence",qty:"1",unit:"cs"}],instructions:["Couper tous les l\u00e9gumes en d\u00e9s.","Faire revenir oignons et ail 5 min.","Ajouter l\u00e9gumes par ordre de cuisson, commencer par poivrons.","Mijoter 40 min \u00e0 feu doux, assaisonner."]},
+  {id:"fr10",emoji:"\ud83e\uded8",name:"Dal de Lentilles Corail",diet:"vegan",mealTypes:["l", "d"],time:30,portions:4,kcal:310,prot:18,carb:48,fat:8,ingredients:[{name:"Lentilles corail",qty:"300",unit:"g"},{name:"Lait de coco",qty:"400",unit:"ml"},{name:"Tomates pel\u00e9es",qty:"400",unit:"g"},{name:"Oignons",qty:"2",unit:"pi\u00e8ce"},{name:"Curcuma",qty:"1",unit:"cc"},{name:"Cumin",qty:"1",unit:"cc"}],instructions:["Faire revenir oignon et \u00e9pices 3 min.","Ajouter lentilles, lait de coco et tomates.","Cuire 20 min \u00e0 feu doux en remuant.","Garnir de coriandre fra\u00eeche."]},
+  {id:"fr11",emoji:"\ud83c\udf5d",name:"Spaghetti Carbonara",diet:"omnivore",mealTypes:["l", "d"],time:20,portions:4,kcal:580,prot:32,carb:64,fat:22,ingredients:[{name:"Spaghettis",qty:"400",unit:"g"},{name:"Lardons",qty:"150",unit:"g"},{name:"Oeufs entiers",qty:"2",unit:"pi\u00e8ce"},{name:"Jaunes oeuf",qty:"4",unit:"pi\u00e8ce"},{name:"Pecorino",qty:"100",unit:"g"},{name:"Poivre noir",qty:"2",unit:"cc"}],instructions:["Faire bouillir les p\u00e2tes al dente.","Faire dorer les lardons sans huile.","M\u00e9langer oeufs, pecorino et poivre.","Retirer du feu, m\u00e9langer p\u00e2tes + lardons + m\u00e9lange oeufs hors feu."]},
+  {id:"fr12",emoji:"\ud83c\udf5d",name:"P\u00e2tes Bolognaise Maison",diet:"omnivore",mealTypes:["l", "d"],time:45,portions:4,kcal:520,prot:32,carb:58,fat:16,ingredients:[{name:"P\u00e2tes",qty:"400",unit:"g"},{name:"Boeuf hach\u00e9",qty:"400",unit:"g"},{name:"Tomates pel\u00e9es",qty:"400",unit:"g"},{name:"Oignons",qty:"1",unit:"pi\u00e8ce"},{name:"Ail",qty:"2",unit:"gousses"},{name:"Vin rouge",qty:"10",unit:"cl"}],instructions:["Faire revenir oignon et ail 3 min.","Ajouter la viande, dorer 5 min.","D\u00e9glacer au vin, ajouter tomates, mijoter 30 min.","Cuire les p\u00e2tes, m\u00e9langer et servir."]},
+  {id:"fr13",emoji:"\ud83c\udf5a",name:"Risotto aux Champignons",diet:"veg",mealTypes:["l", "d"],time:35,portions:4,kcal:460,prot:14,carb:68,fat:16,ingredients:[{name:"Riz arborio",qty:"320",unit:"g"},{name:"Champignons",qty:"400",unit:"g"},{name:"Oignon",qty:"1",unit:"pi\u00e8ce"},{name:"Vin blanc",qty:"15",unit:"cl"},{name:"Bouillon l\u00e9gumes",qty:"1",unit:"L"},{name:"Parmesan",qty:"80",unit:"g"},{name:"Beurre",qty:"40",unit:"g"}],instructions:["Faire revenir oignon, ajouter riz et nacrer.","D\u00e9glacer au vin, ajouter le bouillon louche par louche.","Faire sauter les champignons s\u00e9par\u00e9ment.","Incorporer champignons, beurre et parmesan hors du feu."]},
+  {id:"fr14",emoji:"\ud83e\uded5",name:"Tajine Poulet Citron Confit",diet:"omnivore",mealTypes:["d"],time:70,portions:4,kcal:480,prot:40,carb:14,fat:28,ingredients:[{name:"Poulet",qty:"1.2",unit:"kg"},{name:"Citrons confits",qty:"2",unit:"pi\u00e8ce"},{name:"Olives vertes",qty:"100",unit:"g"},{name:"Oignons",qty:"2",unit:"pi\u00e8ce"},{name:"Cumin",qty:"1",unit:"cc"},{name:"Safran",qty:"1",unit:"pinc\u00e9e"}],instructions:["Faire mariner le poulet avec \u00e9pices et citron 1h.","Faire revenir oignons et poulet.","Ajouter olives, citron confit et eau.","Mijoter 45 min \u00e0 couvert."]},
+  {id:"fr15",emoji:"\ud83c\udf5b",name:"Curry de L\u00e9gumes Coco",diet:"vegan",mealTypes:["l", "d"],time:30,portions:4,kcal:310,prot:9,carb:42,fat:14,ingredients:[{name:"Lait de coco",qty:"400",unit:"ml"},{name:"Patates douces",qty:"400",unit:"g"},{name:"Pois chiches",qty:"400",unit:"g"},{name:"Epinards",qty:"150",unit:"g"},{name:"Oignons",qty:"1",unit:"pi\u00e8ce"},{name:"Curry en poudre",qty:"2",unit:"cs"}],instructions:["Faire revenir oignon et curry 3 min.","Ajouter patates douces et lait de coco, cuire 15 min.","Incorporer pois chiches et \u00e9pinards 5 min.","Servir avec riz basmati."]},
+  {id:"fr16",emoji:"\ud83c\udf5c",name:"Ramen Maison",diet:"omnivore",mealTypes:["l", "d"],time:90,portions:4,kcal:560,prot:38,carb:52,fat:22,ingredients:[{name:"Bouillon de poulet",qty:"2",unit:"L"},{name:"Poitrine de porc",qty:"400",unit:"g"},{name:"Nouilles ramen",qty:"300",unit:"g"},{name:"Oeufs",qty:"4",unit:"pi\u00e8ce"},{name:"Sauce soja",qty:"4",unit:"cs"},{name:"Oignons nouveaux",qty:"4",unit:"pi\u00e8ce"}],instructions:["Mijoter la poitrine de porc dans le bouillon 1h.","Cuire les oeufs 6 min, \u00e9caler et mariner dans la sauce soja.","Cuire les nouilles s\u00e9par\u00e9ment.","Assembler : nouilles, bouillon chaud, porc tranch\u00e9, oeuf coup\u00e9."]},
+  {id:"fr17",emoji:"\ud83e\udd5e",name:"Pancakes Moelleux",diet:"veg",mealTypes:["b"],time:20,portions:4,kcal:380,prot:12,carb:58,fat:14,ingredients:[{name:"Farine",qty:"200",unit:"g"},{name:"Lait",qty:"300",unit:"ml"},{name:"Oeufs",qty:"2",unit:"pi\u00e8ce"},{name:"Beurre fondu",qty:"40",unit:"g"},{name:"Levure chimique",qty:"1",unit:"sachet"}],instructions:["M\u00e9langer farine, levure et sucre vanill\u00e9.","Incorporer oeufs, lait et beurre fondu.","Laisser reposer 10 min.","Cuire \u00e0 feu moyen 2 min par face."]},
+  {id:"fr18",emoji:"\ud83c\udf73",name:"Shakshuka",diet:"veg",mealTypes:["b", "l"],time:25,portions:2,kcal:310,prot:18,carb:24,fat:16,ingredients:[{name:"Oeufs",qty:"4",unit:"pi\u00e8ce"},{name:"Tomates pel\u00e9es",qty:"400",unit:"g"},{name:"Poivron rouge",qty:"1",unit:"pi\u00e8ce"},{name:"Oignon",qty:"1",unit:"pi\u00e8ce"},{name:"Cumin",qty:"1",unit:"cc"},{name:"Paprika fum\u00e9",qty:"1",unit:"cc"}],instructions:["Faire revenir oignon et poivron 5 min.","Ajouter \u00e9pices et tomates, mijoter 10 min.","Faire des creux, casser les oeufs dedans.","Cuire \u00e0 couvert jusqu'aux blancs pris."]},
+  {id:"fr19",emoji:"\ud83e\udd59",name:"Wrap Poulet Avocat",diet:"omnivore",mealTypes:["l"],time:15,portions:2,kcal:480,prot:32,carb:42,fat:18,ingredients:[{name:"Tortillas bl\u00e9",qty:"2",unit:"pi\u00e8ce"},{name:"Poulet cuit",qty:"200",unit:"g"},{name:"Avocats",qty:"1",unit:"pi\u00e8ce"},{name:"Salade verte",qty:"50",unit:"g"},{name:"Tomates",qty:"1",unit:"pi\u00e8ce"},{name:"Citron",qty:"0.5",unit:"pi\u00e8ce"}],instructions:["\u00c9craser avocat avec citron, sel, poivre.","Trancher le poulet.","Garnir la tortilla : guacamole, poulet, salade, tomate.","Rouler serr\u00e9 et couper en deux."]},
+  {id:"fr20",emoji:"\ud83e\udd5c",name:"Houmous Maison",diet:"vegan",mealTypes:["l", "snack"],time:10,portions:6,kcal:160,prot:8,carb:18,fat:7,ingredients:[{name:"Pois chiches en bo\u00eete",qty:"400",unit:"g"},{name:"Tahini",qty:"3",unit:"cs"},{name:"Citron",qty:"1",unit:"pi\u00e8ce"},{name:"Ail",qty:"1",unit:"gousse"},{name:"Huile olive",qty:"3",unit:"cs"},{name:"Cumin",qty:"0.5",unit:"cc"}],instructions:["Egoutter les pois chiches, r\u00e9server le jus.","Mixer tous les ingr\u00e9dients avec 3 cs du jus.","Ajuster la consistance avec de eau.","Servir avec un filet d'huile d'olive."]}
+];
+
+// Merged recipe getter - includes all sources
+function getAllFrenchRecipes() {
+  return [...(window.RECIPES_DB || []), ...RECIPES_FR, ...state.customRecipes];
+}
 function getAllRecipes() {
-  return [...RECIPES_DB, ...state.customRecipes].map((r,i)=>({...r,id:r.id||'r_'+i}));
+  const db = typeof RECIPES_DB !== 'undefined' ? RECIPES_DB : [];
+  const fr = typeof RECIPES_FR !== 'undefined' ? RECIPES_FR : [];
+  return [...db, ...fr, ...state.customRecipes, ...(state.recipeBookmarks||[])].map((r,i)=>({...r,id:r.id||'r_'+i}));
 }
 
 function filterRecipesView(q) {

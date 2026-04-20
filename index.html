@@ -1759,11 +1759,9 @@ async function saveFridge() { saveState(); await syncToFirestore('fridge', state
 async function saveHistory() { saveState(); await syncToFirestore('history', state.history); }
 async function saveWeekMenu() {
   saveState();
-  syncToFirestore('weekMenu', state.weekMenu);
-  // Real-time update nutrition panel if visible
-  if(window._menuTab === 'nutri') {
-    setTimeout(renderNutriPanel, 100);
-  }
+  syncToFirestore('weekMenu', state.weekMenu).catch(function(){});
+  if(window._menuTab === 'nutri') setTimeout(renderNutriPanel, 100);
+  else renderWeek && renderWeek();
 }
 async function saveProfile() {
   const p = state.profile || {};
@@ -2839,6 +2837,7 @@ function initMenuModule() {
 // ── Sous-onglets ────────────────────────────────────────────
 function switchMenuTab(tab) {
   _menuTab = tab;
+  if(tab === 'week') { typeof renderWeek !== 'undefined' && renderWeek(); }
   ['week','recipes','nutri'].forEach(t => {
     const btn = document.getElementById('mtab-'+t);
     const panel = document.getElementById('menuPanel'+t.charAt(0).toUpperCase()+t.slice(1));
@@ -3485,8 +3484,35 @@ function saveBf(day) {
 
 
 
-// ── Render day detail ─────────────────────────────────────────
+// ── Week constants ────────────────────────────────────────────
+const DAYS = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
+window.DAYS = DAYS;
 let selectedDay = new Date().getDay() || 7;
+
+function renderWeek() {
+  const scroll = document.getElementById('weekScroll');
+  if(!scroll) return;
+  const todayNum = new Date().getDay() || 7;
+  scroll.innerHTML = DAYS.map((d, i) => {
+    const dn = i + 1;
+    const menu = state.weekMenu[dn];
+    const isSel = dn === selectedDay;
+    const qualColor = menu && menu.quality === 'good' ? 'var(--gn)' : menu && menu.quality === 'warn' ? 'var(--yl)' : 'var(--bl)';
+    const bText = menu && menu.b ? menu.b : '';
+    const bEmoji = bText ? (Array.from(bText)[0] || '🍽️') : '➕';
+    const lText = menu && menu.l ? menu.l : '';
+    const lShort = lText.replace(/^.{1,2}\s/, '').split(' ').slice(0,2).join(' ') || (menu ? 'Planifié' : 'Vide');
+    return '<div class="dc' + (dn===todayNum?' tod':'') + (isSel?' sel':'') + '" onclick="selectDay(' + dn + ')">'
+      + (menu ? '<div class="dc-quality" style="background:' + qualColor + ';"></div>' : '')
+      + '<div class="dc-lb">' + d + '</div>'
+      + '<div class="dc-em">' + bEmoji + '</div>'
+      + '<div class="dc-ml">' + lShort + '</div>'
+      + '</div>';
+  }).join('');
+  renderDayDetail();
+}
+
+// ── Render day detail ─────────────────────────────────────────
 
 function selectDay(d) {
   selectedDay = d;
@@ -3601,6 +3627,117 @@ function renderDayDetail() {
     </div>
   </div>`;
 }
+
+
+function applyAIMenuResult(data) {
+  if(!data.days) return;
+  data.days.forEach((d,i)=>{
+    const dn=i+1;
+    state.weekMenu[dn]={
+      b:(d.breakfast?.emoji||'🍽️')+' '+(d.breakfast?.name||''),
+      l:(d.lunch?.emoji||'🍽️')+' '+(d.lunch?.name||''),
+      d:(d.dinner?.emoji||'🍽️')+' '+(d.dinner?.name||''),
+      snack:d.snack?(d.snack.emoji||'🍎')+' '+(d.snack.name||''):null,
+      nutri:{kcal:d.total_kcal,prot:d.prot,carb:d.carb,fat:d.fat},
+      quality:d.quality||'ok',
+      tip:d.tip||'',
+      raw:d,
+    };
+  });
+  saveWeekMenu();
+  renderWeek();
+  renderDayDetail();
+  // Show summary
+  const zone=document.getElementById('aiMenuResultZone');
+  if(zone) {
+    zone.innerHTML=`<div class="ai-menu-result">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+        <span style="font-size:1.2rem;">🤖</span>
+        <div><div style="font-weight:900;font-size:.9rem;">Menu IA généré ✅</div>
+        <div style="font-size:.72rem;color:var(--tx2);">${data.summary||'7 jours personnalisés'} · ~${data.avg_kcal||'?'} kcal/j moy.</div></div>
+      </div>
+      ${data.days.slice(0,3).map(d=>`
+        <div class="ai-menu-day">
+          <div class="ai-menu-day-title">📅 ${d.day} <span style="font-size:.65rem;font-weight:700;color:${d.quality==='good'?'var(--gn)':d.quality==='warn'?'var(--yl)':'var(--bl)'};">● ${d.total_kcal||'?'} kcal</span></div>
+          <div class="ai-meal-row"><span class="ai-meal-label">Matin</span><span class="ai-meal-content">${d.breakfast?.emoji||''} ${d.breakfast?.name||''}</span></div>
+          <div class="ai-meal-row"><span class="ai-meal-label">Midi</span><span class="ai-meal-content">${d.lunch?.emoji||''} ${d.lunch?.name||''}</span></div>
+          <div class="ai-meal-row"><span class="ai-meal-label">Soir</span><span class="ai-meal-content">${d.dinner?.emoji||''} ${d.dinner?.name||''}</span></div>
+          ${d.tip?`<div style="font-size:.68rem;color:var(--ac);margin-top:4px;">💡 ${d.tip}</div>`:''}
+        </div>`).join('')}
+      <div style="text-align:center;font-size:.72rem;color:var(--tx2);padding-top:6px;">↓ Voir les 7 jours dans le calendrier</div>
+    </div>`;
+  }
+  showToast('✨','Menu IA généré !','7 jours personnalisés et équilibrés');
+}
+
+
+function applyDemoMenu(diet) {
+  const demos={
+    omnivore:[
+      {b:'☕ Café + toast avocat œuf poché',l:'🥗 Salade César poulet parmesan',d:'🍝 Spaghetti bolognaise maison',sn:'🍎 Pomme + amandes',kcal:1820,prot:98,carb:195,fat:62,q:'good',tip:'Journée idéalement équilibrée'},
+      {b:'🥣 Porridge avoine banane miel',l:'🍱 Bowl saumon quinoa avocat',d:'🍛 Curry de poulet lait de coco',sn:'🍶 Yaourt grec myrtilles',kcal:1890,prot:92,carb:205,fat:60,q:'good',tip:'Riche en oméga-3'},
+      {b:'🍳 Omelette 3 œufs tomates',l:'🥙 Wrap poulet légumes grillés',d:'🥘 Ratatouille riz basmati',sn:'🫐 Myrtilles + noix cajou',kcal:1750,prot:85,carb:180,fat:58,q:'ok',tip:'Bonne journée végétale'},
+      {b:'🥐 Croissant + jus orange pressé',l:'🍲 Soupe lentilles corail naan',d:'🥩 Steak haché purée maison',sn:'🧀 Fromage blanc',kcal:1950,prot:95,carb:215,fat:65,q:'ok',tip:'Attention glucides élevés'},
+      {b:'🫐 Smoothie bowl acaï granola',l:'🍜 Ramen légumes œuf mollet',d:'🍕 Pizza maison mozza roquette',sn:'🥜 Beurre cacahuète galette riz',kcal:1980,prot:78,carb:245,fat:72,q:'warn',tip:'Plaisir du vendredi !'},
+      {b:'🥞 Pancakes complets sirop érable',l:'🥗 Salade niçoise thon',d:'🦐 Crevettes sautées riz cantonais',sn:'🍊 Oranges',kcal:1860,prot:88,carb:210,fat:62,q:'good',tip:'Fruits de mer bénéfiques'},
+      {b:'🍞 Toast avocat tomates cerises',l:'🥘 Couscous royal traditionnel',d:'🍗 Rôti de poulet légumes rôtis',sn:'🍫 Carré chocolat noir 70%',kcal:1920,prot:96,carb:200,fat:65,q:'good',tip:'Dimanche en famille 🏡'},
+    ],
+    veg:[
+      {b:'🥣 Granola lait végétal fruits',l:'🥗 Salade quinoa feta grenade',d:'🍄 Risotto champignons parmesan',sn:'🍎 Pomme amandes',kcal:1780,prot:72,carb:205,fat:62,q:'good'},
+      {b:'🍳 Omelette épinards chèvre',l:'🧆 Falafel houmous pita',d:'🥘 Curry tofu patate douce',sn:'🍶 Yaourt grec miel',kcal:1840,prot:68,carb:215,fat:60,q:'good'},
+      {b:'🫐 Smoothie épinards banane',l:'🍝 Pâtes pesto basilic parmesan',d:'🥗 Salade de lentilles beluga',sn:'🌰 Dattes amandes',kcal:1720,prot:65,carb:198,fat:55,q:'ok'},
+      {b:'🥐 Tartine beurre confiture bio',l:'🌮 Tacos haricots noirs guac',d:'🍆 Moussaka végétarienne',sn:'🧀 Fromage blanc',kcal:1860,prot:70,carb:220,fat:62,q:'ok'},
+      {b:'🥞 Pancakes myrtilles érable',l:'🍜 Soupe miso tofu wakamé',d:'🫑 Ratatouille riz complet',sn:'🍫 Chocolat noir noix',kcal:1790,prot:62,carb:210,fat:58,q:'ok'},
+      {b:'🍓 Açaï bowl granola',l:'🥗 Salade betterave chèvre noix',d:'🍕 Pizza végétarienne mozzarella',sn:'🍊 Mandarine',kcal:1880,prot:68,carb:225,fat:65,q:'warn'},
+      {b:'🍞 Toast avocat œuf bio',l:'🥘 Dhal lentilles corail naan',d:'🥦 Gratin brocoli comté',sn:'🫐 Myrtilles',kcal:1820,prot:75,carb:205,fat:60,q:'good'},
+    ],
+    vegan:[
+      {b:'🫐 Smoothie bowl spiruline',l:'🥗 Buddha bowl houmous',d:'🍛 Dal lentilles corail',sn:'🌰 Noix mélangées',kcal:1750,prot:68,carb:210,fat:58,q:'good'},
+      {b:'🥣 Porridge lait coco chia',l:'🧆 Falafel taboulé pita',d:'🥕 Curry légumes coco',sn:'🍌 Banane beurre amande',kcal:1820,prot:62,carb:225,fat:60,q:'good'},
+      {b:'🍞 Toast avocat tomates',l:'🍝 Pâtes tomate basilic',d:'🥘 Wok tofu légumes',sn:'🍎 Pomme',kcal:1680,prot:58,carb:215,fat:52,q:'ok'},
+    ],
+    pesc:[
+      {b:'☕ Café toast sardines avocat',l:'🐟 Salade niçoise thon',d:'🦐 Crevettes sautées riz',sn:'🍊 Orange',kcal:1820,prot:95,carb:185,fat:60,q:'good'},
+      {b:'🥣 Porridge miel fruits',l:'🍱 Bowl saumon quinoa',d:'🐟 Cabillaud vapeur légumes',sn:'🫐 Myrtilles',kcal:1780,prot:88,carb:190,fat:58,q:'good'},
+      {b:'🍳 Omelette saumon fumé',l:'🥗 Salade César saumon',d:'🦐 Gambas thaïlandaises',sn:'🍶 Yaourt',kcal:1850,prot:98,carb:180,fat:65,q:'good'},
+    ],
+    keto:[
+      {b:'🍳 Œufs brouillés bacon avocat',l:'🥗 Salade saumon avocat œuf',d:'🥩 Entrecôte haricots beurre',sn:'🧀 Gouda',kcal:1750,prot:108,carb:22,fat:138,q:'good'},
+      {b:'☕ Café bulletproof œufs',l:'🐟 Saumon crème épinards',d:'🍗 Poulet parmesan courgettes',sn:'🌰 Noix macadamia',kcal:1820,prot:102,carb:20,fat:145,q:'good'},
+      {b:'🥚 Omelette fromage épinards',l:'🥗 Salade César (sans croutons)',d:'🥩 Steak haché salade',sn:'🥑 Avocat citron',kcal:1700,prot:98,carb:18,fat:132,q:'ok'},
+    ],
+    gluten:[
+      {b:'🥣 Flocons de riz lait fruits',l:'🥗 Salade riz poulet avocat',d:'🥔 Gratin quinoa légumes',sn:'🍎 Pomme noix',kcal:1780,prot:82,carb:195,fat:62,q:'good'},
+      {b:'🍳 Omelette jambon fromage',l:'🍛 Curry riz saumon',d:'🥩 Steak légumes vapeur',sn:'🍶 Yaourt grec',kcal:1820,prot:95,carb:185,fat:65,q:'good'},
+      {b:'🫐 Smoothie bowl chia',l:'🥗 Salade lentilles thon',d:'🐟 Pavé saumon riz pilaf',sn:'🌰 Amandes dattes',kcal:1750,prot:88,carb:200,fat:58,q:'good'},
+    ]
+  };
+  const pool = demos[diet]||demos.omnivore;
+  const DAYS_NAMES=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche'];
+  pool.forEach((d,i)=>{
+    state.weekMenu[i+1]={
+      b:d.b, l:d.l, d:d.d, snack:d.sn||null,
+      nutri:{kcal:d.kcal,prot:d.prot,carb:d.carb,fat:d.fat},
+      quality:d.q||'ok', tip:d.tip||'',
+    };
+  });
+  // Fill remaining days if pool shorter
+  for(let i=pool.length;i<7;i++) {
+    const src=pool[i%pool.length];
+    state.weekMenu[i+1]={b:src.b,l:src.l,d:src.d,snack:src.sn||null,nutri:{kcal:src.kcal,prot:src.prot,carb:src.carb,fat:src.fat},quality:src.q||'ok'};
+  }
+  saveWeekMenu(); renderWeek(); renderDayDetail();
+  const zone=document.getElementById('aiMenuResultZone');
+  if(zone) zone.innerHTML=`<div class="ai-menu-result" style="background:linear-gradient(135deg,rgba(255,107,107,.06),rgba(255,142,83,.04));border:1px solid rgba(255,107,107,.15);">
+    <div style="display:flex;align-items:center;gap:8px;">
+      <span style="font-size:1.2rem;">📋</span>
+      <div><div style="font-weight:900;font-size:.88rem;">Menu démonstration</div>
+      <div style="font-size:.7rem;color:var(--tx2);">Configurez votre clé API Claude pour un menu IA personnalisé</div></div>
+    </div>
+  </div>`;
+}
+
+// ── Semaine ─────────────────────────────────────────────────
 
 
 function deleteSnackFromDay(day) {

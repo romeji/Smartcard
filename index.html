@@ -3009,7 +3009,7 @@ Exactement 7 jours. Valeurs nutritionnelles réalistes et cohérentes.`;
     const resp=await fetch('https://api.anthropic.com/v1/messages',{
       method:'POST',
       headers:{'Content-Type':'application/json','x-api-key':ANTHROPIC_KEY,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-      body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:3000,messages:[{role:'user',content:prompt}]})
+      body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:4000,messages:[{role:'user',content:prompt}]})
     });
     if(!resp.ok) throw new Error(resp.status);
     const data=await resp.json();
@@ -3162,7 +3162,7 @@ async function searchWithClaude(query) {
 
   const dietLabel = ({"omnivore":"omnivore","veg":"végétarien","vegan":"vegan","pesc":"pescétarien","gluten":"sans gluten","keto":"keto"})[diet] || diet;
   const prompt = "Tu es un chef cuisinier français expert. L'utilisateur cherche : \"" + query + "\".\n\n"
-    + "Génère 6 recettes en FRANÇAIS complet. Régime: " + dietLabel + "." + (cals ? " Environ " + cals + " kcal/jour." : "") + (allergies ? " Sans: " + allergies + "." : "") + "\n\n"
+    + "Génère 4 recettes en FRANÇAIS complet (concises, max 5 ingrédients, 3 étapes). Régime: " + dietLabel + "." + (cals ? " Environ " + cals + " kcal/jour." : "") + (allergies ? " Sans: " + allergies + "." : "") + "\n\n"
     + "Réponds UNIQUEMENT en JSON valide (pas de markdown) :\n"
     + '{"recipes":[{"name":"Nom recette","emoji":"🍽️","time":30,"portions":4,"kcal":450,"prot":28,"carb":42,"fat":16,"diet":"omnivore","description":"Description","ingredients":[{"name":"Ingrédient","qty":"200","unit":"g"}],"instructions":["Étape 1.","Étape 2."]}]}';
   try {
@@ -3176,14 +3176,18 @@ async function searchWithClaude(query) {
       },
       body: JSON.stringify({
         model: "claude-sonnet-4-20250514",
-        max_tokens: 3000,
+        max_tokens: 4000,
         messages: [{ role: "user", content: prompt }]
       })
     });
 
     const data = await resp.json();
     const text = (data.content || []).find(x => x.type === "text")?.text || "";
-    const cleaned = text.replace(/```json|```/g, "").trim();
+    // Robust extraction: find the JSON object even if Claude wraps it
+    const jsonStart = text.indexOf("{");
+    const jsonEnd = text.lastIndexOf("}");
+    if(jsonStart === -1 || jsonEnd === -1) throw new Error("Pas de JSON dans la réponse");
+    const cleaned = text.slice(jsonStart, jsonEnd + 1);
     const parsed = JSON.parse(cleaned);
     const recipes = (parsed.recipes || []).map((r, i) => ({
       ...r,

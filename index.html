@@ -4140,62 +4140,362 @@ function renderMacroRings(macros) {
 function renderNutriTab() { renderNutriPanel(); } // alias
 
 
+
+// ════════════════════════════════════════════════════════════
+// CRÉER UNE RECETTE
+// ════════════════════════════════════════════════════════════
+
+function openCreateRecipeModal() {
+  const existing = document.getElementById('createRecipeModal');
+  if(existing) existing.remove();
+  
+  const modal = document.createElement('div');
+  modal.className = 'overlay on';
+  modal.id = 'createRecipeModal';
+  modal.onclick = e => { if(e.target===modal) modal.remove(); };
+  
+  modal.innerHTML = `<div class="modal">
+    <div class="modal-hd">
+      <div class="modal-ti">✏️ Créer ma recette</div>
+      <button class="btn ico" onclick="document.getElementById('createRecipeModal').remove()">✕</button>
+    </div>
+    <div style="display:flex;gap:8px;">
+      <div class="a-field" style="flex:2;">
+        <label class="a-lbl">Nom *</label>
+        <input class="inp" id="crName" placeholder="Ex: Gratin dauphinois">
+      </div>
+      <div class="a-field" style="flex:1;">
+        <label class="a-lbl">Emoji</label>
+        <input class="inp" id="crEmoji" value="🍽️" style="font-size:1.2rem;">
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;">
+      <div class="a-field" style="flex:1;">
+        <label class="a-lbl">⏱ Temps (min)</label>
+        <input class="inp" id="crTime" type="number" value="30">
+      </div>
+      <div class="a-field" style="flex:1;">
+        <label class="a-lbl">👥 Portions</label>
+        <input class="inp" id="crPortions" type="number" value="4">
+        <div id="crAutoKcal" style="font-size:.65rem;color:var(--ac);margin-top:3px;font-weight:700;"></div>
+      </div>
+    </div>
+    <div class="a-field">
+      <label class="a-lbl">🍽️ Type de repas</label>
+      <div style="display:flex;gap:6px;margin-top:4px;flex-wrap:wrap;">
+        <button class="meal-type-btn on" id="crMt-l" onclick="this.classList.toggle('on')">☀️ Déjeuner</button>
+        <button class="meal-type-btn on" id="crMt-d" onclick="this.classList.toggle('on')">🌙 Dîner</button>
+        <button class="meal-type-btn" id="crMt-snack" onclick="this.classList.toggle('on')">🍎 Collation</button>
+      </div>
+    </div>
+    <div class="a-field">
+      <label class="a-lbl">📋 Ingrédients</label>
+      <div id="crIngrList" style="display:flex;flex-direction:column;gap:5px;margin-top:4px;max-height:160px;overflow-y:auto;"></div>
+      <div style="display:flex;gap:6px;margin-top:6px;position:relative;">
+        <input class="inp" id="crIngrInput" placeholder="🔍 Chercher un ingrédient..."
+          style="flex:1;" oninput="crSearchIngr(this.value)"
+          onkeydown="if(event.key==='Enter'){event.preventDefault();crAddIngrFromInput();}">
+        <select class="inp" id="crIngrQty" style="width:80px;padding:8px 4px;">
+          <option>50g</option><option>100g</option><option selected>150g</option><option>200g</option>
+          <option>250g</option><option>300g</option><option>1 u.</option><option>2 u.</option><option>1 cs</option><option>1 cc</option>
+        </select>
+        <button class="btn acc sm" onclick="crAddIngrFromInput()" style="flex-shrink:0;padding:9px 12px;">+</button>
+        <div id="crIngrAC" style="display:none;position:absolute;left:0;right:90px;top:44px;background:var(--bg);border:1px solid var(--bg2);border-radius:var(--rs);box-shadow:0 8px 24px rgba(0,0,0,.15);z-index:200;max-height:150px;overflow-y:auto;"></div>
+      </div>
+    </div>
+    <div class="a-field">
+      <label class="a-lbl">👨‍🍳 Instructions (optionnel)</label>
+      <textarea class="inp" id="crInstructions" placeholder="1. Préchauffer le four...&#10;2. Mélanger les ingrédients..." style="min-height:70px;resize:vertical;"></textarea>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:8px;">
+      <button class="btn acc" onclick="saveCustomRecipeFull()" style="flex:1;padding:13px;font-weight:800;">💾 Enregistrer</button>
+      <button class="btn" onclick="document.getElementById('createRecipeModal').remove()" style="flex:1;padding:13px;">Annuler</button>
+    </div>
+  </div>`;
+  
+  window._crIngredients = [];
+  document.body.appendChild(modal);
+  setTimeout(() => crRenderIngrList(), 50);
+}
+
+// Autocomplete for recipe ingredient creation
+function crSearchIngr(q) {
+  const ac = document.getElementById('crIngrAC');
+  if(!ac) return;
+  if(!q || q.length < 1) { ac.style.display='none'; return; }
+  const matches = (typeof PRODUCTS!=='undefined' ? PRODUCTS : []).filter(p => p.name.toLowerCase().includes(q.toLowerCase())).slice(0,8);
+  if(!matches.length) { ac.style.display='none'; return; }
+  ac.style.display = 'block';
+  ac.innerHTML = '';
+  matches.forEach(p => {
+    const div = document.createElement('div');
+    div.style.cssText = 'padding:9px 14px;cursor:pointer;border-bottom:1px solid var(--bg2);display:flex;align-items:center;gap:8px;font-size:.82rem;';
+    div.innerHTML = '<span style="font-size:1.1rem;">'+(p.emoji||'🛍️')+'</span><span style="font-weight:700;">'+p.name+'</span>';
+    div.onclick = () => { crSelectIngr(p.name); document.getElementById('crIngrAC').style.display='none'; };
+    ac.appendChild(div);
+  });
+}
+
+function crSelectIngr(name) {
+  const inp = document.getElementById('crIngrInput');
+  if(inp) inp.value = name;
+}
+
+function crAddIngrFromInput() {
+  const inp = document.getElementById('crIngrInput');
+  const qtyEl = document.getElementById('crIngrQty');
+  const name = inp?.value?.trim();
+  const qty = qtyEl?.value || '100g';
+  if(!name) return;
+  const product = (typeof PRODUCTS!=='undefined' ? PRODUCTS : []).find(p => p.name.toLowerCase()===name.toLowerCase());
+  const emoji = product?.emoji || '🛍️';
+  if(!window._crIngredients) window._crIngredients = [];
+  window._crIngredients.push({name, qty, emoji});
+  inp.value = '';
+  document.getElementById('crIngrAC').style.display = 'none';
+  crRenderIngrList();
+  crCalcAutoKcal();
+}
+
+function crRenderIngrList() {
+  const el = document.getElementById('crIngrList');
+  if(!el) return;
+  const ingrs = window._crIngredients || [];
+  if(!ingrs.length) { el.innerHTML = '<div style="font-size:.75rem;color:var(--tx3);text-align:center;padding:6px;">Ajoutez des ingrédients ci-dessous</div>'; return; }
+  el.innerHTML = ingrs.map((ing,i) =>
+    '<div style="display:flex;align-items:center;gap:6px;padding:7px 10px;background:var(--bg);border-radius:var(--rs);">'
+    + '<span>'+ing.emoji+'</span>'
+    + '<span style="flex:1;font-size:.82rem;font-weight:700;">'+ing.name+'</span>'
+    + '<span style="font-size:.72rem;color:var(--tx2);">'+ing.qty+'</span>'
+    + '<button onclick="window._crIngredients.splice('+i+',1);crRenderIngrList();crCalcAutoKcal();" style="background:none;border:none;cursor:pointer;color:var(--tx3);font-size:.9rem;">✕</button>'
+    + '</div>'
+  ).join('');
+}
+
+const NUTRI_APPROX = {"Lait":{kcal:46,p:3.3,c:4.9,f:1.5},"Yaourt":{kcal:59,p:3.5,c:4.9,f:3},"Fromage":{kcal:350,p:25,c:1,f:28},"Beurre":{kcal:717,p:0.7,c:0.6,f:81},"Oeuf":{kcal:155,p:13,c:1.1,f:11},"Poulet":{kcal:165,p:31,c:0,f:3.6},"Boeuf":{kcal:250,p:26,c:0,f:15},"Porc":{kcal:242,p:27,c:0,f:14},"Saumon":{kcal:208,p:20,c:0,f:13},"Thon":{kcal:116,p:26,c:0,f:1},"Pâtes":{kcal:157,p:5.5,c:31,f:0.9},"Riz":{kcal:130,p:2.7,c:28,f:0.3},"Pain":{kcal:265,p:9,c:49,f:3.2},"Farine":{kcal:364,p:10,c:76,f:1},"Pomme de terre":{kcal:77,p:2,c:17,f:0.1},"Carotte":{kcal:41,p:0.9,c:10,f:0.2},"Tomate":{kcal:18,p:0.9,c:3.9,f:0.2},"Champignon":{kcal:22,p:3.1,c:3.3,f:0.3},"Avocat":{kcal:160,p:2,c:9,f:15},"Noix":{kcal:654,p:15,c:14,f:65},"Huile":{kcal:884,p:0,c:0,f:100},"Sucre":{kcal:400,p:0,c:100,f:0},"Chocolat":{kcal:546,p:5,c:60,f:31}};
+
+function crCalcAutoKcal() {
+  const ingrs = window._crIngredients || [];
+  const portions = parseInt(document.getElementById('crPortions')?.value)||4;
+  let total = 0;
+  ingrs.forEach(ing => {
+    const key = Object.keys(NUTRI_APPROX).find(k => ing.name.toLowerCase().includes(k.toLowerCase()));
+    if(key) {
+      const grams = parseFloat(ing.qty)||100;
+      total += NUTRI_APPROX[key].kcal * grams / 100;
+    }
+  });
+  const perPortion = Math.round(total/portions);
+  const el = document.getElementById('crAutoKcal');
+  if(el && perPortion > 0) el.textContent = '🔥 ~'+perPortion+' kcal/portion';
+}
+
+async function saveCustomRecipeFull() {
+  const name = document.getElementById('crName')?.value?.trim();
+  const ingrs = window._crIngredients || [];
+  if(!name) { showToast('⚠️','Incomplet','Entrez un nom de recette.'); return; }
+  if(!ingrs.length) { showToast('⚠️','Incomplet','Ajoutez au moins un ingrédient.'); return; }
+  
+  const emoji = document.getElementById('crEmoji')?.value?.trim() || '🍽️';
+  const time = parseInt(document.getElementById('crTime')?.value)||30;
+  const portions = parseInt(document.getElementById('crPortions')?.value)||4;
+  const instrRaw = document.getElementById('crInstructions')?.value?.trim()||'';
+  const mealTypes = ['l','d','snack'].filter(mt => document.getElementById('crMt-'+mt)?.classList.contains('on'));
+  
+  // Auto-calc kcal
+  let totalKcal = 0;
+  ingrs.forEach(ing => {
+    const key = Object.keys(NUTRI_APPROX).find(k => ing.name.toLowerCase().includes(k.toLowerCase()));
+    if(key) totalKcal += NUTRI_APPROX[key].kcal * (parseFloat(ing.qty)||100) / 100;
+  });
+  const kcal = Math.round(totalKcal/portions);
+  
+  const recipe = {
+    id: 'custom_'+Date.now(),
+    emoji, name, time, portions, kcal,
+    diet: 'omnivore', mealTypes: mealTypes.length ? mealTypes : ['l','d'],
+    ingredients: ingrs.map(i => ({name:i.name, qty:i.qty, unit:'', emoji:i.emoji})),
+    instructions: instrRaw ? instrRaw.split('\n').filter(l=>l.trim()).map(l=>l.replace(/^\d+\.\s*/,'')) : [],
+    source: 'custom', createdAt: Date.now()
+  };
+  
+  state.customRecipes.unshift(recipe);
+  await saveState();
+  document.getElementById('createRecipeModal')?.remove();
+  showToast('✅', emoji+' '+name, kcal ? kcal+' kcal/portion' : 'Recette créée !');
+  if(typeof renderRecipesGrid === 'function') renderRecipesGrid();
+}
+
 function openMealEdit(day, slot) {
   if(slot === 'b') { openBreakfastBuilder(day); return; }
   if(slot === 'snack') { openSnackBuilder(day); return; }
 
-  const SLOT = {l:{icon:'☀️',label:'Déjeuner'},d:{icon:'🌙',label:'Dîner'}};
+  const SLOT = {l:{icon:'☀️',label:'Déjeuner'}, d:{icon:'🌙',label:'Dîner'}};
   const s = SLOT[slot] || {icon:'🍽️',label:'Repas'};
   const menu = state.weekMenu[day] || {};
   const current = menu[slot] || '';
-  const dayName = (window.DAYS||['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'])[day-1]||'Jour '+day;
-  const allRec = getAllRecipes();
+  const dayName = (DAYS||['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'])[day-1] || 'Jour '+day;
 
   const modal = document.getElementById('mealEditModal');
   if(!modal) return;
 
+  // Pre-build recipe list HTML
+  const allRec = getAllRecipes().filter(r => !r.mealTypes || r.mealTypes.includes(slot));
+  const recListHtml = allRec.length
+    ? allRec.slice(0,30).map(r => buildRecipePickHtml(r, day, slot)).join('')
+    : '<div style="text-align:center;padding:20px;color:var(--tx3);font-size:.8rem;">Aucune recette — <button class=\"btn acc sm\" style=\"margin-top:8px;\" onclick=\"closeMealEdit();openCreateRecipeModal()\">+ Créer</button></div>';
+
   modal.innerHTML = `
     <div class="mhdl"></div>
-    <div class="modal-hd" style="margin-bottom:12px;">
+    <div class="modal-hd" style="margin-bottom:10px;">
       <div>
         <div class="modal-ti">${s.icon} ${s.label}</div>
-        <div class="modal-su">${dayName}</div>
+        <div class="modal-su">${dayName}${current ? ' · <span style="color:var(--ac);">'+current+'</span>' : ''}</div>
       </div>
       <button class="btn ico" onclick="closeMealEdit()">✕</button>
     </div>
 
-    <!-- Barre de recherche unique — recherche dans MES recettes -->
-    <div style="position:relative;margin-bottom:10px;">
-      <input class="inp" id="mealRecipeSearch"
-        placeholder="🔍 Chercher dans mes recettes..."
-        oninput="meLiveSearch(this.value, ${day}, '${slot}')"
-        style="width:100%;padding-right:36px;">
-      <span style="position:absolute;right:12px;top:50%;transform:translateY(-50%);font-size:.75rem;color:var(--tx3);">Entrée pour confirmer</span>
+    <!-- Onglets -->
+    <div style="display:flex;gap:0;background:var(--bg2);border-radius:var(--rs);padding:3px;margin-bottom:12px;">
+      <button id="ometab-r" onclick="omeSwitchTab('r')" style="flex:1;padding:8px 4px;border-radius:var(--rs);border:none;font-size:.76rem;font-weight:800;cursor:pointer;background:var(--ac);color:#fff;">📋 Mes recettes</button>
+      <button id="ometab-s" onclick="omeSwitchTab('s')" style="flex:1;padding:8px 4px;border-radius:var(--rs);border:none;font-size:.76rem;font-weight:700;cursor:pointer;background:transparent;color:var(--tx2);">🌐 Rechercher</button>
+      <button id="ometab-f" onclick="omeSwitchTab('f')" style="flex:1;padding:8px 4px;border-radius:var(--rs);border:none;font-size:.76rem;font-weight:700;cursor:pointer;background:transparent;color:var(--tx2);">✍️ Libre</button>
     </div>
 
-    <!-- Résultats filtrés -->
-    <div id="mealRecipeList" style="max-height:280px;overflow-y:auto;display:flex;flex-direction:column;gap:5px;margin-bottom:12px;">
-      ${renderMealRecipePicks(allRec, day, slot, '')}
-    </div>
-
-    <!-- Saisie libre -->
-    <div style="margin-bottom:12px;">
-      <div style="font-size:.65rem;font-weight:700;color:var(--tx3);margin-bottom:5px;text-transform:uppercase;letter-spacing:.8px;">Ou saisir un nom libre</div>
-      <div style="display:flex;gap:6px;">
-        <input class="inp" id="mealFreeInput" value="${current.replace(/"/g,'&quot;')}" placeholder="Ex: Quiche lorraine maison..." style="flex:1;font-size:.85rem;">
-        <button class="btn acc" onclick="saveMealFree(${day},'${slot}')" style="padding:10px 14px;">✓</button>
+    <!-- Panel: Mes recettes -->
+    <div id="omepanel-r">
+      <input class="inp" id="omeSearch" placeholder="🔍 Chercher : pâtes, poulet, salade..."
+        oninput="omeFilter(this.value, ${day}, '${slot}')"
+        style="margin-bottom:8px;width:100%;" autocomplete="off">
+      <div id="omeRecipeList" style="max-height:280px;overflow-y:auto;display:flex;flex-direction:column;gap:5px;">
+        ${recListHtml}
       </div>
     </div>
 
-    <div style="display:flex;gap:8px;">
-      <button class="btn" style="flex:1;" onclick="clearMealSlot(${day},'${slot}')">🗑️ Vider</button>
-      <button class="btn" style="flex:1;" onclick="closeMealEdit()">Annuler</button>
+    <!-- Panel: Recherche TheMealDB -->
+    <div id="omepanel-s" style="display:none;">
+      <div style="background:rgba(0,181,184,.1);border-radius:var(--rs);padding:8px 12px;margin-bottom:10px;font-size:.72rem;">
+        🌐 Recherche TheMealDB — recettes du monde entier
+      </div>
+      <div style="display:flex;gap:6px;margin-bottom:8px;">
+        <input class="inp" id="omeDbSearch" placeholder="Poulet, Saumon, Pâtes..."
+          style="flex:1;" onkeydown="if(event.key==='Enter')omeSearchMealDB(${day},'${slot}')">
+        <button class="btn acc sm" onclick="omeSearchMealDB(${day},'${slot}')" style="flex-shrink:0;padding:10px 14px;">🔍</button>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px;">
+        ${['Poulet','Boeuf','Saumon','Pâtes','Soupe','Légumes','Riz','Oeufs'].map(q=>
+          `<button class="spoon-recipe-tag" onclick="document.getElementById('omeDbSearch').value='${q}';omeSearchMealDB(${day},'${slot}')" style="cursor:pointer;padding:5px 10px;">${q}</button>`
+        ).join('')}
+      </div>
+      <div id="omeDbResults" style="max-height:220px;overflow-y:auto;display:flex;flex-direction:column;gap:5px;"></div>
+    </div>
+
+    <!-- Panel: Saisie libre -->
+    <div id="omepanel-f" style="display:none;">
+      <div style="font-size:.75rem;color:var(--tx2);margin-bottom:10px;">Entrez n'importe quel nom de repas.</div>
+      <div style="display:flex;gap:6px;">
+        <input class="inp" id="omeFreeInput" value="${current.replace(/"/g,'&quot;')}"
+          placeholder="Ex: Quiche lorraine, Salade composée..." style="flex:1;">
+        <button class="btn acc" onclick="omeSaveFree(${day},'${slot}')" style="padding:10px 14px;font-weight:800;">✓</button>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:8px;margin-top:12px;">
+      <button class="btn" onclick="clearMealSlot(${day},'${slot}')" style="flex:1;padding:11px;">🗑️ Vider</button>
+      <button class="btn" onclick="closeMealEdit()" style="flex:1;padding:11px;">Annuler</button>
     </div>
   `;
 
   document.getElementById('mealEditOverlay').classList.add('on');
-  document.getElementById('mealRecipeSearch')?.focus();
+  window._omeDay = day;
+  window._omeSlot = slot;
+  setTimeout(() => document.getElementById('omeSearch')?.focus(), 100);
 }
+
+function buildRecipePickHtml(r, day, slot) {
+  const id = String(r.id||r.name).replace(/['"<>&]/g,'_');
+  const badge = r.source==='bookmark'?' ⭐':r.source==='custom'?' ✏️':'';
+  const meta = [r.time?'⏱ '+r.time+'min':'', r.kcal?'🔥'+r.kcal+' kcal':''].filter(Boolean).join(' · ');
+  const div = document.createElement('div');
+  div.className = 'meal-pick-item';
+  div.setAttribute('data-id', id);
+  div.setAttribute('data-day', day);
+  div.setAttribute('data-slot', slot);
+  div.innerHTML = '<span class="meal-pick-em">'+(r.emoji||'🍽️')+'</span>'
+    + '<div style="flex:1;min-width:0;">'
+    + '<div class="meal-pick-name">'+r.name+badge+'</div>'
+    + (meta ? '<div style="font-size:.62rem;color:var(--tx3);">'+meta+'</div>' : '')
+    + '</div>';
+  div.onclick = function() { selectRecipeForMeal(this.dataset.id, +this.dataset.day, this.dataset.slot); };
+  return div.outerHTML;
+}
+
+function omeSwitchTab(t) {
+  ['r','s','f'].forEach(x => {
+    const btn = document.getElementById('ometab-'+x);
+    const panel = document.getElementById('omepanel-'+x);
+    if(btn) { btn.style.background = x===t?'var(--ac)':'transparent'; btn.style.color = x===t?'#fff':'var(--tx2)'; btn.style.fontWeight = x===t?'800':'700'; }
+    if(panel) panel.style.display = x===t?'block':'none';
+  });
+  if(t==='s') setTimeout(()=>document.getElementById('omeDbSearch')?.focus(), 100);
+  if(t==='f') setTimeout(()=>document.getElementById('omeFreeInput')?.focus(), 100);
+  if(t==='r') setTimeout(()=>document.getElementById('omeSearch')?.focus(), 100);
+}
+
+function omeFilter(q, day, slot) {
+  const el = document.getElementById('omeRecipeList');
+  if(!el) return;
+  const all = getAllRecipes().filter(r => !r.mealTypes || r.mealTypes.includes(slot));
+  const filtered = q ? all.filter(r => r.name.toLowerCase().includes(q.toLowerCase())) : all;
+  if(!filtered.length) {
+    el.innerHTML = '<div style="text-align:center;padding:14px;color:var(--tx3);font-size:.8rem;">Aucune recette pour &laquo;'+q+'&raquo;</div>';
+    return;
+  }
+  el.innerHTML = filtered.slice(0,30).map(r => buildRecipePickHtml(r, day, slot)).join('');
+}
+
+async function omeSearchMealDB(day, slot) {
+  const q = document.getElementById('omeDbSearch')?.value?.trim();
+  if(!q) return;
+  const res = document.getElementById('omeDbResults');
+  if(res) res.innerHTML = '<div style="padding:10px;text-align:center;color:var(--tx2);font-size:.75rem;">🔄 Recherche...</div>';
+  try {
+    const qEn = typeof translateQueryToEnglish==='function' ? translateQueryToEnglish(q) : q;
+    const resp = await fetch('https://www.themealdb.com/api/json/v1/1/search.php?s='+encodeURIComponent(qEn));
+    const data = await resp.json();
+    let meals = data.meals || [];
+    if(!meals.length) {
+      const r2 = await fetch('https://www.themealdb.com/api/json/v1/1/filter.php?i='+encodeURIComponent(qEn));
+      const d2 = await r2.json();
+      meals = (d2.meals||[]).slice(0,8);
+    }
+    if(!meals.length) { if(res) res.innerHTML='<div style="text-align:center;padding:14px;color:var(--tx3);font-size:.8rem;">Aucun résultat</div>'; return; }
+    if(res) {
+      res.innerHTML = '';
+      meals.slice(0,8).forEach(m => {
+        const frName = typeof translateRecipeName==='function' ? translateRecipeName(m.strMeal) : m.strMeal;
+        const div = document.createElement('div');
+        div.className = 'meal-pick-item';
+        div.style.cssText = 'background:rgba(0,181,184,.07);border:1px solid rgba(0,181,184,.15);';
+        div.innerHTML = (m.strMealThumb ? '<img src="'+m.strMealThumb+'/preview" style="width:44px;height:44px;border-radius:var(--rs);object-fit:cover;flex-shrink:0;" loading="lazy">' : '<span class="meal-pick-em">🌐</span>')
+          + '<div style="flex:1;min-width:0;"><div class="meal-pick-name">'+frName+'</div>'+(m.strCategory?'<div style="font-size:.62rem;color:var(--tx3);">'+m.strCategory+'</div>':'')+'</div>';
+        div.onclick = (function(id, name, d, s){ return function(){ selectMealDBForSlot(id, name, d, s); }; })(m.idMeal, frName, day, slot);
+        res.appendChild(div);
+      });
+    }
+  } catch(e) { if(res) res.innerHTML='<div style="text-align:center;padding:14px;color:var(--rd);font-size:.8rem;">Erreur réseau.</div>'; }
+}
+
+function omeSaveFree(day, slot) {
+  const val = document.getElementById('omeFreeInput')?.value?.trim();
+  if(!val) return;
+  if(!state.weekMenu[day]) state.weekMenu[day] = {};
+  state.weekMenu[day][slot] = val;
+  saveWeekMenu(); renderWeek && renderWeek(); renderDayDetail && renderDayDetail();
+  closeMealEdit();
+  showToast('✅', val, 'Menu mis à jour !');
+}
+
 
 function renderMealRecipePicks(recipes, day, slot, query) {
   // Filter by slot meal type + query

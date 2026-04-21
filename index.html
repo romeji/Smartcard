@@ -3163,8 +3163,9 @@ async function searchWithClaude(query) {
   const dietLabel = ({"omnivore":"omnivore","veg":"végétarien","vegan":"vegan","pesc":"pescétarien","gluten":"sans gluten","keto":"keto"})[diet] || diet;
   const prompt = "Tu es un chef cuisinier français expert. L'utilisateur cherche : \"" + query + "\".\n\n"
     + "Génère 4 recettes en FRANÇAIS complet (concises, max 5 ingrédients, 3 étapes). Régime: " + dietLabel + "." + (cals ? " Environ " + cals + " kcal/jour." : "") + (allergies ? " Sans: " + allergies + "." : "") + "\n\n"
-    + "Réponds UNIQUEMENT en JSON valide (pas de markdown) :\n"
-    + '{"recipes":[{"name":"Nom recette","emoji":"🍽️","time":30,"portions":4,"kcal":450,"prot":28,"carb":42,"fat":16,"diet":"omnivore","description":"Description","ingredients":[{"name":"Ingrédient","qty":"200","unit":"g"}],"instructions":["Étape 1.","Étape 2."]}]}';
+    + "FORMAT DE RÉPONSE OBLIGATOIRE - JSON pur sans markdown:\n{"
+    + '"recipes":[{"name":"string","emoji":"string","time":30,"portions":4,"kcal":450,"prot":25,"carb":40,"fat":15,"description":"string","ingredients":[{"name":"string","qty":"100","unit":"g"}],"instructions":["Étape 1","Étape 2","Étape 3"]}]}\n'
+    + "Génère exactement 4 recettes dans ce format.";
   try {
     const resp = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -3181,14 +3182,32 @@ async function searchWithClaude(query) {
       })
     });
 
+    if(!resp.ok) {
+      const errBody = await resp.text();
+      throw new Error("API " + resp.status + ": " + errBody.slice(0,100));
+    }
+
     const data = await resp.json();
+    // Check for API-level error
+    if(data.error) throw new Error(data.error.message || JSON.stringify(data.error));
+    
     const text = (data.content || []).find(x => x.type === "text")?.text || "";
-    // Robust extraction: find the JSON object even if Claude wraps it
+    if(!text) throw new Error("Réponse vide de Claude");
+    
+    // Robust JSON extraction
     const jsonStart = text.indexOf("{");
     const jsonEnd = text.lastIndexOf("}");
-    if(jsonStart === -1 || jsonEnd === -1) throw new Error("Pas de JSON dans la réponse");
+    if(jsonStart === -1 || jsonEnd === -1) {
+      console.error("Raw Claude response:", text.slice(0,200));
+      throw new Error("JSON introuvable dans: " + text.slice(0,80));
+    }
     const cleaned = text.slice(jsonStart, jsonEnd + 1);
-    const parsed = JSON.parse(cleaned);
+    let parsed;
+    try { parsed = JSON.parse(cleaned); }
+    catch(pe) {
+      console.error("JSON parse failed:", cleaned.slice(0,200));
+      throw new Error("JSON invalide: " + pe.message);
+    }
     const recipes = (parsed.recipes || []).map((r, i) => ({
       ...r,
       id: "claude_" + Date.now() + "_" + i,
@@ -3245,7 +3264,8 @@ async function searchWithClaude(query) {
     grid.innerHTML = '<div style="text-align:center;padding:24px;color:var(--tx3);">' +
       '<div style="font-size:1.5rem;margin-bottom:8px;">⚠️</div>' +
       '<div style="font-size:.82rem;">Erreur de génération. Vérifiez votre connexion.</div>' +
-      '<div style="font-size:.72rem;margin-top:4px;">' + (e.message||"") + '</div></div>';
+      '<div style="font-size:.72rem;margin-top:4px;color:var(--rd);font-family:monospace;">' + (e.message||"") + '</div>'
+      + '<button class="btn acc sm" style="margin-top:12px;" onclick="searchWithClaude(document.getElementById(\'spoonSearchInp\').value)">🔄 Réessayer</button></div>';
   }
 }
 
@@ -4413,25 +4433,31 @@ function openMealEdit(day, slot) {
   document.getElementById('mealEditOverlay').classList.add('on');
   window._omeDay = day;
   window._omeSlot = slot;
-  setTimeout(() => document.getElementById('omeSearch')?.focus(), 100);
+  setTimeout(() => { document.getElementById('omeSearch')?.focus(); wireOmePicks('omeRecipeList'); }, 50);
 }
 
 function buildRecipePickHtml(r, day, slot) {
-  const id = String(r.id||r.name).replace(/['"<>&]/g,'_');
+  const id = String(r.id||r.name).replace(/['"<>&\s]/g,'_');
   const badge = r.source==='bookmark'?' ⭐':r.source==='custom'?' ✏️':'';
   const meta = [r.time?'⏱ '+r.time+'min':'', r.kcal?'🔥'+r.kcal+' kcal':''].filter(Boolean).join(' · ');
-  const div = document.createElement('div');
-  div.className = 'meal-pick-item';
-  div.setAttribute('data-id', id);
-  div.setAttribute('data-day', day);
-  div.setAttribute('data-slot', slot);
-  div.innerHTML = '<span class="meal-pick-em">'+(r.emoji||'🍽️')+'</span>'
+  // data attributes + delegated click (avoids quote escaping in onclick="")
+  return '<div class="meal-pick-item ome-pick" data-rid="'+id+'" data-day="'+day+'" data-slot="'+slot+'">'
+    + '<span class="meal-pick-em">'+(r.emoji||'🍽️')+'</span>'
     + '<div style="flex:1;min-width:0;">'
     + '<div class="meal-pick-name">'+r.name+badge+'</div>'
     + (meta ? '<div style="font-size:.62rem;color:var(--tx3);">'+meta+'</div>' : '')
-    + '</div>';
-  div.onclick = function() { selectRecipeForMeal(this.dataset.id, +this.dataset.day, this.dataset.slot); };
-  return div.outerHTML;
+    + '</div></div>';
+}
+
+// Event delegation for recipe picks — attached once to each list container
+function wireOmePicks(containerId) {
+  const el = document.getElementById(containerId);
+  if(!el) return;
+  el.onclick = function(e) {
+    const pick = e.target.closest('.ome-pick');
+    if(!pick) return;
+    selectRecipeForMeal(pick.dataset.rid, +pick.dataset.day, pick.dataset.slot);
+  };
 }
 
 function omeSwitchTab(t) {

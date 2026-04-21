@@ -3138,73 +3138,126 @@ function translateQueryToEnglish(query) {
 }
 
 async function searchSpoonacular(query) {
-  const rawQ = query || document.getElementById('spoonSearchInp')?.value?.trim();
+  const rawQ = query || document.getElementById("spoonSearchInp")?.value?.trim();
   if(!rawQ) return;
-  const q = translateQueryToEnglish(rawQ);
-  
-  const grid = document.getElementById('spoonResults');
+  // Use Claude to generate French recipes for any search query
+  await searchWithClaude(rawQ);
+}
+
+async function searchWithClaude(query) {
+  const grid = document.getElementById("spoonResults");
   if(!grid) return;
-  
-  // Show skeletons
-  grid.innerHTML = '<div class="spoon-grid">' + 
-    Array(4).fill('<div class="spoon-recipe"><div class="skel" style="height:130px;"></div><div style="padding:10px 12px;"><div class="skel" style="height:14px;margin-bottom:6px;"></div><div class="skel" style="height:10px;width:60%;"></div></div></div>').join('') +
-    '</div>';
-  
-  // Check cache
-  const cacheKey = q.toLowerCase();
-  if(state.spoonCache[cacheKey]) {
-    renderSpoonResults(state.spoonCache[cacheKey]);
-    return;
-  }
-  
+
+  // Show loading skeleton
+  grid.innerHTML = '<div style="text-align:center;padding:24px;color:var(--tx2);">' +
+    '<div style="font-size:1.5rem;margin-bottom:8px;">🤖</div>' +
+    '<div style="font-size:.82rem;font-weight:700;">Claude génère vos recettes en français...</div>' +
+    '<div style="font-size:.72rem;color:var(--tx3);margin-top:4px;">Recettes 100% françaises, adaptées à votre profil</div></div>';
+
+  const p = state.profile || {};
+  const diet = state.selectedDiet?.[0] || p.diet || "omnivore";
+  const dietLabels = {omnivore:"omnivore",veg:"végétarien",vegan:"vegan",pesc:"pescétarien",gluten:"sans gluten",keto:"keto"};
+  const cals = typeof calculateDailyCalories === "function" ? calculateDailyCalories(p) : null;
+  const allergies = document.getElementById("menuAllergies")?.value || "";
+
+  const dietLabel = ({"omnivore":"omnivore","veg":"végétarien","vegan":"vegan","pesc":"pescétarien","gluten":"sans gluten","keto":"keto"})[diet] || diet;
+  const prompt = "Tu es un chef cuisinier français expert. L'utilisateur cherche : \"" + query + "\".\n\n"
+    + "Génère 6 recettes en FRANÇAIS complet. Régime: " + dietLabel + "." + (cals ? " Environ " + cals + " kcal/jour." : "") + (allergies ? " Sans: " + allergies + "." : "") + "\n\n"
+    + "Réponds UNIQUEMENT en JSON valide (pas de markdown) :\n"
+    + '{"recipes":[{"name":"Nom recette","emoji":"🍽️","time":30,"portions":4,"kcal":450,"prot":28,"carb":42,"fat":16,"diet":"omnivore","description":"Description","ingredients":[{"name":"Ingrédient","qty":"200","unit":"g"}],"instructions":["Étape 1.","Étape 2."]}]}';
   try {
-    // Get diet filter from user profile
-    const diet = state.selectedDiet[0] || state.profile?.diet || 'omnivore';
-    const dietMap = {veg:'vegetarian',vegan:'vegan',gluten:'gluten free',keto:'ketogenic',pesc:'pescetarian'};
-    const dietParam = dietMap[diet] ? `&diet=${dietMap[diet]}` : '';
-    const allergies = document.getElementById('menuAllergies')?.value || '';
-    const intolerParam = allergies ? `&intolerances=${encodeURIComponent(allergies)}` : '';
-    
-    const url = `https://api.spoonacular.com/recipes/complexSearch?apiKey=${SPOONACULAR_KEY}&query=${encodeURIComponent(q)}&number=12&addRecipeInformation=true&fillIngredients=true&addRecipeNutrition=true${dietParam}${intolerParam}&instructionsRequired=true`;
-    
-    const resp = await fetch(url);
-    if(!resp.ok) throw new Error('Spoonacular: ' + resp.status);
+    const resp = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": ANTHROPIC_KEY,
+        "anthropic-version": "2023-06-01",
+        "anthropic-dangerous-direct-browser-access": "true"
+      },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 3000,
+        messages: [{ role: "user", content: prompt }]
+      })
+    });
+
     const data = await resp.json();
-    
-    if(!data.results?.length) {
-      grid.innerHTML = `<div style="text-align:center;padding:30px;color:var(--tx3);"><div style="font-size:2rem;">🤷</div><div style="margin-top:8px;">Aucun résultat<br><small>Essayez en anglais</small></div></div>`;
-      return;
-    }
-    
-    // Transform results
-    const recipes = data.results.map(r => ({
-      id: 'sp_' + r.id,
-      spoonId: r.id,
-      name: r.title,
-      photo: r.image,
-      time: r.readyInMinutes || 30,
-      portions: r.servings || 4,
-      kcal: Math.round(r.nutrition?.nutrients?.find(n=>n.name==='Calories')?.amount || r.calories || 0),
-      prot: Math.round(r.nutrition?.nutrients?.find(n=>n.name==='Protein')?.amount || 0),
-      carb: Math.round(r.nutrition?.nutrients?.find(n=>n.name==='Carbohydrates')?.amount || 0),
-      fat: Math.round(r.nutrition?.nutrients?.find(n=>n.name==='Fat')?.amount || 0),
-      ingredients: (r.extendedIngredients || []).map(i => ({name:i.name, qty:i.amount, unit:i.unit})),
-      instructions: r.analyzedInstructions?.[0]?.steps?.map(s=>s.step) || [],
-      diet: r.vegetarian?'veg':r.vegan?'vegan':r.glutenFree?'gluten':'omnivore',
-      diets: r.diets || [],
-      sourceUrl: r.sourceUrl || '',
-      source: 'spoonacular'
+    const text = (data.content || []).find(x => x.type === "text")?.text || "";
+    const cleaned = text.replace(/```json|```/g, "").trim();
+    const parsed = JSON.parse(cleaned);
+    const recipes = (parsed.recipes || []).map((r, i) => ({
+      ...r,
+      id: "claude_" + Date.now() + "_" + i,
+      source: "claude",
+      mealTypes: ["l","d"],
     }));
-    
-    state.spoonCache[cacheKey] = recipes;
-    renderSpoonResults(recipes);
-    
+
+    if(!recipes.length) throw new Error("Aucune recette générée");
+
+    // Cache the results
+    state.spoonCache[(query||"").toLowerCase()] = recipes;
+
+    // Render
+    grid.innerHTML = "";
+    const header = document.createElement("div");
+    header.style.cssText = "padding:8px 12px;margin-bottom:10px;background:rgba(108,92,231,.1);border-radius:var(--rs);font-size:.74rem;font-weight:700;color:var(--ac);display:flex;align-items:center;gap:6px;";
+    header.innerHTML = "🤖 " + recipes.length + " recettes générées par Claude · 100% français";
+    grid.appendChild(header);
+
+    const gridDiv = document.createElement("div");
+    gridDiv.className = "spoon-grid";
+    recipes.forEach(r => {
+      const card = document.createElement("div");
+      card.className = "spoon-recipe";
+      card.style.position = "relative";
+      card.innerHTML = '<div class="spoon-recipe-img" style="display:flex;align-items:center;justify-content:center;font-size:2.5rem;background:linear-gradient(135deg,var(--bg2),var(--bg));">' + (r.emoji||"🍽️") + '</div>'
+        + '<div class="spoon-recipe-body"><div class="spoon-recipe-name">' + r.name + '</div>'
+        + '<div class="spoon-recipe-meta">'
+        + (r.time ? '<span>⏱ ' + r.time + 'min</span>' : '')
+        + (r.kcal ? '<span>🔥 ' + r.kcal + ' kcal</span>' : '')
+        + (r.prot ? '<span>💪 ' + r.prot + 'g</span>' : '')
+        + '</div>'
+        + (r.description ? '<div style="font-size:.7rem;color:var(--tx2);margin-top:4px;line-height:1.4;">' + r.description + '</div>' : '')
+        + '</div>';
+      card.onclick = () => openClaudeRecipe(r.id);
+      const addBtn = document.createElement("button");
+      addBtn.className = "spoon-add-btn";
+      addBtn.title = "Ajouter au menu";
+      addBtn.textContent = "+";
+      addBtn.onclick = e => { e.stopPropagation(); addSpoonRecipeToDay(r.id); };
+      const bmBtn = document.createElement("button");
+      bmBtn.className = "spoon-bookmark-btn";
+      const isBm = state.recipeBookmarks.some(b => b.id === r.id);
+      bmBtn.textContent = isBm ? "⭐" : "☆";
+      bmBtn.onclick = e => { e.stopPropagation(); toggleBookmark(r.id); };
+      card.appendChild(addBtn);
+      card.appendChild(bmBtn);
+      gridDiv.appendChild(card);
+    });
+    grid.appendChild(gridDiv);
+
   } catch(e) {
-    console.error('Spoonacular error:', e);
-    // Fallback: TheMealDB (free, no key needed)
-    await searchWithTheMealDB(rawQ || q);
+    console.error("Claude search error:", e);
+    grid.innerHTML = '<div style="text-align:center;padding:24px;color:var(--tx3);">' +
+      '<div style="font-size:1.5rem;margin-bottom:8px;">⚠️</div>' +
+      '<div style="font-size:.82rem;">Erreur de génération. Vérifiez votre connexion.</div>' +
+      '<div style="font-size:.72rem;margin-top:4px;">' + (e.message||"") + '</div></div>';
   }
 }
+
+function openClaudeRecipe(id) {
+  const recipe = Object.values(state.spoonCache).flat().find(r => r.id === id)
+    || state.recipeBookmarks.find(r => r.id === id);
+  if(!recipe) return;
+  window._currentRecipe = recipe;
+  window._currentPortions = recipe.portions || 4;
+  const isBookmarked = state.recipeBookmarks.some(b => b.id === id);
+  if(typeof renderRecipeModal === "function") {
+    renderRecipeModal(recipe, window._currentPortions, isBookmarked);
+    document.getElementById("recipeDetailModal")?.parentElement?.classList.add("on");
+  }
+}
+
 
 function searchSpoonacularQuery(q) {
   const inp = document.getElementById('spoonSearchInp');
@@ -3299,6 +3352,7 @@ function renderRecipeModal(recipe, portions, isBookmarked) {
 
   modal.innerHTML = `
     <div class="mhdl"></div>
+    <button onclick="closeRecipeDetail()" style="display:inline-flex;align-items:center;gap:6px;background:none;border:none;cursor:pointer;color:var(--tx2);font-size:.82rem;font-weight:700;padding:0 0 12px 0;">← Retour</button>
     ${recipe.photo ? `<img src="${recipe.photo}" loading="lazy" style="width:calc(100% + 36px);height:200px;object-fit:cover;margin:-20px -18px 16px;border-radius:var(--r) var(--r) 0 0;">` : ''}
     <div style="font-size:1.15rem;font-weight:900;margin-bottom:10px;line-height:1.3;">${frName}</div>
 
@@ -3755,6 +3809,337 @@ function deleteSnackFromDay(day) {
   showToast('🗑️','Collation','Supprimée du planning');
 }
 
+
+// ════════════════════════════════════════════════════════════
+// 🌅 PETIT-DÉJEUNER BUILDER
+// ════════════════════════════════════════════════════════════
+
+function openBreakfastBuilder(day) {
+  const menu = state.weekMenu[day] || {};
+  const current = menu.b || '';
+  const dayName = (DAYS||['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'])[day-1] || 'Jour '+day;
+
+  const BF_CATS = {
+    '☕ Boissons': ['Café','Thé','Chocolat chaud','Lait','Jus orange','Tisane','Café au lait'],
+    '🍞 Pains': ['Pain grillé','Baguette','Croissant','Brioche','Biscotte','Pain complet','Madeleine','Pain au chocolat'],
+    '🧈 À tartiner': ['Beurre','Confiture','Miel','Pâte à tartiner','Fromage blanc'],
+    '🥚 Protéines': ['Oeuf à la coque','Oeufs brouillés','Omelette','Jambon','Fromage'],
+    '🍌 Fruits': ['Pomme','Banane','Orange','Clémentine','Fraise','Kiwi','Myrtilles','Pamplemousse'],
+    '🥣 Céréales': ['Granola','Muesli','Flocons avoine','Porridge','Corn flakes'],
+    '🫙 Laitages': ['Yaourt nature','Yaourt grec','Fromage blanc','Yaourt aux fruits'],
+  };
+  const allBfItems = Object.values(BF_CATS).flat();
+
+  window._bfSelected = current ? current.split(' + ').filter(Boolean) : [];
+  window._bfDay = day;
+
+  const box = document.createElement('div');
+  box.className = 'overlay on';
+  box.id = 'breakfastModal';
+
+  let catsHtml = '';
+  for(const [cat, items] of Object.entries(BF_CATS)) {
+    catsHtml += '<div style="margin-bottom:12px;">';
+    catsHtml += '<div style="font-size:.65rem;font-weight:800;color:var(--tx3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px;">'+cat+'</div>';
+    catsHtml += '<div style="display:flex;flex-wrap:wrap;gap:6px;">';
+    items.forEach(item => {
+      const id = 'bf_' + item.replace(/[^a-zA-Z0-9]/g,'_');
+      catsHtml += '<button id="'+id+'" data-item="'+item+'" onclick="bfToggleItem(this.dataset.item)" style="padding:6px 12px;border-radius:99px;border:1.5px solid var(--bg2);background:var(--bg);color:var(--tx);font-size:.78rem;cursor:pointer;transition:all .15s;">'+item+'</button>';
+    });
+    catsHtml += '</div></div>';
+  }
+
+  box.innerHTML = '<div class="modal">'
+    + '<div class="modal-hd"><div><div class="modal-ti">🌅 Petit-déjeuner</div><div class="modal-su">'+dayName+'</div></div>'
+    + '<button class="btn ico" onclick="document.getElementById(\'breakfastModal\').remove()">✕</button></div>'
+    + '<div id="bfSelDisplay" style="min-height:38px;background:var(--bg2);border-radius:var(--rs);padding:8px 12px;margin-bottom:12px;display:flex;flex-wrap:wrap;gap:5px;align-items:center;">'
+    + '<span style="font-size:.72rem;color:var(--tx3);">Rien sélectionné</span></div>'
+    + '<div style="position:relative;margin-bottom:12px;">'
+    + '<input class="inp" id="bfSearchInp" placeholder="🔍 Chercher..." oninput="bfSearch(this.value,'+JSON.stringify(allBfItems)+')" autocomplete="off">'
+    + '<div id="bfSearchAC" style="display:none;position:absolute;left:0;right:0;top:44px;background:var(--bg);border:1px solid var(--bg2);border-radius:var(--rs);box-shadow:0 8px 24px rgba(0,0,0,.2);z-index:50;max-height:150px;overflow-y:auto;"></div>'
+    + '</div>'
+    + '<div style="max-height:240px;overflow-y:auto;">'+catsHtml+'</div>'
+    + '<div style="display:flex;gap:8px;margin-top:14px;">'
+    + '<button onclick="window._bfSelected=[];bfRefreshDisplay()" class="btn" style="flex:1;padding:12px;">🗑️ Vider</button>'
+    + '<button onclick="saveBfSelected()" class="btn acc" style="flex:2;padding:12px;font-weight:800;">✅ Confirmer</button>'
+    + '</div></div>';
+
+  box.onclick = e => { if(e.target===box) box.remove(); };
+  document.body.appendChild(box);
+
+  // Restore selected state
+  (window._bfSelected || []).forEach(item => {
+    const el = document.getElementById('bf_' + item.replace(/[^a-zA-Z0-9]/g,'_'));
+    if(el) { el.style.background='var(--ac)'; el.style.color='#fff'; el.style.borderColor='var(--ac)'; }
+  });
+  bfRefreshDisplay();
+}
+
+function bfSearch(q, allItems) {
+  const ac = document.getElementById('bfSearchAC');
+  if(!ac) return;
+  if(!q || q.length < 1) { ac.style.display='none'; return; }
+  const matches = allItems.filter(i => i.toLowerCase().includes(q.toLowerCase())).slice(0,8);
+  if(!matches.length) { ac.style.display='none'; return; }
+  ac.style.display = 'block';
+  ac.innerHTML = matches.map((item,i) => '<div style="padding:9px 14px;cursor:pointer;border-bottom:1px solid var(--bg2);font-size:.83rem;font-weight:600;" onclick="bfPickSearchItem(this)"><span style="font-size:1rem;margin-right:8px;">+</span>' + item + '</div>').join('');
+}
+
+function bfToggleItem(item) {
+  if(item && typeof item === 'object') item = item.dataset ? item.dataset.item : item.name || String(item);
+  if(!window._bfSelected) window._bfSelected = [];
+  const idx = window._bfSelected.indexOf(item);
+  const el = document.getElementById('bf_' + item.replace(/[^a-zA-Z0-9]/g,'_'));
+  if(idx !== -1) {
+    window._bfSelected.splice(idx, 1);
+    if(el) { el.style.background=''; el.style.color=''; el.style.borderColor=''; }
+  } else {
+    window._bfSelected.push(item);
+    if(el) { el.style.background='var(--ac)'; el.style.color='#fff'; el.style.borderColor='var(--ac)'; }
+  }
+  bfRefreshDisplay();
+}
+
+function bfRefreshDisplay() {
+  const el = document.getElementById('bfSelDisplay');
+  if(!el) return;
+  const sel = window._bfSelected || [];
+  if(!sel.length) {
+    el.innerHTML = '<span style="font-size:.72rem;color:var(--tx3);">Aucun élément sélectionné</span>';
+    return;
+  }
+  el.innerHTML = sel.map((item,i) => '<div style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;background:var(--ac);color:#fff;border-radius:99px;font-size:.75rem;font-weight:700;">' + item + '<span data-i="'+i+'" onclick="bfRemoveSelected(+this.dataset.i)" style="cursor:pointer;margin-left:2px;opacity:.8;">✕</span></div>').join('');
+}
+
+function bfPickSearchItem(el) { bfToggleItem(el.textContent.trim()); document.getElementById('bfSearchInp').value=''; document.getElementById('bfSearchAC').style.display='none'; }
+function bfRemoveSelected(i) { if(window._bfSelected) { const item=window._bfSelected[i]; window._bfSelected.splice(i,1); const el=document.getElementById('bf_'+item.replace(/[^a-zA-Z0-9]/g,'_')); if(el){el.style.background='';el.style.color='';el.style.borderColor='';} bfRefreshDisplay(); } }
+
+async function saveBfSelected() {
+  const day = window._bfDay;
+  const items = window._bfSelected || [];
+  if(!state.weekMenu[day]) state.weekMenu[day] = {};
+  state.weekMenu[day].b = items.join(' + ');
+  saveWeekMenu();
+  renderWeek && renderWeek();
+  renderDayDetail && renderDayDetail();
+  document.getElementById('breakfastModal')?.remove();
+  if(items.length) showToast('🌅', items.slice(0,2).join(', '), 'Petit-déjeuner enregistré !');
+}
+
+// ════════════════════════════════════════════════════════════
+// ☀️🌙 DÉJEUNER / DÎNER — 3 ONGLETS
+// ════════════════════════════════════════════════════════════
+
+function meRecipeItem(r, day, slot) {
+  const id = String(r.id||r.name).replace(/[^a-zA-Z0-9_]/g,"_");
+  const badge = r.source==="bookmark" ? " ⭐" : r.source==="custom" ? " ✏️" : "";
+  const meta = [r.time?"⏱ "+r.time+"min":"", r.kcal?"🔥"+r.kcal+" kcal":"", r.prot?"💪"+r.prot+"g":""].filter(Boolean).join(" · ");
+  const el = document.createElement("div");
+  el.className = "meal-pick-item";
+  el.setAttribute("data-id", id);
+  el.setAttribute("data-day", day);
+  el.setAttribute("data-slot", slot);
+  el.onclick = function() { selectRecipeForMeal(this.dataset.id, +this.dataset.day, this.dataset.slot); };
+  el.innerHTML = '<span class="meal-pick-em">' + (r.emoji||"🍽️") + '</span>'    + '<div style="flex:1;min-width:0;"><div class="meal-pick-name">' + r.name + badge + "</div>"    + (meta ? '<div style="font-size:.62rem;color:var(--tx3);">' + meta + "</div>" : "") + "</div>";
+  return el.outerHTML;
+}
+
+function switchMeTab(tab) {
+  ['recipes','search','free'].forEach(t => {
+    const btn = document.getElementById('metab-'+t);
+    const panel = document.getElementById('mepanel-'+t);
+    if(btn) { btn.classList.toggle('acc', t===tab); btn.classList.toggle('ghost', t!==tab); }
+    if(panel) panel.style.display = t===tab ? 'block' : 'none';
+  });
+  if(tab==='search') setTimeout(()=>document.getElementById('mealDbSearch')?.focus(), 100);
+  if(tab==='free')   setTimeout(()=>document.getElementById('mealFreeInput')?.focus(), 100);
+  if(tab==='recipes') setTimeout(()=>document.getElementById('meRecipeSearch')?.focus(), 100);
+}
+
+function meLiveSearch(q, day, slot) {
+  const el = document.getElementById('meRecipeList');
+  if(!el) return;
+  const all = getAllRecipes().filter(r => !r.mealTypes || r.mealTypes.includes(slot));
+  const filtered = q ? all.filter(r => r.name.toLowerCase().includes(q.toLowerCase())) : all;
+  el.innerHTML = filtered.slice(0,30).map(r => meRecipeItem(r, day, slot)).join('')
+    || '<div style="text-align:center;padding:14px;color:var(--tx3);font-size:.8rem;">Aucune recette</div>';
+}
+
+async function searchMealDB(day, slot) {
+  const q = document.getElementById("mealDbSearch")?.value?.trim();
+  if(!q) return;
+  const res = document.getElementById("mealDbResults");
+  if(res) res.innerHTML = '<div style="padding:10px;text-align:center;color:var(--tx2);font-size:.75rem;">🔄 Recherche...</div>';
+  try {
+    const qEn = typeof translateQueryToEnglish === "function" ? translateQueryToEnglish(q) : q;
+    const resp = await fetch("https://www.themealdb.com/api/json/v1/1/search.php?s=" + encodeURIComponent(qEn));
+    const data = await resp.json();
+    let meals = data.meals || [];
+    if(!meals.length) {
+      const r2 = await fetch("https://www.themealdb.com/api/json/v1/1/filter.php?i=" + encodeURIComponent(qEn));
+      const d2 = await r2.json();
+      meals = (d2.meals || []).slice(0, 8);
+    }
+    if(!meals.length) {
+      if(res) res.innerHTML = '<div style="text-align:center;padding:14px;color:var(--tx3);font-size:.8rem;">Aucun résultat</div>';
+      return;
+    }
+    if(res) {
+      res.innerHTML = "";
+      meals.slice(0,8).forEach(m => {
+        const frName = typeof translateRecipeName === "function" ? translateRecipeName(m.strMeal) : m.strMeal;
+        const div = document.createElement("div");
+        div.className = "meal-pick-item";
+        div.style.cssText = "background:rgba(0,181,184,.07);border:1px solid rgba(0,181,184,.15);";
+        div.innerHTML = (m.strMealThumb
+          ? '<img src="' + m.strMealThumb + '/preview" style="width:44px;height:44px;border-radius:var(--rs);object-fit:cover;flex-shrink:0;" loading="lazy">'
+          : '<span class="meal-pick-em">🌐</span>')
+          + '<div style="flex:1;min-width:0;"><div class="meal-pick-name">' + frName + '</div>'
+          + (m.strCategory ? '<div style="font-size:.62rem;color:var(--tx3);">' + m.strCategory + '</div>' : '')
+          + '</div>';
+        div.onclick = (function(id, name, d, s) {
+          return function() { selectMealDBForSlot(id, name, d, s); };
+        })(m.idMeal, frName, day, slot);
+        res.appendChild(div);
+      });
+    }
+  } catch(e) {
+    if(res) res.innerHTML = '<div style="text-align:center;padding:14px;color:var(--rd);font-size:.8rem;">Erreur réseau.</div>';
+  }
+}
+
+function selectMealDBForSlot(id, frName, day, slot) {
+  if(!state.weekMenu[day]) state.weekMenu[day] = {};
+  state.weekMenu[day][slot] = '🌐 ' + frName;
+  saveWeekMenu();
+  renderWeek && renderWeek();
+  renderDayDetail && renderDayDetail();
+  closeMealEdit();
+  showToast('✅', frName, 'Menu mis à jour !');
+}
+
+// ════════════════════════════════════════════════════════════
+// 🍎 COLLATION — autocomplete snackAC
+// ════════════════════════════════════════════════════════════
+
+function snackAC(q) {
+  const ac = document.getElementById("snackAC");
+  if(!ac) return;
+  if(!q || q.length < 1) { ac.style.display="none"; return; }
+  const prods = typeof PRODUCTS !== "undefined" ? PRODUCTS : [];
+  const matches = prods.filter(p => p.name.toLowerCase().includes(q.toLowerCase())).slice(0,8);
+  if(!matches.length) { ac.style.display="none"; return; }
+  ac.style.display = "block";
+  ac.innerHTML = matches.map(p => {
+    const el = document.createElement("div");
+    el.style.cssText = "padding:9px 14px;cursor:pointer;border-bottom:1px solid var(--bg2);display:flex;align-items:center;gap:8px;";
+    el.innerHTML = '<span style="font-size:1.1rem;">' + (p.emoji||"🛍️") + '</span><span style="font-size:.82rem;font-weight:700;">' + p.name + "</span>";
+    el.onclick = function() { snackSelectItem(p.name); document.getElementById("snackAC").style.display="none"; };
+    return el.outerHTML;
+  }).join("");
+}
+
+function snackSelectItem(name) {
+  if(!window._snackItems) window._snackItems = [];
+  if(!window._snackItems.includes(name)) {
+    window._snackItems.push(name);
+    refreshSnackList();
+  }
+  const inp = document.getElementById('snackInput');
+  if(inp) inp.value = '';
+}
+
+function snackAddFromInput() {
+  const inp = document.getElementById('snackInput');
+  const val = inp?.value?.trim();
+  if(val) snackSelectItem(val);
+}
+
+// ════════════════════════════════════════════════════════════
+// 📊 NUTRITION PANEL
+// ════════════════════════════════════════════════════════════
+
+function renderNutriPanel() {
+  const p = state.profile || {};
+  const cals = typeof calculateDailyCalories==='function' ? calculateDailyCalories(p) : null;
+  const macros = typeof getMacroTargets==='function' ? getMacroTargets(p, cals) : null;
+
+  // Stats grid
+  const statsGrid = document.getElementById('nutriStatsGrid');
+  if(statsGrid) {
+    const goal = p.goal || 'equilibre';
+    const goalTxt = {equilibre:'Équilibre',perte:'Perte de poids',prise:'Prise de masse',maintien:'Maintien',perf:'Performance'};
+    const planned = Object.values(state.weekMenu).filter(m => m && m.nutri && m.nutri.kcal);
+    const avgKcal = planned.length ? Math.round(planned.reduce((s,m)=>s+(m.nutri.kcal||0),0)/7) : 0;
+    const diff = cals && avgKcal ? avgKcal - cals : null;
+    const diffColor = diff===null ? 'var(--tx2)' : Math.abs(diff)<100 ? 'var(--gn)' : diff>0 ? 'var(--rd)' : 'var(--yl)';
+    const diffLabel = diff===null ? '—' : (diff>0?'+':'')+diff+' kcal';
+    statsGrid.innerHTML = [
+      {icon:'🎯',label:'Objectif/jour',val:cals?cals+' kcal':'Non défini',sub:goalTxt[goal]||goal,color:'var(--ac)'},
+      {icon:'📅',label:'Jours planifiés',val:planned.length+'/7',sub:planned.length<7?'Menu incomplet':'Semaine complète!',color:'var(--tl)'},
+      {icon:'🔥',label:'Moy. planifiée',val:avgKcal?avgKcal+' kcal':'—',sub:'Moyenne des 7 jours',color:'var(--or)'},
+      {icon:'⚖️',label:'Écart',val:diffLabel,sub:Math.abs(diff||0)<100?"Dans l'objectif ✅":'À ajuster',color:diffColor},
+    ].map(s => '<div class="card" style="padding:12px;text-align:center;">'
+      + '<div style="font-size:1.4rem;margin-bottom:4px;">'+s.icon+'</div>'
+      + '<div style="font-size:1rem;font-weight:900;color:'+s.color+';">'+s.val+'</div>'
+      + '<div style="font-size:.6rem;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.6px;margin-top:2px;">'+s.label+'</div>'
+      + '<div style="font-size:.62rem;color:var(--tx2);margin-top:2px;">'+s.sub+'</div>'
+      + '</div>').join('');
+  }
+
+  renderNutriWeekChart(cals);
+  renderMacroRings(macros);
+  renderSeasonalNutri && renderSeasonalNutri();
+  if(state.aiInsights && typeof updateAIInsightCard==='function') updateAIInsightCard(state.aiInsights);
+}
+
+function renderNutriWeekChart(target) {
+  const chart = document.getElementById('nutriWeekChart');
+  if(!chart) return;
+  const shorts = ['L','M','M','J','V','S','D'];
+  const allKcal = Object.values(state.weekMenu).map(m=>m?.nutri?.kcal||0);
+  const maxVal = Math.max(target||2000, ...allKcal, 500);
+  chart.innerHTML = shorts.map((_,i) => {
+    const m = state.weekMenu[i+1];
+    const kcal = m?.nutri?.kcal || 0;
+    const h = kcal ? Math.round(kcal/maxVal*76) : 4;
+    const col = !kcal ? 'var(--bg2)' : Math.abs(kcal-(target||2000))<200 ? 'var(--gn)' : kcal>(target||2000)*1.15 ? 'var(--rd)' : 'var(--yl)';
+    return '<div class="nutri-bar-col">'
+      + (kcal ? '<div style="font-size:.48rem;color:var(--tx3);text-align:center;margin-bottom:2px;">'+kcal+'</div>' : '<div style="height:12px;"></div>')
+      + '<div style="height:'+h+'px;background:'+col+';width:100%;border-radius:4px 4px 0 0;transition:height .3s;"></div>'
+      + '<div class="nutri-bar-day">'+shorts[i]+'</div>'
+      + '</div>';
+  }).join('');
+}
+
+function renderMacroRings(macros) {
+  const el = document.getElementById('macroRings');
+  if(!el) return;
+  if(!macros) {
+    el.innerHTML = '<div style="font-size:.78rem;color:var(--tx2);">Complétez votre profil pour voir vos objectifs macros.</div>';
+    return;
+  }
+  const planned = Object.values(state.weekMenu).filter(m=>m?.nutri);
+  const avg = (key) => planned.length ? Math.round(planned.reduce((s,m)=>s+(m.nutri[key]||0),0)/planned.length) : 0;
+  const list = [
+    {label:'Protéines',icon:'💪',actual:avg('prot'),target:macros.prot,color:'var(--tl)',unit:'g'},
+    {label:'Glucides', icon:'🍞',actual:avg('carb'),target:macros.carb,color:'var(--yl)',unit:'g'},
+    {label:'Lipides',  icon:'🥑',actual:avg('fat'), target:macros.fat, color:'var(--or)',unit:'g'},
+  ];
+  el.innerHTML = list.map(m => {
+    const pct = m.target ? Math.min(100,Math.round(m.actual/m.target*100)) : 0;
+    return '<div style="margin-bottom:12px;">'
+      + '<div style="display:flex;justify-content:space-between;margin-bottom:5px;">'
+      + '<span style="font-size:.78rem;font-weight:700;">'+m.icon+' '+m.label+'</span>'
+      + '<span style="font-size:.72rem;color:var(--tx2);">'+(m.actual||'?')+m.unit+' / '+m.target+m.unit+'</span></div>'
+      + '<div style="height:8px;background:var(--bg2);border-radius:99px;overflow:hidden;">'
+      + '<div style="height:100%;width:'+pct+'%;background:'+m.color+';border-radius:99px;transition:width .4s;"></div></div></div>';
+  }).join('');
+}
+
+function renderNutriTab() { renderNutriPanel(); } // alias
+
+
 function openMealEdit(day, slot) {
   if(slot === 'b') { openBreakfastBuilder(day); return; }
   if(slot === 'snack') { openSnackBuilder(day); return; }
@@ -3783,7 +4168,7 @@ function openMealEdit(day, slot) {
     <div style="position:relative;margin-bottom:10px;">
       <input class="inp" id="mealRecipeSearch"
         placeholder="🔍 Chercher dans mes recettes..."
-        oninput="filterMealRecipes(this.value, ${day}, '${slot}')"
+        oninput="meLiveSearch(this.value, ${day}, '${slot}')"
         style="width:100%;padding-right:36px;">
       <span style="position:absolute;right:12px;top:50%;transform:translateY(-50%);font-size:.75rem;color:var(--tx3);">Entrée pour confirmer</span>
     </div>
@@ -4137,10 +4522,17 @@ function clearMealSlot(day, slot) {
 
 
 function selectRecipeForMeal(idOrName, day, slot) {
-  const r=getAllRecipes().find(x=>x.id===idOrName||x.name===idOrName);
-  if(!r) return;
-  const input=document.getElementById('mealEditInput');
-  if(input) input.value=`${r.emoji||'🍽️'} ${r.name}`;
+  const r = getAllRecipes().find(x => x.id===idOrName || x.name===idOrName);
+  if(!r) { showToast('⚠️','Recette introuvable',''); return; }
+  if(!state.weekMenu[day]) state.weekMenu[day] = {};
+  state.weekMenu[day][slot] = (r.emoji||'🍽️') + ' ' + r.name;
+  if(r.kcal && !state.weekMenu[day].nutri) state.weekMenu[day].nutri = {};
+  if(r.kcal) state.weekMenu[day].nutri = {kcal:r.kcal,prot:r.prot||0,carb:r.carb||0,fat:r.fat||0};
+  saveWeekMenu();
+  renderWeek && renderWeek();
+  renderDayDetail && renderDayDetail();
+  closeMealEdit();
+  showToast('✅', r.name, 'Ajouté au menu !');
 }
 function saveMealEdit(day, slot) {
   const val=document.getElementById('mealEditInput')?.value?.trim();
@@ -4260,26 +4652,56 @@ function getAllFrenchRecipes() {
 }
 
 const RECIPES_FR = [
-  {id:"fr1",emoji:"\ud83e\udd57",name:"Salade C\u00e9sar",diet:"omnivore",mealTypes:["l", "d"],time:15,portions:2,kcal:380,prot:28,carb:12,fat:24,ingredients:[{name:"Laitue romaine",qty:"1",unit:"pi\u00e8ce"},{name:"Poulet grill\u00e9",qty:"200",unit:"g"},{name:"Parmesan",qty:"50",unit:"g"},{name:"Cro\u00fbtons",qty:"50",unit:"g"}],instructions:["Couper la laitue en morceaux.","Griller le poulet et le trancher.","M\u00e9langer avec la sauce C\u00e9sar, ajouter parmesan et cro\u00fbtons."]},
-  {id:"fr2",emoji:"\ud83e\udd57",name:"Salade Ni\u00e7oise",diet:"pesc",mealTypes:["l", "d"],time:20,portions:2,kcal:340,prot:26,carb:18,fat:18,ingredients:[{name:"Thon en bo\u00eete",qty:"160",unit:"g"},{name:"Haricots verts",qty:"150",unit:"g"},{name:"Tomates cerise",qty:"150",unit:"g"},{name:"Olives noires",qty:"60",unit:"g"},{name:"Oeufs",qty:"2",unit:"pi\u00e8ce"}],instructions:["Cuire les haricots verts 5 min \u00e0 la vapeur.","Faire durcir les oeufs 9 min.","Assembler tous les ingr\u00e9dients, assaisonner huile olive et citron."]},
-  {id:"fr3",emoji:"\ud83c\udf72",name:"Soupe \u00e0 Oignon Gratin\u00e9e",diet:"veg",mealTypes:["l", "d"],time:50,portions:4,kcal:290,prot:12,carb:32,fat:14,ingredients:[{name:"Oignons",qty:"800",unit:"g"},{name:"Beurre",qty:"40",unit:"g"},{name:"Vin blanc sec",qty:"150",unit:"ml"},{name:"Bouillon de boeuf",qty:"1",unit:"L"},{name:"Pain baguette",qty:"8",unit:"tranches"},{name:"Gruy\u00e8re r\u00e2p\u00e9",qty:"150",unit:"g"}],instructions:["Caram\u00e9liser les oignons au beurre 30 min \u00e0 feu doux.","D\u00e9glacer au vin blanc, ajouter le bouillon, mijoter 15 min.","Verser dans des bols, poser le pain, couvrir de gruy\u00e8re.","Gratiner 5 min sous le gril."]},
-  {id:"fr4",emoji:"\ud83c\udf57",name:"Poulet R\u00f4ti aux Herbes",diet:"omnivore",mealTypes:["l", "d"],time:90,portions:4,kcal:480,prot:42,carb:2,fat:32,ingredients:[{name:"Poulet entier",qty:"1.5",unit:"kg"},{name:"Beurre",qty:"60",unit:"g"},{name:"Ail",qty:"4",unit:"gousses"},{name:"Thym",qty:"4",unit:"branches"},{name:"Romarin",qty:"2",unit:"branches"},{name:"Citron",qty:"1",unit:"pi\u00e8ce"}],instructions:["Pr\u00e9chauffer le four \u00e0 200\u00b0C.","Frotter le poulet de beurre, herbes et ail.","Cuire 80 min en arrosant r\u00e9guli\u00e8rement.","Laisser reposer 10 min avant de d\u00e9couper."]},
-  {id:"fr5",emoji:"\ud83c\udf5b",name:"Poulet Tikka Masala",diet:"omnivore",mealTypes:["l", "d"],time:45,portions:4,kcal:520,prot:38,carb:22,fat:28,ingredients:[{name:"Poulet",qty:"700",unit:"g"},{name:"Cr\u00e8me fra\u00eeche",qty:"200",unit:"ml"},{name:"Tomates pel\u00e9es",qty:"400",unit:"g"},{name:"Oignons",qty:"2",unit:"pi\u00e8ce"},{name:"Curry",qty:"2",unit:"cc"},{name:"Curcuma",qty:"1",unit:"cc"}],instructions:["Faire revenir oignon et \u00e9pices 3 min.","Ajouter le poulet coup\u00e9 en cubes, dorer.","Incorporer tomates et cr\u00e8me, mijoter 25 min.","Servir avec du riz basmati."]},
-  {id:"fr6",emoji:"\ud83e\udd69",name:"Boeuf Bourguignon",diet:"omnivore",mealTypes:["d"],time:180,portions:6,kcal:580,prot:48,carb:18,fat:32,ingredients:[{name:"Boeuf \u00e0 braiser",qty:"1.2",unit:"kg"},{name:"Vin rouge",qty:"75",unit:"cl"},{name:"Lardons",qty:"150",unit:"g"},{name:"Champignons",qty:"250",unit:"g"},{name:"Carottes",qty:"3",unit:"pi\u00e8ce"},{name:"Oignons",qty:"2",unit:"pi\u00e8ce"}],instructions:["Faire mariner le boeuf dans le vin 12h.","Faire revenir les lardons, puis le boeuf.","Ajouter l\u00e9gumes et vin, mijoter 2h30 \u00e0 feu doux.","Ajouter les champignons 20 min avant la fin."]},
-  {id:"fr7",emoji:"\ud83e\udd69",name:"Steak Hach\u00e9 Maison",diet:"omnivore",mealTypes:["l", "d"],time:15,portions:2,kcal:420,prot:38,carb:6,fat:28,ingredients:[{name:"Boeuf hach\u00e9",qty:"300",unit:"g"},{name:"Echalotes",qty:"2",unit:"pi\u00e8ce"},{name:"Persil",qty:"1",unit:"cs"},{name:"Moutarde",qty:"1",unit:"cc"}],instructions:["M\u00e9langer boeuf, \u00e9chalotes hach\u00e9es, persil et moutarde.","Former 2 steaks, assaisonner.","Cuire 3 min par face \u00e0 feu vif."]},
-  {id:"fr8",emoji:"\ud83d\udc1f",name:"Saumon Teriyaki",diet:"pesc",mealTypes:["l", "d"],time:20,portions:2,kcal:460,prot:40,carb:18,fat:24,ingredients:[{name:"Saumon",qty:"400",unit:"g"},{name:"Sauce soja",qty:"4",unit:"cs"},{name:"Miel",qty:"2",unit:"cs"},{name:"Gingembre r\u00e2p\u00e9",qty:"1",unit:"cc"},{name:"Riz cuit",qty:"200",unit:"g"}],instructions:["M\u00e9langer sauce soja, miel et gingembre.","Faire mariner le saumon 15 min.","Cuire 4 min par face \u00e0 la po\u00eale.","Servir avec le riz."]},
-  {id:"fr9",emoji:"\ud83e\udd58",name:"Ratatouille Proven\u00e7ale",diet:"vegan",mealTypes:["l", "d"],time:60,portions:4,kcal:180,prot:4,carb:22,fat:9,ingredients:[{name:"Courgettes",qty:"2",unit:"pi\u00e8ce"},{name:"Aubergines",qty:"1",unit:"pi\u00e8ce"},{name:"Poivrons rouges",qty:"2",unit:"pi\u00e8ce"},{name:"Tomates",qty:"4",unit:"pi\u00e8ce"},{name:"Oignons",qty:"2",unit:"pi\u00e8ce"},{name:"Ail",qty:"3",unit:"gousses"},{name:"Herbes de Provence",qty:"1",unit:"cs"}],instructions:["Couper tous les l\u00e9gumes en d\u00e9s.","Faire revenir oignons et ail 5 min.","Ajouter l\u00e9gumes par ordre de cuisson, commencer par poivrons.","Mijoter 40 min \u00e0 feu doux, assaisonner."]},
-  {id:"fr10",emoji:"\ud83e\uded8",name:"Dal de Lentilles Corail",diet:"vegan",mealTypes:["l", "d"],time:30,portions:4,kcal:310,prot:18,carb:48,fat:8,ingredients:[{name:"Lentilles corail",qty:"300",unit:"g"},{name:"Lait de coco",qty:"400",unit:"ml"},{name:"Tomates pel\u00e9es",qty:"400",unit:"g"},{name:"Oignons",qty:"2",unit:"pi\u00e8ce"},{name:"Curcuma",qty:"1",unit:"cc"},{name:"Cumin",qty:"1",unit:"cc"}],instructions:["Faire revenir oignon et \u00e9pices 3 min.","Ajouter lentilles, lait de coco et tomates.","Cuire 20 min \u00e0 feu doux en remuant.","Garnir de coriandre fra\u00eeche."]},
-  {id:"fr11",emoji:"\ud83c\udf5d",name:"Spaghetti Carbonara",diet:"omnivore",mealTypes:["l", "d"],time:20,portions:4,kcal:580,prot:32,carb:64,fat:22,ingredients:[{name:"Spaghettis",qty:"400",unit:"g"},{name:"Lardons",qty:"150",unit:"g"},{name:"Oeufs entiers",qty:"2",unit:"pi\u00e8ce"},{name:"Jaunes oeuf",qty:"4",unit:"pi\u00e8ce"},{name:"Pecorino",qty:"100",unit:"g"},{name:"Poivre noir",qty:"2",unit:"cc"}],instructions:["Faire bouillir les p\u00e2tes al dente.","Faire dorer les lardons sans huile.","M\u00e9langer oeufs, pecorino et poivre.","Retirer du feu, m\u00e9langer p\u00e2tes + lardons + m\u00e9lange oeufs hors feu."]},
-  {id:"fr12",emoji:"\ud83c\udf5d",name:"P\u00e2tes Bolognaise Maison",diet:"omnivore",mealTypes:["l", "d"],time:45,portions:4,kcal:520,prot:32,carb:58,fat:16,ingredients:[{name:"P\u00e2tes",qty:"400",unit:"g"},{name:"Boeuf hach\u00e9",qty:"400",unit:"g"},{name:"Tomates pel\u00e9es",qty:"400",unit:"g"},{name:"Oignons",qty:"1",unit:"pi\u00e8ce"},{name:"Ail",qty:"2",unit:"gousses"},{name:"Vin rouge",qty:"10",unit:"cl"}],instructions:["Faire revenir oignon et ail 3 min.","Ajouter la viande, dorer 5 min.","D\u00e9glacer au vin, ajouter tomates, mijoter 30 min.","Cuire les p\u00e2tes, m\u00e9langer et servir."]},
-  {id:"fr13",emoji:"\ud83c\udf5a",name:"Risotto aux Champignons",diet:"veg",mealTypes:["l", "d"],time:35,portions:4,kcal:460,prot:14,carb:68,fat:16,ingredients:[{name:"Riz arborio",qty:"320",unit:"g"},{name:"Champignons",qty:"400",unit:"g"},{name:"Oignon",qty:"1",unit:"pi\u00e8ce"},{name:"Vin blanc",qty:"15",unit:"cl"},{name:"Bouillon l\u00e9gumes",qty:"1",unit:"L"},{name:"Parmesan",qty:"80",unit:"g"},{name:"Beurre",qty:"40",unit:"g"}],instructions:["Faire revenir oignon, ajouter riz et nacrer.","D\u00e9glacer au vin, ajouter le bouillon louche par louche.","Faire sauter les champignons s\u00e9par\u00e9ment.","Incorporer champignons, beurre et parmesan hors du feu."]},
-  {id:"fr14",emoji:"\ud83e\uded5",name:"Tajine Poulet Citron Confit",diet:"omnivore",mealTypes:["d"],time:70,portions:4,kcal:480,prot:40,carb:14,fat:28,ingredients:[{name:"Poulet",qty:"1.2",unit:"kg"},{name:"Citrons confits",qty:"2",unit:"pi\u00e8ce"},{name:"Olives vertes",qty:"100",unit:"g"},{name:"Oignons",qty:"2",unit:"pi\u00e8ce"},{name:"Cumin",qty:"1",unit:"cc"},{name:"Safran",qty:"1",unit:"pinc\u00e9e"}],instructions:["Faire mariner le poulet avec \u00e9pices et citron 1h.","Faire revenir oignons et poulet.","Ajouter olives, citron confit et eau.","Mijoter 45 min \u00e0 couvert."]},
-  {id:"fr15",emoji:"\ud83c\udf5b",name:"Curry de L\u00e9gumes Coco",diet:"vegan",mealTypes:["l", "d"],time:30,portions:4,kcal:310,prot:9,carb:42,fat:14,ingredients:[{name:"Lait de coco",qty:"400",unit:"ml"},{name:"Patates douces",qty:"400",unit:"g"},{name:"Pois chiches",qty:"400",unit:"g"},{name:"Epinards",qty:"150",unit:"g"},{name:"Oignons",qty:"1",unit:"pi\u00e8ce"},{name:"Curry en poudre",qty:"2",unit:"cs"}],instructions:["Faire revenir oignon et curry 3 min.","Ajouter patates douces et lait de coco, cuire 15 min.","Incorporer pois chiches et \u00e9pinards 5 min.","Servir avec riz basmati."]},
-  {id:"fr16",emoji:"\ud83c\udf5c",name:"Ramen Maison",diet:"omnivore",mealTypes:["l", "d"],time:90,portions:4,kcal:560,prot:38,carb:52,fat:22,ingredients:[{name:"Bouillon de poulet",qty:"2",unit:"L"},{name:"Poitrine de porc",qty:"400",unit:"g"},{name:"Nouilles ramen",qty:"300",unit:"g"},{name:"Oeufs",qty:"4",unit:"pi\u00e8ce"},{name:"Sauce soja",qty:"4",unit:"cs"},{name:"Oignons nouveaux",qty:"4",unit:"pi\u00e8ce"}],instructions:["Mijoter la poitrine de porc dans le bouillon 1h.","Cuire les oeufs 6 min, \u00e9caler et mariner dans la sauce soja.","Cuire les nouilles s\u00e9par\u00e9ment.","Assembler : nouilles, bouillon chaud, porc tranch\u00e9, oeuf coup\u00e9."]},
-  {id:"fr17",emoji:"\ud83e\udd5e",name:"Pancakes Moelleux",diet:"veg",mealTypes:["b"],time:20,portions:4,kcal:380,prot:12,carb:58,fat:14,ingredients:[{name:"Farine",qty:"200",unit:"g"},{name:"Lait",qty:"300",unit:"ml"},{name:"Oeufs",qty:"2",unit:"pi\u00e8ce"},{name:"Beurre fondu",qty:"40",unit:"g"},{name:"Levure chimique",qty:"1",unit:"sachet"}],instructions:["M\u00e9langer farine, levure et sucre vanill\u00e9.","Incorporer oeufs, lait et beurre fondu.","Laisser reposer 10 min.","Cuire \u00e0 feu moyen 2 min par face."]},
-  {id:"fr18",emoji:"\ud83c\udf73",name:"Shakshuka",diet:"veg",mealTypes:["b", "l"],time:25,portions:2,kcal:310,prot:18,carb:24,fat:16,ingredients:[{name:"Oeufs",qty:"4",unit:"pi\u00e8ce"},{name:"Tomates pel\u00e9es",qty:"400",unit:"g"},{name:"Poivron rouge",qty:"1",unit:"pi\u00e8ce"},{name:"Oignon",qty:"1",unit:"pi\u00e8ce"},{name:"Cumin",qty:"1",unit:"cc"},{name:"Paprika fum\u00e9",qty:"1",unit:"cc"}],instructions:["Faire revenir oignon et poivron 5 min.","Ajouter \u00e9pices et tomates, mijoter 10 min.","Faire des creux, casser les oeufs dedans.","Cuire \u00e0 couvert jusqu'aux blancs pris."]},
-  {id:"fr19",emoji:"\ud83e\udd59",name:"Wrap Poulet Avocat",diet:"omnivore",mealTypes:["l"],time:15,portions:2,kcal:480,prot:32,carb:42,fat:18,ingredients:[{name:"Tortillas bl\u00e9",qty:"2",unit:"pi\u00e8ce"},{name:"Poulet cuit",qty:"200",unit:"g"},{name:"Avocats",qty:"1",unit:"pi\u00e8ce"},{name:"Salade verte",qty:"50",unit:"g"},{name:"Tomates",qty:"1",unit:"pi\u00e8ce"},{name:"Citron",qty:"0.5",unit:"pi\u00e8ce"}],instructions:["\u00c9craser avocat avec citron, sel, poivre.","Trancher le poulet.","Garnir la tortilla : guacamole, poulet, salade, tomate.","Rouler serr\u00e9 et couper en deux."]},
-  {id:"fr20",emoji:"\ud83e\udd5c",name:"Houmous Maison",diet:"vegan",mealTypes:["l", "snack"],time:10,portions:6,kcal:160,prot:8,carb:18,fat:7,ingredients:[{name:"Pois chiches en bo\u00eete",qty:"400",unit:"g"},{name:"Tahini",qty:"3",unit:"cs"},{name:"Citron",qty:"1",unit:"pi\u00e8ce"},{name:"Ail",qty:"1",unit:"gousse"},{name:"Huile olive",qty:"3",unit:"cs"},{name:"Cumin",qty:"0.5",unit:"cc"}],instructions:["Egoutter les pois chiches, r\u00e9server le jus.","Mixer tous les ingr\u00e9dients avec 3 cs du jus.","Ajuster la consistance avec de eau.","Servir avec un filet d'huile d'olive."]}
+  {id:"fr1",emoji:"\ud83c\udf72",name:"Soupe \u00e0 l'Oignon Gratin\u00e9e",diet:"veg",mealTypes:["l", "d"],time:50,portions:4,kcal:290,prot:12,carb:32,fat:14,ingredients:[{"name": "Oignons", "qty": "800", "unit": "g"}, {"name": "Beurre", "qty": "40", "unit": "g"}, {"name": "Vin blanc sec", "qty": "150", "unit": "ml"}, {"name": "Bouillon de boeuf", "qty": "1", "unit": "L"}, {"name": "Pain baguette", "qty": "8", "unit": "tranches"}, {"name": "Gruyère râpé", "qty": "150", "unit": "g"}],instructions:["Émincer les oignons. Les caraméliser au beurre 30 min à feu doux en remuant.", "Déglacer au vin blanc. Ajouter le bouillon, mijoter 15 min.", "Répartir dans des bols, poser le pain, recouvrir de gruyère.", "Gratiner 5 min sous le gril."]},
+  {id:"fr2",emoji:"\ud83e\udd63",name:"Vichyssoise",diet:"veg",mealTypes:["l", "d"],time:40,portions:4,kcal:220,prot:6,carb:24,fat:12,ingredients:[{"name": "Poireaux", "qty": "4", "unit": "pièce"}, {"name": "Pommes de terre", "qty": "500", "unit": "g"}, {"name": "Beurre", "qty": "30", "unit": "g"}, {"name": "Bouillon de volaille", "qty": "1", "unit": "L"}, {"name": "Crème fraîche", "qty": "150", "unit": "ml"}, {"name": "Ciboulette", "qty": "1", "unit": "bouquet"}],instructions:["Faire suer les blancs de poireaux au beurre 10 min.", "Ajouter pommes de terre en dés et bouillon, cuire 25 min.", "Mixer finement, incorporer la crème.", "Servir froid avec la ciboulette ciselée."]},
+  {id:"fr3",emoji:"\ud83e\udd57",name:"Salade Ni\u00e7oise",diet:"pesc",mealTypes:["l", "d"],time:20,portions:2,kcal:340,prot:26,carb:18,fat:18,ingredients:[{"name": "Thon au naturel", "qty": "200", "unit": "g"}, {"name": "Haricots verts", "qty": "150", "unit": "g"}, {"name": "Tomates", "qty": "2", "unit": "pièce"}, {"name": "Olives noires", "qty": "60", "unit": "g"}, {"name": "Oeufs durs", "qty": "2", "unit": "pièce"}, {"name": "Anchois", "qty": "6", "unit": "filets"}, {"name": "Huile d'olive", "qty": "3", "unit": "cs"}],instructions:["Cuire les haricots verts al dente, refroidir.", "Faire durcir les oeufs 9 min, couper en quartiers.", "Assembler tous les ingrédients dans un plat.", "Arroser d'huile d'olive, sel et poivre du moulin."]},
+  {id:"fr4",emoji:"\ud83e\udd57",name:"Salade Landaise",diet:"omnivore",mealTypes:["l", "d"],time:15,portions:2,kcal:480,prot:24,carb:14,fat:36,ingredients:[{"name": "Gésiers de canard confits", "qty": "150", "unit": "g"}, {"name": "Magret fumé", "qty": "80", "unit": "g"}, {"name": "Foie gras", "qty": "60", "unit": "g"}, {"name": "Salade verte", "qty": "100", "unit": "g"}, {"name": "Pignons de pin", "qty": "20", "unit": "g"}, {"name": "Vinaigre de framboise", "qty": "2", "unit": "cs"}],instructions:["Tiédir les gésiers à la poêle 5 min.", "Toaster les pignons à sec.", "Dresser la salade, disposer gésiers, magret et foie gras.", "Assaisonner d'une vinaigrette vinaigre de framboise et huile de noix."]},
+  {id:"fr5",emoji:"\ud83c\udf57",name:"Poulet R\u00f4ti aux Herbes",diet:"omnivore",mealTypes:["l", "d"],time:90,portions:4,kcal:480,prot:42,carb:2,fat:32,ingredients:[{"name": "Poulet entier", "qty": "1.5", "unit": "kg"}, {"name": "Beurre", "qty": "60", "unit": "g"}, {"name": "Ail", "qty": "4", "unit": "gousses"}, {"name": "Thym", "qty": "4", "unit": "branches"}, {"name": "Romarin", "qty": "2", "unit": "branches"}, {"name": "Herbes de Provence", "qty": "1", "unit": "cs"}, {"name": "Citron", "qty": "1", "unit": "pièce"}],instructions:["Préchauffer le four à 200°C.", "Mélanger beurre, herbes de Provence et ail haché. Glisser sous la peau.", "Farcir la cavité de thym, romarin et demi-citron.", "Cuire 1h20 en arrosant toutes les 20 min. Laisser reposer 10 min."]},
+  {id:"fr6",emoji:"\ud83c\udf57",name:"Coq au Vin",diet:"omnivore",mealTypes:["d"],time:120,portions:4,kcal:520,prot:44,carb:16,fat:26,ingredients:[{"name": "Poulet découpé", "qty": "1.4", "unit": "kg"}, {"name": "Vin rouge", "qty": "75", "unit": "cl"}, {"name": "Lardons", "qty": "150", "unit": "g"}, {"name": "Champignons", "qty": "250", "unit": "g"}, {"name": "Petits oignons", "qty": "200", "unit": "g"}, {"name": "Farine", "qty": "2", "unit": "cs"}, {"name": "Cognac", "qty": "5", "unit": "cl"}],instructions:["Faire mariner le poulet dans le vin 12h.", "Égoutter et dorer le poulet. Flamber au cognac.", "Saupoudrer de farine, ajouter la marinade, lardons, oignons.", "Cuire à couvert 1h à feu doux. Ajouter les champignons 15 min avant."]},
+  {id:"fr7",emoji:"\ud83e\udd86",name:"Confit de Canard",diet:"omnivore",mealTypes:["d"],time:200,portions:4,kcal:620,prot:45,carb:2,fat:48,ingredients:[{"name": "Cuisses de canard", "qty": "4", "unit": "pièce"}, {"name": "Gros sel", "qty": "30", "unit": "g"}, {"name": "Ail", "qty": "4", "unit": "gousses"}, {"name": "Thym", "qty": "4", "unit": "branches"}, {"name": "Graisse de canard", "qty": "500", "unit": "g"}],instructions:["Frotter les cuisses avec sel, ail haché et thym. Mariner 12h.", "Rincer et sécher soigneusement les cuisses.", "Immerger dans la graisse fondue et cuire 2h30 à 90°C.", "Faire dorer côté peau 5 min à la poêle avant de servir."]},
+  {id:"fr8",emoji:"\ud83e\udd69",name:"Boeuf Bourguignon",diet:"omnivore",mealTypes:["d"],time:180,portions:6,kcal:580,prot:48,carb:18,fat:32,ingredients:[{"name": "Boeuf paleron", "qty": "1.2", "unit": "kg"}, {"name": "Vin rouge de Bourgogne", "qty": "75", "unit": "cl"}, {"name": "Lardons", "qty": "150", "unit": "g"}, {"name": "Champignons", "qty": "250", "unit": "g"}, {"name": "Carottes", "qty": "3", "unit": "pièce"}, {"name": "Oignons grelots", "qty": "200", "unit": "g"}, {"name": "Farine", "qty": "2", "unit": "cs"}],instructions:["Mariner le boeuf en cubes dans le vin 12h. Égoutter et sécher.", "Faire dorer la viande par petites quantités, saupoudrer de farine.", "Ajouter la marinade filtrée et les légumes. Mijoter 2h30 à couvert.", "Ajouter champignons et oignons grelots les 30 dernières minutes."]},
+  {id:"fr9",emoji:"\ud83e\udd69",name:"Blanquette de Veau",diet:"omnivore",mealTypes:["d"],time:90,portions:4,kcal:460,prot:38,carb:22,fat:22,ingredients:[{"name": "Veau (épaule)", "qty": "1", "unit": "kg"}, {"name": "Carottes", "qty": "3", "unit": "pièce"}, {"name": "Oignons", "qty": "2", "unit": "pièce"}, {"name": "Champignons", "qty": "200", "unit": "g"}, {"name": "Crème fraîche", "qty": "200", "unit": "ml"}, {"name": "Jaune d'oeuf", "qty": "2", "unit": "pièce"}, {"name": "Citron", "qty": "0.5", "unit": "pièce"}],instructions:["Blanchir le veau 5 min à l'eau bouillante. Rincer.", "Cuire veau et légumes dans l'eau à frémissement 1h.", "Préparer un roux, mouiller avec le bouillon de cuisson.", "Lier hors du feu avec crème + jaunes. Ajouter citron et champignons."]},
+  {id:"fr10",emoji:"\ud83e\udd69",name:"Pot-au-Feu",diet:"omnivore",mealTypes:["d"],time:180,portions:6,kcal:420,prot:42,carb:18,fat:18,ingredients:[{"name": "Plat de côtes de boeuf", "qty": "600", "unit": "g"}, {"name": "Gîte de boeuf", "qty": "600", "unit": "g"}, {"name": "Os à moelle", "qty": "2", "unit": "pièce"}, {"name": "Carottes", "qty": "4", "unit": "pièce"}, {"name": "Poireaux", "qty": "3", "unit": "pièce"}, {"name": "Navets", "qty": "2", "unit": "pièce"}, {"name": "Pommes de terre", "qty": "4", "unit": "pièce"}],instructions:["Mettre les viandes dans la marmite, couvrir d'eau froide. Porter à ébullition, écumer.", "Ajouter les légumes (sauf pommes de terre) et aromates. Cuire 2h30 à frémissement.", "Ajouter les pommes de terre 30 min avant la fin.", "Servir le bouillon en entrée, puis viandes et légumes avec moutarde."]},
+  {id:"fr11",emoji:"\ud83d\udc1f",name:"Saumon en Papillote",diet:"pesc",mealTypes:["l", "d"],time:25,portions:2,kcal:360,prot:36,carb:6,fat:20,ingredients:[{"name": "Pavés de saumon", "qty": "2", "unit": "pièce"}, {"name": "Courgettes", "qty": "1", "unit": "pièce"}, {"name": "Citron", "qty": "1", "unit": "pièce"}, {"name": "Aneth frais", "qty": "0.5", "unit": "bouquet"}, {"name": "Crème fraîche", "qty": "4", "unit": "cs"}, {"name": "Vin blanc", "qty": "4", "unit": "cs"}],instructions:["Préchauffer le four à 200°C.", "Poser les légumes en julienne sur papier sulfurisé, le saumon par-dessus.", "Arroser de crème, vin blanc et citron. Parsemer d'aneth.", "Fermer hermétiquement et cuire 15 à 18 min."]},
+  {id:"fr12",emoji:"\ud83d\udc21",name:"Sole Meuni\u00e8re",diet:"pesc",mealTypes:["l", "d"],time:20,portions:2,kcal:320,prot:34,carb:8,fat:16,ingredients:[{"name": "Soles entières", "qty": "2", "unit": "pièce"}, {"name": "Beurre", "qty": "80", "unit": "g"}, {"name": "Farine", "qty": "50", "unit": "g"}, {"name": "Citron", "qty": "1", "unit": "pièce"}, {"name": "Persil plat", "qty": "0.5", "unit": "bouquet"}],instructions:["Fariner les soles des deux côtés, secouer l'excès.", "Dorer dans 40g de beurre mousseux 3 min par face.", "Dans la même poêle, faire noisetter le beurre restant.", "Ajouter jus de citron et persil. Napper les soles et servir."]},
+  {id:"fr13",emoji:"\ud83d\udc20",name:"Daurade Grill\u00e9e au Fenouil",diet:"pesc",mealTypes:["l", "d"],time:35,portions:2,kcal:300,prot:38,carb:4,fat:14,ingredients:[{"name": "Daurade royale", "qty": "1", "unit": "pièce"}, {"name": "Fenouil", "qty": "2", "unit": "bulbes"}, {"name": "Citron", "qty": "2", "unit": "pièce"}, {"name": "Ail", "qty": "3", "unit": "gousses"}, {"name": "Huile d'olive", "qty": "3", "unit": "cs"}, {"name": "Thym frais", "qty": "3", "unit": "branches"}],instructions:["Faire des incisions sur la daurade, glisser ail et thym.", "Émincer le fenouil en lamelles, le faire sauter à l'huile d'olive.", "Griller la daurade 7 min par face sur le barbecue ou dans le four à 220°C.", "Dresser sur le lit de fenouil, arroser de jus de citron."]},
+  {id:"fr14",emoji:"\ud83e\udd58",name:"Ratatouille Proven\u00e7ale",diet:"vegan",mealTypes:["l", "d"],time:60,portions:4,kcal:180,prot:4,carb:22,fat:9,ingredients:[{"name": "Courgettes", "qty": "2", "unit": "pièce"}, {"name": "Aubergines", "qty": "1", "unit": "pièce"}, {"name": "Poivrons rouges", "qty": "2", "unit": "pièce"}, {"name": "Tomates mûres", "qty": "4", "unit": "pièce"}, {"name": "Oignons", "qty": "2", "unit": "pièce"}, {"name": "Ail", "qty": "3", "unit": "gousses"}, {"name": "Huile d'olive", "qty": "4", "unit": "cs"}, {"name": "Herbes de Provence", "qty": "1", "unit": "cs"}],instructions:["Couper tous les légumes en dés réguliers.", "Faire revenir oignons et ail dans l'huile d'olive 5 min.", "Ajouter les légumes par ordre de fermeté: poivrons, aubergines, courgettes.", "Incorporer les tomates et herbes, mijoter 30 min à feu doux."]},
+  {id:"fr15",emoji:"\ud83e\uddc0",name:"Quiche Lorraine",diet:"omnivore",mealTypes:["l", "d"],time:50,portions:6,kcal:440,prot:18,carb:24,fat:32,ingredients:[{"name": "Pâte brisée", "qty": "1", "unit": "rouleau"}, {"name": "Lardons fumés", "qty": "200", "unit": "g"}, {"name": "Oeufs", "qty": "3", "unit": "pièce"}, {"name": "Crème fraîche épaisse", "qty": "30", "unit": "cl"}, {"name": "Gruyère râpé", "qty": "80", "unit": "g"}, {"name": "Noix de muscade", "qty": "1", "unit": "pincée"}],instructions:["Préchauffer le four à 180°C. Foncer un moule de 28cm.", "Faire revenir les lardons à sec, égoutter.", "Battre oeufs, crème, sel, poivre et muscade.", "Répartir les lardons sur la pâte, verser l'appareil, parsemer de gruyère.", "Cuire 35 à 40 min jusqu'à dorure complète."]},
+  {id:"fr16",emoji:"\ud83e\uddc0",name:"Gratin Dauphinois",diet:"veg",mealTypes:["l", "d"],time:80,portions:6,kcal:360,prot:9,carb:32,fat:22,ingredients:[{"name": "Pommes de terre", "qty": "1.2", "unit": "kg"}, {"name": "Crème fraîche liquide", "qty": "40", "unit": "cl"}, {"name": "Ail", "qty": "2", "unit": "gousses"}, {"name": "Lait entier", "qty": "20", "unit": "cl"}, {"name": "Beurre", "qty": "20", "unit": "g"}, {"name": "Noix de muscade", "qty": "1", "unit": "pincée"}],instructions:["Préchauffer le four à 160°C. Frotter le plat à gratin avec l'ail, le beurrer.", "Trancher les pommes de terre très finement à la mandoline.", "Mélanger crème, lait, sel, poivre et muscade râpée.", "Disposer les pommes de terre en couches, verser le mélange crème-lait.", "Cuire 1h15 jusqu'à ce que les pommes de terre soient fondantes et la surface dorée."]},
+  {id:"fr17",emoji:"\ud83e\udd67",name:"Tarte aux Poireaux et Ch\u00e8vre",diet:"veg",mealTypes:["l", "d"],time:55,portions:6,kcal:380,prot:14,carb:28,fat:26,ingredients:[{"name": "Pâte brisée", "qty": "1", "unit": "rouleau"}, {"name": "Poireaux", "qty": "4", "unit": "pièce"}, {"name": "Bûche de chèvre", "qty": "200", "unit": "g"}, {"name": "Oeufs", "qty": "3", "unit": "pièce"}, {"name": "Crème fraîche", "qty": "20", "unit": "cl"}, {"name": "Ciboulette", "qty": "0.5", "unit": "bouquet"}],instructions:["Préchauffer le four à 180°C. Foncer le moule avec la pâte.", "Émincer les poireaux, les faire suer au beurre 15 min.", "Battre oeufs et crème, assaisonner.", "Répartir les poireaux, déposer les rondelles de chèvre, verser l'appareil.", "Cuire 35 min jusqu'à dorure."]},
+  {id:"fr18",emoji:"\ud83c\udf5d",name:"P\u00e2tes Bolognaise Maison",diet:"omnivore",mealTypes:["l", "d"],time:60,portions:4,kcal:520,prot:32,carb:58,fat:16,ingredients:[{"name": "Spaghettis", "qty": "400", "unit": "g"}, {"name": "Boeuf haché", "qty": "400", "unit": "g"}, {"name": "Tomates pelées en boîte", "qty": "400", "unit": "g"}, {"name": "Oignons", "qty": "1", "unit": "pièce"}, {"name": "Ail", "qty": "2", "unit": "gousses"}, {"name": "Vin rouge", "qty": "10", "unit": "cl"}, {"name": "Concentré de tomate", "qty": "1", "unit": "cs"}, {"name": "Basilic frais", "qty": "0.5", "unit": "bouquet"}],instructions:["Faire revenir oignon et ail émincés dans l'huile d'olive.", "Ajouter la viande hachée, faire dorer en émiettant.", "Déglacer au vin rouge, incorporer tomates et concentré.", "Mijoter 30 min. Cuire les pâtes al dente, mélanger et parsemer de basilic."]},
+  {id:"fr19",emoji:"\ud83c\udf5a",name:"Risotto aux Asperges",diet:"veg",mealTypes:["l", "d"],time:40,portions:4,kcal:420,prot:12,carb:64,fat:14,ingredients:[{"name": "Riz arborio", "qty": "320", "unit": "g"}, {"name": "Asperges vertes", "qty": "500", "unit": "g"}, {"name": "Oignon", "qty": "1", "unit": "pièce"}, {"name": "Vin blanc sec", "qty": "15", "unit": "cl"}, {"name": "Bouillon de légumes", "qty": "1.5", "unit": "L"}, {"name": "Parmesan râpé", "qty": "80", "unit": "g"}, {"name": "Beurre", "qty": "40", "unit": "g"}],instructions:["Couper les asperges en tronçons, garder les pointes de côté.", "Faire revenir l'oignon émincé dans le beurre.", "Nacrer le riz 2 min, déglacer au vin blanc.", "Ajouter le bouillon chaud louche par louche en remuant continuellement.", "Ajouter les tronçons à mi-cuisson, les pointes 3 min avant la fin.", "Terminer avec parmesan et une noisette de beurre."]},
+  {id:"fr20",emoji:"\ud83c\udf5d",name:"Carbonara Authentique",diet:"omnivore",mealTypes:["l", "d"],time:20,portions:4,kcal:580,prot:32,carb:64,fat:22,ingredients:[{"name": "Spaghettis", "qty": "400", "unit": "g"}, {"name": "Guanciale (ou lardons)", "qty": "150", "unit": "g"}, {"name": "Oeufs entiers", "qty": "2", "unit": "pièce"}, {"name": "Jaunes d'oeufs", "qty": "4", "unit": "pièce"}, {"name": "Pecorino râpé", "qty": "100", "unit": "g"}, {"name": "Poivre noir concassé", "qty": "2", "unit": "cc"}],instructions:["Faire bouillir les pâtes al dente dans l'eau salée.", "Dorer le guanciale à sec jusqu'à croustillant.", "Mélanger oeufs entiers, jaunes, pecorino et poivre généreusement.", "Égoutter les pâtes en gardant un verre d'eau de cuisson.", "Hors du feu, mélanger pâtes, guanciale et mélange oeuf-fromage.", "Ajouter l'eau de cuisson peu à peu pour obtenir une crème onctueuse."]},
+  {id:"fr21",emoji:"\ud83e\uded8",name:"Cassoulet Toulousain",diet:"omnivore",mealTypes:["d"],time:180,portions:6,kcal:620,prot:44,carb:48,fat:28,ingredients:[{"name": "Haricots blancs secs", "qty": "500", "unit": "g"}, {"name": "Confit de canard", "qty": "2", "unit": "cuisses"}, {"name": "Saucisse de Toulouse", "qty": "400", "unit": "g"}, {"name": "Lardons", "qty": "150", "unit": "g"}, {"name": "Tomates pelées", "qty": "400", "unit": "g"}, {"name": "Ail", "qty": "4", "unit": "gousses"}, {"name": "Bouquet garni", "qty": "1", "unit": "pièce"}],instructions:["Tremper les haricots 12h. Les cuire 1h avec bouquet garni et couennes.", "Faire dorer la saucisse et les lardons.", "Mélanger haricots et garniture dans une cassole en terre.", "Disposer le confit par-dessus. Cuire au four à 160°C pendant 1h30."]},
+  {id:"fr22",emoji:"\ud83e\udd58",name:"Choucroute Garnie",diet:"omnivore",mealTypes:["d"],time:120,portions:6,kcal:560,prot:38,carb:16,fat:38,ingredients:[{"name": "Choucroute crue", "qty": "1.5", "unit": "kg"}, {"name": "Jarret de porc", "qty": "600", "unit": "g"}, {"name": "Palette fumée", "qty": "400", "unit": "g"}, {"name": "Saucisses de Francfort", "qty": "6", "unit": "pièce"}, {"name": "Lardons", "qty": "150", "unit": "g"}, {"name": "Vin blanc d'Alsace", "qty": "30", "unit": "cl"}, {"name": "Genièvre", "qty": "10", "unit": "baies"}, {"name": "Pommes de terre", "qty": "8", "unit": "pièce"}],instructions:["Rincer et presser la choucroute pour enlever l'acidité.", "Faire revenir les lardons et oignons dans la graisse d'oie.", "Ajouter la choucroute, le vin blanc et les épices.", "Disposer les viandes fumées dessus. Cuire à couvert 1h30.", "Ajouter les saucisses et pommes de terre 30 min avant la fin."]},
+  {id:"fr23",emoji:"\ud83c\udf5e",name:"Croque-Monsieur Gratin\u00e9",diet:"omnivore",mealTypes:["l", "b"],time:15,portions:2,kcal:480,prot:24,carb:38,fat:26,ingredients:[{"name": "Pain de mie épais", "qty": "4", "unit": "tranches"}, {"name": "Jambon blanc", "qty": "4", "unit": "tranches"}, {"name": "Gruyère râpé", "qty": "100", "unit": "g"}, {"name": "Beurre", "qty": "20", "unit": "g"}, {"name": "Béchamel légère", "qty": "4", "unit": "cs"}],instructions:["Préchauffer le gril du four.", "Beurrer les tranches de pain, tartiner de béchamel.", "Déposer le jambon et la moitié du gruyère.", "Refermer les sandwichs, napper de béchamel et parsemer du reste de gruyère.", "Gratiner 5 min sous le gril jusqu'à dorure."]},
+  {id:"fr24",emoji:"\ud83e\udd5e",name:"Cr\u00eapes Bretonnes",diet:"veg",mealTypes:["b", "snack"],time:30,portions:4,kcal:280,prot:10,carb:42,fat:9,ingredients:[{"name": "Farine de froment", "qty": "250", "unit": "g"}, {"name": "Oeufs", "qty": "3", "unit": "pièce"}, {"name": "Lait entier", "qty": "600", "unit": "ml"}, {"name": "Beurre fondu", "qty": "40", "unit": "g"}, {"name": "Rhum", "qty": "1", "unit": "cs"}],instructions:["Tamiser la farine. Creuser un puits, y casser les oeufs.", "Incorporer progressivement le lait en fouettant pour éviter les grumeaux.", "Ajouter le beurre fondu et le rhum. Laisser reposer 30 min.", "Cuire dans une poêle légèrement beurrée, 1 min par face."]},
+  {id:"fr25",emoji:"\ud83e\udd5e",name:"Pancakes Moelleux",diet:"veg",mealTypes:["b"],time:20,portions:4,kcal:340,prot:11,carb:54,fat:10,ingredients:[{"name": "Farine", "qty": "200", "unit": "g"}, {"name": "Lait", "qty": "300", "unit": "ml"}, {"name": "Oeufs", "qty": "2", "unit": "pièce"}, {"name": "Beurre fondu", "qty": "40", "unit": "g"}, {"name": "Levure chimique", "qty": "1", "unit": "sachet"}, {"name": "Sucre vanillé", "qty": "1", "unit": "sachet"}],instructions:["Mélanger farine, levure et sucre vanillé.", "Battre oeufs, lait et beurre fondu dans un autre bol.", "Verser les liquides sur les poudres, mélanger grossièrement (quelques grumeaux OK).", "Cuire à feu moyen 2 min jusqu'aux bulles en surface, retourner 1 min."]},
+  {id:"fr26",emoji:"\ud83c\udf73",name:"Oeufs Cocotte \u00e0 la Cr\u00e8me",diet:"veg",mealTypes:["b", "l"],time:18,portions:2,kcal:280,prot:16,carb:4,fat:22,ingredients:[{"name": "Oeufs frais", "qty": "4", "unit": "pièce"}, {"name": "Crème fraîche épaisse", "qty": "4", "unit": "cs"}, {"name": "Gruyère râpé", "qty": "30", "unit": "g"}, {"name": "Beurre", "qty": "10", "unit": "g"}, {"name": "Ciboulette", "qty": "0.5", "unit": "bouquet"}],instructions:["Préchauffer le four à 180°C.", "Beurrer généreusement 2 ramequins.", "Déposer 1 cs de crème, casser 2 oeufs sans crever le jaune.", "Recouvrir d'une cs de crème et de gruyère.", "Cuire au bain-marie 10 à 12 min selon l'épaisseur voulue.", "Parsemer de ciboulette et servir aussitôt."]},
+  {id:"fr27",emoji:"\ud83e\uded9",name:"Velout\u00e9 de Carottes au Gingembre",diet:"vegan",mealTypes:["l", "d"],time:35,portions:4,kcal:140,prot:3,carb:22,fat:5,ingredients:[{"name": "Carottes", "qty": "700", "unit": "g"}, {"name": "Oignons", "qty": "1", "unit": "pièce"}, {"name": "Gingembre frais", "qty": "20", "unit": "g"}, {"name": "Lait de coco", "qty": "20", "unit": "cl"}, {"name": "Bouillon de légumes", "qty": "700", "unit": "ml"}, {"name": "Huile d'olive", "qty": "2", "unit": "cs"}],instructions:["Faire revenir oignons et gingembre haché dans l'huile d'olive.", "Ajouter les carottes en rondelles et le bouillon.", "Cuire 25 min, puis mixer très finement.", "Incorporer le lait de coco, rectifier l'assaisonnement et servir."]},
+  {id:"fr28",emoji:"\ud83c\udf44",name:"Velout\u00e9 de Champignons",diet:"veg",mealTypes:["l", "d"],time:30,portions:4,kcal:180,prot:6,carb:12,fat:12,ingredients:[{"name": "Champignons de Paris", "qty": "500", "unit": "g"}, {"name": "Oignons", "qty": "1", "unit": "pièce"}, {"name": "Beurre", "qty": "30", "unit": "g"}, {"name": "Crème fraîche", "qty": "15", "unit": "cl"}, {"name": "Bouillon de légumes", "qty": "700", "unit": "ml"}, {"name": "Persil", "qty": "0.5", "unit": "bouquet"}],instructions:["Faire suer les oignons dans le beurre.", "Ajouter les champignons émincés, cuire 10 min à feu vif.", "Verser le bouillon, cuire 15 min puis mixer.", "Incorporer la crème et le persil haché. Servir chaud."]},
+  {id:"fr29",emoji:"\ud83d\udc1f",name:"Brandade de Morue",diet:"pesc",mealTypes:["l", "d"],time:40,portions:4,kcal:390,prot:28,carb:22,fat:18,ingredients:[{"name": "Morue dessalée", "qty": "500", "unit": "g"}, {"name": "Pommes de terre", "qty": "400", "unit": "g"}, {"name": "Ail", "qty": "3", "unit": "gousses"}, {"name": "Huile d'olive", "qty": "10", "unit": "cl"}, {"name": "Crème fraîche", "qty": "8", "unit": "cl"}],instructions:["Cuire la morue dans l'eau frémissante 10 min. Effeuiller.", "Cuire les pommes de terre à la vapeur.", "Mixer la morue avec l'ail, incorporer l'huile d'olive chaude en filet.", "Écraser les pommes de terre, mélanger avec la brandade et la crème."]},
+  {id:"fr30",emoji:"\ud83e\udd67",name:"Flamiche aux Poireaux",diet:"veg",mealTypes:["l", "d"],time:55,portions:6,kcal:360,prot:12,carb:30,fat:22,ingredients:[{"name": "Pâte feuilletée", "qty": "1", "unit": "rouleau"}, {"name": "Poireaux", "qty": "5", "unit": "pièce"}, {"name": "Oeufs", "qty": "2", "unit": "pièce"}, {"name": "Crème fraîche épaisse", "qty": "25", "unit": "cl"}, {"name": "Beurre", "qty": "30", "unit": "g"}, {"name": "Noix de muscade", "qty": "1", "unit": "pincée"}],instructions:["Préchauffer le four à 200°C.", "Émincer les poireaux, les faire fondre au beurre 20 min à couvert.", "Battre oeufs et crème, assaisonner de muscade, sel et poivre.", "Foncer le moule de pâte feuilletée, piquer le fond.", "Répartir les poireaux fondus, verser l'appareil.", "Cuire 30 min jusqu'à belle dorure."]},
+  {id:"fr31",emoji:"\ud83c\udf6e",name:"Cr\u00e8me Br\u00fbl\u00e9e Vanille",diet:"veg",mealTypes:["snack"],time:70,portions:6,kcal:320,prot:6,carb:28,fat:22,ingredients:[{"name": "Crème liquide entière", "qty": "500", "unit": "ml"}, {"name": "Jaunes d'oeufs", "qty": "6", "unit": "pièce"}, {"name": "Sucre en poudre", "qty": "100", "unit": "g"}, {"name": "Gousse de vanille", "qty": "2", "unit": "pièce"}, {"name": "Cassonade", "qty": "6", "unit": "cs"}],instructions:["Préchauffer le four à 150°C.", "Chauffer la crème avec les gousses de vanille fendues. Laisser infuser.", "Fouetter vigoureusement jaunes et sucre jusqu'au blanchiment.", "Verser la crème chaude sur les jaunes en fouettant sans cesse.", "Répartir dans 6 ramequins, cuire au bain-marie 45 à 55 min.", "Réfrigérer 4h. Saupoudrer de cassonade et brûler au chalumeau."]},
+  {id:"fr32",emoji:"\ud83c\udf6b",name:"Mousse au Chocolat Noir",diet:"veg",mealTypes:["snack"],time:25,portions:6,kcal:280,prot:8,carb:22,fat:18,ingredients:[{"name": "Chocolat noir 70%", "qty": "200", "unit": "g"}, {"name": "Oeufs", "qty": "6", "unit": "pièce"}, {"name": "Sucre en poudre", "qty": "60", "unit": "g"}, {"name": "Beurre", "qty": "30", "unit": "g"}],instructions:["Faire fondre chocolat et beurre au bain-marie. Laisser tiédir.", "Séparer blancs et jaunes. Fouetter jaunes et sucre jusqu'à blanchiment.", "Incorporer le chocolat fondu aux jaunes.", "Monter les blancs en neige ferme. Les incorporer délicatement en 3 fois.", "Réfrigérer au minimum 2 heures avant de servir."]},
+  {id:"fr33",emoji:"\ud83c\udf82",name:"G\u00e2teau au Chocolat Fondant",diet:"veg",mealTypes:["snack"],time:40,portions:8,kcal:380,prot:8,carb:38,fat:22,ingredients:[{"name": "Chocolat noir", "qty": "200", "unit": "g"}, {"name": "Beurre", "qty": "150", "unit": "g"}, {"name": "Oeufs", "qty": "4", "unit": "pièce"}, {"name": "Sucre", "qty": "150", "unit": "g"}, {"name": "Farine", "qty": "60", "unit": "g"}, {"name": "Levure chimique", "qty": "0.5", "unit": "sachet"}],instructions:["Préchauffer le four à 180°C. Beurrer un moule de 22cm.", "Faire fondre chocolat et beurre au bain-marie.", "Fouetter oeufs et sucre jusqu'au ruban.", "Incorporer le chocolat fondu, puis la farine et la levure tamisées.", "Cuire 25 min (la lame doit ressortir légèrement humide).", "Démouler tiède et servir avec une crème anglaise."]},
+  {id:"fr34",emoji:"\ud83c\udf4b",name:"Tarte au Citron Meringu\u00e9e",diet:"veg",mealTypes:["snack"],time:60,portions:8,kcal:360,prot:6,carb:48,fat:16,ingredients:[{"name": "Pâte sablée", "qty": "1", "unit": "rouleau"}, {"name": "Citrons", "qty": "4", "unit": "pièce"}, {"name": "Oeufs", "qty": "4", "unit": "pièce"}, {"name": "Sucre", "qty": "180", "unit": "g"}, {"name": "Beurre", "qty": "80", "unit": "g"}, {"name": "Blancs d'oeufs", "qty": "3", "unit": "pièce"}],instructions:["Préchauffer le four à 180°C. Cuire la pâte à blanc 15 min.", "Mélanger jus et zeste de citron, oeufs, 120g de sucre et beurre.", "Cuire à feu doux en remuant jusqu'à épaississement du lemon curd.", "Verser le curd sur le fond de tarte refroidi.", "Monter les blancs en neige avec 60g de sucre. Napper la tarte.", "Dorer la meringue au chalumeau ou 3 min sous le gril."]},
+  {id:"fr35",emoji:"\ud83e\udd50",name:"Pain Perdu",diet:"veg",mealTypes:["b", "snack"],time:15,portions:4,kcal:310,prot:10,carb:42,fat:12,ingredients:[{"name": "Pain rassis", "qty": "8", "unit": "tranches"}, {"name": "Lait entier", "qty": "25", "unit": "cl"}, {"name": "Oeufs", "qty": "3", "unit": "pièce"}, {"name": "Sucre vanillé", "qty": "2", "unit": "sachets"}, {"name": "Beurre", "qty": "30", "unit": "g"}, {"name": "Confiture d'abricot", "qty": "4", "unit": "cs"}],instructions:["Battre les oeufs avec le lait et le sucre vanillé.", "Tremper les tranches de pain dans ce mélange côté par côté.", "Dorer dans le beurre mousseux 2 à 3 min par face.", "Servir immédiatement avec la confiture d'abricot."]},
+  {id:"fr36",emoji:"\ud83e\udd5c",name:"Salade aux Noix et Roquefort",diet:"veg",mealTypes:["l", "d"],time:10,portions:2,kcal:380,prot:14,carb:10,fat:32,ingredients:[{"name": "Noix cerneaux", "qty": "60", "unit": "g"}, {"name": "Roquefort", "qty": "80", "unit": "g"}, {"name": "Salade verte (mesclun)", "qty": "100", "unit": "g"}, {"name": "Poires", "qty": "1", "unit": "pièce"}, {"name": "Vinaigre de noix", "qty": "1", "unit": "cs"}, {"name": "Huile de noix", "qty": "3", "unit": "cs"}],instructions:["Couper la poire en fines tranches.", "Émietter le roquefort grossièrement.", "Préparer la vinaigrette à la noix.", "Dresser la salade avec tous les éléments et napper de vinaigrette."]},
+  {id:"fr37",emoji:"\ud83e\udd69",name:"C\u00f4te de Boeuf Grill\u00e9e",diet:"omnivore",mealTypes:["d"],time:30,portions:2,kcal:560,prot:52,carb:2,fat:38,ingredients:[{"name": "Côte de boeuf", "qty": "800", "unit": "g"}, {"name": "Fleur de sel", "qty": "2", "unit": "pincées"}, {"name": "Poivre concassé", "qty": "1", "unit": "cc"}, {"name": "Beurre", "qty": "30", "unit": "g"}, {"name": "Thym frais", "qty": "3", "unit": "branches"}],instructions:["Sortir la côte du réfrigérateur 1h avant la cuisson.", "Chauffer une plancha ou poêle en fonte à feu très vif.", "Saisir 4 min par face pour une cuisson saignante.", "Arroser de beurre fondu et thym les dernières minutes.", "Laisser reposer 5 min sous papier alu avant de trancher.", "Assaisonner de fleur de sel et poivre concassé au dernier moment."]},
+  {id:"fr38",emoji:"\ud83d\udc30",name:"Lapin \u00e0 la Moutarde",diet:"omnivore",mealTypes:["d"],time:90,portions:4,kcal:420,prot:44,carb:6,fat:24,ingredients:[{"name": "Lapin découpé", "qty": "1.2", "unit": "kg"}, {"name": "Moutarde à l'ancienne", "qty": "4", "unit": "cs"}, {"name": "Crème fraîche épaisse", "qty": "20", "unit": "cl"}, {"name": "Oignons", "qty": "2", "unit": "pièce"}, {"name": "Vin blanc", "qty": "15", "unit": "cl"}, {"name": "Thym", "qty": "3", "unit": "branches"}],instructions:["Enduire généreusement les morceaux de lapin de moutarde.", "Dorer le lapin dans l'huile d'olive de chaque côté.", "Ajouter oignons émincés, vin blanc et thym. Cuire à couvert 45 min.", "Incorporer la crème fraîche, rectifier l'assaisonnement et servir."]},
+  {id:"fr39",emoji:"\ud83c\udf5c",name:"Ramen Maison",diet:"omnivore",mealTypes:["l", "d"],time:90,portions:4,kcal:560,prot:38,carb:52,fat:22,ingredients:[{"name": "Bouillon de poulet maison", "qty": "2", "unit": "L"}, {"name": "Poitrine de porc", "qty": "400", "unit": "g"}, {"name": "Nouilles de blé", "qty": "300", "unit": "g"}, {"name": "Oeufs", "qty": "4", "unit": "pièce"}, {"name": "Sauce soja", "qty": "4", "unit": "cs"}, {"name": "Oignons nouveaux", "qty": "4", "unit": "pièce"}, {"name": "Champignons shiitake", "qty": "100", "unit": "g"}],instructions:["Cuire la poitrine de porc dans le bouillon 1h, puis trancher finement.", "Cuire les oeufs 6 min 30 dans l'eau bouillante, écaler et mariner dans le soja dilué.", "Chauffer le bouillon avec sauce soja et champignons.", "Cuire les nouilles selon le paquet.", "Assembler dans les bols : nouilles, bouillon chaud, porc tranché, oeuf coupé, oignons."]},
+  {id:"fr40",emoji:"\ud83e\uded5",name:"Tajine de Poulet au Citron Confit",diet:"omnivore",mealTypes:["d"],time:70,portions:4,kcal:480,prot:40,carb:14,fat:28,ingredients:[{"name": "Poulet découpé", "qty": "1.2", "unit": "kg"}, {"name": "Citrons confits", "qty": "2", "unit": "pièce"}, {"name": "Olives vertes", "qty": "100", "unit": "g"}, {"name": "Oignons", "qty": "2", "unit": "pièce"}, {"name": "Cumin", "qty": "1", "unit": "cc"}, {"name": "Safran", "qty": "1", "unit": "pincée"}, {"name": "Coriandre fraîche", "qty": "1", "unit": "bouquet"}],instructions:["Faire mariner le poulet avec cumin, safran, sel et poivre 1h.", "Faire dorer les oignons émincés, puis le poulet de chaque côté.", "Ajouter citrons confits coupés, olives et un verre d'eau.", "Cuire à couvert 45 min à feu doux.", "Parsemer de coriandre fraîche ciselée au moment de servir."]},
+  {id:"fr41",emoji:"\ud83c\udf5b",name:"Curry de L\u00e9gumes Coco",diet:"vegan",mealTypes:["l", "d"],time:30,portions:4,kcal:310,prot:9,carb:42,fat:14,ingredients:[{"name": "Lait de coco", "qty": "400", "unit": "ml"}, {"name": "Patates douces", "qty": "400", "unit": "g"}, {"name": "Pois chiches", "qty": "400", "unit": "g"}, {"name": "Épinards frais", "qty": "150", "unit": "g"}, {"name": "Oignons", "qty": "1", "unit": "pièce"}, {"name": "Curry en poudre", "qty": "2", "unit": "cs"}, {"name": "Gingembre frais", "qty": "1", "unit": "cc"}],instructions:["Faire revenir oignon, curry et gingembre 3 min dans l'huile.", "Ajouter les patates douces en cubes et le lait de coco.", "Cuire 15 min à feu moyen, puis incorporer les pois chiches.", "Ajouter les épinards les 2 dernières minutes.", "Servir avec du riz basmati."]},
+  {id:"fr42",emoji:"\ud83e\uded8",name:"Lentilles \u00e0 la Saucisse",diet:"omnivore",mealTypes:["l", "d"],time:45,portions:4,kcal:520,prot:34,carb:52,fat:18,ingredients:[{"name": "Lentilles vertes du Puy", "qty": "300", "unit": "g"}, {"name": "Saucisses de Morteau", "qty": "2", "unit": "pièce"}, {"name": "Lardons", "qty": "100", "unit": "g"}, {"name": "Carottes", "qty": "2", "unit": "pièce"}, {"name": "Oignons", "qty": "1", "unit": "pièce"}, {"name": "Moutarde à l'ancienne", "qty": "1", "unit": "cs"}, {"name": "Vinaigre de vin rouge", "qty": "1", "unit": "cs"}],instructions:["Rincer les lentilles, les cuire 25 min avec bouquet garni et légumes.", "Faire cuire les saucisses à l'eau frémissante 20 min.", "Faire revenir les lardons à sec.", "Égoutter les lentilles, ajouter lardons, moutarde et vinaigre.", "Trancher les saucisses et servir sur les lentilles."]},
+  {id:"fr43",emoji:"\ud83e\udd59",name:"Wrap Poulet C\u00e9sar",diet:"omnivore",mealTypes:["l"],time:15,portions:2,kcal:480,prot:32,carb:42,fat:18,ingredients:[{"name": "Tortillas de blé", "qty": "2", "unit": "pièce"}, {"name": "Poulet grillé", "qty": "200", "unit": "g"}, {"name": "Laitue romaine", "qty": "50", "unit": "g"}, {"name": "Parmesan râpé", "qty": "30", "unit": "g"}, {"name": "Sauce César", "qty": "3", "unit": "cs"}, {"name": "Tomates cerises", "qty": "6", "unit": "pièce"}],instructions:["Chauffer les tortillas à sec dans une poêle 30 secondes.", "Napper de sauce César.", "Répartir la laitue, les lamelles de poulet grillé et les tomates coupées.", "Parsemer de parmesan et refermer le wrap en le roulant bien serré.", "Couper en deux en biais et servir immédiatement."]},
+  {id:"fr44",emoji:"\ud83e\udd57",name:"Taboul\u00e9 Maison",diet:"vegan",mealTypes:["l", "d"],time:20,portions:4,kcal:280,prot:8,carb:42,fat:8,ingredients:[{"name": "Semoule fine", "qty": "200", "unit": "g"}, {"name": "Tomates", "qty": "3", "unit": "pièce"}, {"name": "Concombre", "qty": "1", "unit": "pièce"}, {"name": "Persil plat", "qty": "1", "unit": "bouquet"}, {"name": "Menthe fraîche", "qty": "0.5", "unit": "bouquet"}, {"name": "Citrons", "qty": "2", "unit": "pièce"}, {"name": "Huile d'olive", "qty": "4", "unit": "cs"}],instructions:["Couvrir la semoule d'eau bouillante, laisser gonfler 10 min, égrener à la fourchette.", "Couper tomates et concombre en petits dés.", "Ciseler finement persil et menthe.", "Mélanger tous les ingrédients, arroser de jus de citron et huile d'olive.", "Laisser reposer 30 min au réfrigérateur avant de servir."]},
+  {id:"fr45",emoji:"\ud83c\udf5e",name:"Bruschetta \u00e0 la Tomate",diet:"vegan",mealTypes:["l", "snack"],time:10,portions:4,kcal:240,prot:6,carb:36,fat:8,ingredients:[{"name": "Pain ciabatta", "qty": "1", "unit": "pièce"}, {"name": "Tomates bien mûres", "qty": "4", "unit": "pièce"}, {"name": "Basilic frais", "qty": "1", "unit": "bouquet"}, {"name": "Ail", "qty": "2", "unit": "gousses"}, {"name": "Huile d'olive extra-vierge", "qty": "4", "unit": "cs"}],instructions:["Toaster les tranches de pain.", "Frotter généreusement chaque tranche avec la gousse d'ail.", "Couper les tomates en dés, assaisonner de sel, poivre et huile d'olive.", "Déposer les tomates sur le pain, parsemer de basilic frais.", "Servir immédiatement."]},
+  {id:"fr46",emoji:"\ud83d\udc20",name:"Gravlax de Saumon",diet:"pesc",mealTypes:["l", "d"],time:30,portions:6,kcal:260,prot:28,carb:2,fat:16,ingredients:[{"name": "Filet de saumon", "qty": "800", "unit": "g"}, {"name": "Gros sel", "qty": "100", "unit": "g"}, {"name": "Sucre", "qty": "50", "unit": "g"}, {"name": "Aneth frais", "qty": "1", "unit": "bouquet"}, {"name": "Vodka", "qty": "2", "unit": "cs"}, {"name": "Poivre blanc", "qty": "1", "unit": "cc"}],instructions:["Mélanger sel, sucre et poivre blanc.", "Recouvrir le filet de saumon avec ce mélange et l'aneth haché.", "Arroser de vodka, envelopper de film alimentaire.", "Placer sous un poids au réfrigérateur 24 à 48 heures en retournant une fois.", "Rincer, sécher et trancher finement en biais pour servir."]},
+  {id:"fr47",emoji:"\ud83e\udedb",name:"Petits Pois \u00e0 la Fran\u00e7aise",diet:"veg",mealTypes:["l", "d"],time:25,portions:4,kcal:180,prot:8,carb:24,fat:7,ingredients:[{"name": "Petits pois frais ou surgelés", "qty": "600", "unit": "g"}, {"name": "Laitue", "qty": "0.5", "unit": "pièce"}, {"name": "Oignons grelots", "qty": "150", "unit": "g"}, {"name": "Beurre", "qty": "40", "unit": "g"}, {"name": "Sucre", "qty": "1", "unit": "pincée"}, {"name": "Persil", "qty": "0.5", "unit": "bouquet"}],instructions:["Faire fondre le beurre dans une cocotte.", "Ajouter oignons grelots et les faire blondir.", "Incorporer les petits pois, la laitue chiffonnade, une pincée de sucre et 5 cl d'eau.", "Cuire à couvert 15 min à feu doux.", "Rectifier l'assaisonnement, parsemer de persil et servir."]},
+  {id:"fr48",emoji:"\ud83e\uddc5",name:"Tarte Tatin",diet:"veg",mealTypes:["snack"],time:60,portions:6,kcal:340,prot:4,carb:52,fat:14,ingredients:[{"name": "Pommes Golden", "qty": "1.2", "unit": "kg"}, {"name": "Pâte feuilletée", "qty": "1", "unit": "rouleau"}, {"name": "Beurre", "qty": "60", "unit": "g"}, {"name": "Sucre en poudre", "qty": "120", "unit": "g"}, {"name": "Crème fraîche", "qty": "1", "unit": "pot"}],instructions:["Préchauffer le four à 200°C.", "Dans un moule à tatin, faire fondre beurre et sucre jusqu'au caramel blond.", "Éplucher et couper les pommes en quartiers épais, les disposer serrées sur le caramel.", "Recouvrir de pâte feuilletée en rentrant les bords.", "Cuire 30 min jusqu'à belle dorure.", "Laisser tiédir 5 min puis retourner sur un plat. Servir tiède avec de la crème fraîche."]},
+  {id:"fr49",emoji:"\ud83c\udf82",name:"Madeleines",diet:"veg",mealTypes:["b", "snack"],time:30,portions:12,kcal:140,prot:3,carb:18,fat:7,ingredients:[{"name": "Farine", "qty": "150", "unit": "g"}, {"name": "Beurre", "qty": "120", "unit": "g"}, {"name": "Sucre", "qty": "120", "unit": "g"}, {"name": "Oeufs", "qty": "3", "unit": "pièce"}, {"name": "Levure chimique", "qty": "0.5", "unit": "sachet"}, {"name": "Zeste de citron", "qty": "1", "unit": "pièce"}, {"name": "Miel", "qty": "1", "unit": "cs"}],instructions:["Faire fondre le beurre et le laisser refroidir.", "Fouetter oeufs, sucre et miel jusqu'au blanchiment.", "Incorporer farine tamisée avec levure et zeste de citron.", "Ajouter le beurre fondu froid, mélanger.", "Laisser reposer 30 min au réfrigérateur (clé de la bosse).", "Remplir les empreintes beurrées aux 2/3. Cuire à 220°C puis baisser à 180°C pendant 10 min."]},
+  {id:"fr50",emoji:"\ud83c\udf6e",name:"\u00cele Flottante",diet:"veg",mealTypes:["snack"],time:40,portions:4,kcal:340,prot:10,carb:48,fat:14,ingredients:[{"name": "Oeufs", "qty": "4", "unit": "pièce"}, {"name": "Lait entier", "qty": "500", "unit": "ml"}, {"name": "Sucre", "qty": "120", "unit": "g"}, {"name": "Gousse de vanille", "qty": "1", "unit": "pièce"}, {"name": "Sucre pour caramel", "qty": "80", "unit": "g"}],instructions:["Préparer la crème anglaise : chauffer lait et vanille, fouetter jaunes et 80g sucre, verser lait chaud, cuire à la nappe.", "Monter les blancs en neige ferme avec 40g sucre.", "Former des quenelles de blancs, les pocher 2 min dans le lait frémissant.", "Faire un caramel blond avec 80g de sucre.", "Servir les îles sur la crème anglaise, napper de caramel."]}
 ];
 
 // Merged recipe getter - includes all sources

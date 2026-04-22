@@ -1236,9 +1236,12 @@ svg{display:block;flex-shrink:0;}
 
       <!-- ═══ TAB: EXPLORER (Spoonacular) ═══ -->
       <div id="menuPanelSearch" style="display:none;">
-        <div class="ai-insight-card" style="padding:10px 14px;margin-bottom:12px;">
-          <div style="font-size:.72rem;font-weight:700;color:var(--ac);">🌐 Millions de recettes via Spoonacular</div>
-          <div style="font-size:.68rem;color:var(--tx2);margin-top:2px;">Recherchez, ajoutez à votre semaine ou à vos favoris</div>
+        <div style="display:flex;gap:8px;margin-bottom:12px;background:var(--bg2);border-radius:var(--rs);padding:3px;">
+          <button id="exptab-ai" onclick="switchExplTab('ai')" style="flex:1;padding:8px 4px;border-radius:var(--rs);border:none;font-size:.76rem;font-weight:800;cursor:pointer;background:var(--ac);color:#fff;">🤖 Claude IA</button>
+          <button id="exptab-mdb" onclick="switchExplTab('mdb')" style="flex:1;padding:8px 4px;border-radius:var(--rs);border:none;font-size:.76rem;font-weight:700;cursor:pointer;background:transparent;color:var(--tx2);">🌐 TheMealDB</button>
+        </div>
+        <div id="explinfo" style="font-size:.7rem;color:var(--tx2);margin-bottom:10px;padding:6px 10px;background:rgba(108,92,231,.06);border-radius:var(--rs);">
+          🤖 <strong>Claude</strong> génère des recettes 100% françaises · 🌐 <strong>TheMealDB</strong> si Claude indisponible
         </div>
         <div class="spoon-search-bar">
           <input class="spoon-search-inp" id="spoonSearchInp" placeholder="🔍 Ex: poulet curry, salade niçoise..." 
@@ -3151,11 +3154,33 @@ function translateQueryToEnglish(query) {
   return translated.charAt(0).toUpperCase() + translated.slice(1);
 }
 
+
+function switchExplTab(t) {
+  const aiBtn = document.getElementById('exptab-ai');
+  const mdbBtn = document.getElementById('exptab-mdb');
+  if(aiBtn) { aiBtn.style.background = t==='ai'?'var(--ac)':'transparent'; aiBtn.style.color = t==='ai'?'#fff':'var(--tx2)'; aiBtn.style.fontWeight = t==='ai'?'800':'700'; }
+  if(mdbBtn) { mdbBtn.style.background = t==='mdb'?'var(--ac)':'transparent'; mdbBtn.style.color = t==='mdb'?'#fff':'var(--tx2)'; mdbBtn.style.fontWeight = t==='mdb'?'800':'700'; }
+  window._explTab = t;
+  const info = document.getElementById('explinfo');
+  if(info) info.innerHTML = t==='ai'
+    ? '🤖 <strong>Claude</strong> génère des recettes 100% françaises adaptées à votre profil'
+    : '🌐 <strong>TheMealDB</strong> — milliers de recettes avec photos, noms traduits';
+}
+
+async function searchSpoonacularQuery(q) {
+  const inp = document.getElementById('spoonSearchInp');
+  if(inp) inp.value = q;
+  searchSpoonacular(q);
+}
+
 async function searchSpoonacular(query) {
   const rawQ = query || document.getElementById("spoonSearchInp")?.value?.trim();
   if(!rawQ) return;
-  // Use Claude to generate French recipes for any search query
-  await searchWithClaude(rawQ);
+  if(window._explTab === "mdb") {
+    await searchMealDBExplorer(rawQ);
+  } else {
+    await searchWithClaude(rawQ);
+  }
 }
 
 async function searchWithClaude(query) {
@@ -3274,12 +3299,176 @@ async function searchWithClaude(query) {
     grid.appendChild(gridDiv);
 
   } catch(e) {
-    console.error("Claude search error:", e);
-    grid.innerHTML = '<div style="text-align:center;padding:24px;color:var(--tx3);">' +
-      '<div style="font-size:1.5rem;margin-bottom:8px;">⚠️</div>' +
-      '<div style="font-size:.82rem;">Erreur de génération. Vérifiez votre connexion.</div>' +
-      '<div style="font-size:.72rem;margin-top:4px;color:var(--rd);font-family:monospace;">' + (e.message||"") + '</div>'
-      + '<button class="btn acc sm" style="margin-top:12px;" onclick="searchWithClaude(document.getElementById(\'spoonSearchInp\').value)">🔄 Réessayer</button></div>';
+    console.warn("Claude indisponible, fallback TheMealDB:", e.message);
+    // Fallback automatique sur TheMealDB
+    await searchMealDBExplorer(query);
+  }
+}
+
+// ══ TheMealDB Explorer — fallback si Claude indisponible ══
+async function searchMealDBExplorer(query) {
+  const grid = document.getElementById("spoonResults");
+  if(!grid) return;
+
+  grid.innerHTML = '<div style="text-align:center;padding:16px;color:var(--tx2);">'
+    + '<div style="font-size:1.2rem;margin-bottom:6px;">🌐</div>'
+    + '<div style="font-size:.8rem;font-weight:700;">Recherche via TheMealDB...</div></div>';
+
+  try {
+    // Translate French query to English for TheMealDB
+    const qEn = typeof translateQueryToEnglish === "function" ? translateQueryToEnglish(query) : query;
+
+    // Try search by name first
+    const r1 = await fetch("https://www.themealdb.com/api/json/v1/1/search.php?s=" + encodeURIComponent(qEn));
+    const d1 = await r1.json();
+    let meals = d1.meals || [];
+
+    // If no results, try by ingredient
+    if(!meals.length) {
+      const r2 = await fetch("https://www.themealdb.com/api/json/v1/1/filter.php?i=" + encodeURIComponent(qEn));
+      const d2 = await r2.json();
+      const shortList = (d2.meals || []).slice(0, 8);
+      // Fetch details for each
+      const details = await Promise.all(
+        shortList.map(m => fetch("https://www.themealdb.com/api/json/v1/1/lookup.php?i=" + m.idMeal)
+          .then(r => r.json()).then(d => d.meals?.[0]).catch(() => null))
+      );
+      meals = details.filter(Boolean);
+    }
+
+    if(!meals.length) {
+      grid.innerHTML = '<div style="text-align:center;padding:24px;color:var(--tx3);">'
+        + '<div style="font-size:2rem;margin-bottom:8px;">🤷</div>'
+        + '<div style="font-size:.82rem;">Aucun résultat pour &laquo;' + query + '&raquo;<br>'
+        + '<span style="font-size:.72rem;">Essayez : poulet, pâtes, saumon...</span></div></div>';
+      return;
+    }
+
+    // Build recipe objects from TheMealDB format
+    const recipes = meals.slice(0, 10).map(m => {
+      const frName = typeof translateRecipeName === "function" ? translateRecipeName(m.strMeal) : m.strMeal;
+      // Extract ingredients
+      const ingredients = [];
+      for(let i = 1; i <= 20; i++) {
+        const name = m["strIngredient" + i];
+        const qty  = m["strMeasure" + i];
+        if(name && name.trim()) {
+          const frIngr = typeof translateRecipeName === "function" ? translateRecipeName(name.trim()) : name.trim();
+          ingredients.push({ name: frIngr, qty: (qty||"").trim(), unit: "" });
+        }
+      }
+      // Split instructions into steps
+      const instrRaw = m.strInstructions || "";
+      const instructions = instrRaw.split(/\r?\n/).map(s => s.trim()).filter(s => s.length > 10).slice(0, 8);
+
+
+      return {
+        id: "mdb_" + m.idMeal,
+        name: frName,
+        emoji: "🌐",
+        photo: m.strMealThumb,
+        diet: "omnivore",
+        mealTypes: ["l","d"],
+        time: 30,
+        portions: 4,
+        kcal: 0,
+        ingredients,
+        instructions,
+        source: "mealdb",
+        category: m.strCategory || "",
+        area: m.strArea || "",
+      };
+    });
+
+    // Cache
+    state.spoonCache[(query||"").toLowerCase()] = recipes;
+
+    // Render
+    grid.innerHTML = "";
+
+    // Banner indicating source
+    const banner = document.createElement("div");
+    banner.style.cssText = "padding:8px 14px;margin-bottom:10px;background:rgba(0,181,184,.1);border-radius:var(--rs);font-size:.73rem;font-weight:700;color:var(--tl);display:flex;align-items:center;gap:6px;";
+    banner.innerHTML = "🌐 " + recipes.length + " recettes via TheMealDB · noms traduits en français";
+    grid.appendChild(banner);
+
+    const gridDiv = document.createElement("div");
+    gridDiv.className = "spoon-grid";
+
+    recipes.forEach(r => {
+      const card = document.createElement("div");
+      card.className = "spoon-recipe";
+      card.style.position = "relative";
+      card.style.cursor = "pointer";
+
+      // Image or emoji
+      const imgDiv = document.createElement("div");
+      imgDiv.className = "spoon-recipe-img";
+      if(r.photo) {
+        const img = document.createElement("img");
+        img.src = r.photo;
+        img.alt = r.name;
+        img.loading = "lazy";
+        img.style.cssText = "width:100%;height:100%;object-fit:cover;";
+        img.onerror = () => { imgDiv.style.fontSize = "2.5rem"; imgDiv.style.display = "flex"; imgDiv.style.alignItems = "center"; imgDiv.style.justifyContent = "center"; imgDiv.textContent = "🍽️"; };
+        imgDiv.appendChild(img);
+      } else {
+        imgDiv.style.cssText = "display:flex;align-items:center;justify-content:center;font-size:2.5rem;background:var(--bg2);";
+        imgDiv.textContent = "🍽️";
+      }
+
+      const body = document.createElement("div");
+      body.className = "spoon-recipe-body";
+      body.innerHTML = '<div class="spoon-recipe-name">' + r.name + '</div>'
+        + '<div class="spoon-recipe-meta">'
+        + (r.category ? '<span>' + r.category + '</span>' : '')
+        + (r.area ? '<span>🌍 ' + r.area + '</span>' : '')
+        + '<span>⏱ ~30min</span>'
+        + '</div>';
+
+      card.appendChild(imgDiv);
+      card.appendChild(body);
+      card.onclick = () => openMealDBRecipeDetail(r.id);
+
+      // Add to menu button
+      const addBtn = document.createElement("button");
+      addBtn.className = "spoon-add-btn";
+      addBtn.title = "Ajouter au menu";
+      addBtn.textContent = "+";
+      addBtn.onclick = e => { e.stopPropagation(); addSpoonRecipeToDay(r.id); };
+
+      // Bookmark
+      const bmBtn = document.createElement("button");
+      bmBtn.className = "spoon-bookmark-btn";
+      bmBtn.textContent = state.recipeBookmarks.some(b => b.id === r.id) ? "⭐" : "☆";
+      bmBtn.onclick = e => { e.stopPropagation(); toggleBookmark(r.id); };
+
+      card.appendChild(addBtn);
+      card.appendChild(bmBtn);
+      gridDiv.appendChild(card);
+    });
+
+    grid.appendChild(gridDiv);
+
+  } catch(err) {
+    console.error("TheMealDB error:", err);
+    grid.innerHTML = '<div style="text-align:center;padding:24px;color:var(--tx3);">'
+      + '<div style="font-size:2rem;margin-bottom:8px;">⚠️</div>'
+      + '<div style="font-size:.82rem;">Erreur de connexion. Vérifiez votre réseau.</div></div>';
+  }
+}
+
+function openMealDBRecipeDetail(id) {
+  const recipe = Object.values(state.spoonCache).flat().find(r => r.id === id)
+    || state.recipeBookmarks.find(r => r.id === id);
+  if(!recipe) return;
+  window._currentRecipe = recipe;
+  window._currentPortions = recipe.portions || 4;
+  const isBookmarked = state.recipeBookmarks.some(b => b.id === id);
+  if(typeof renderRecipeModal === "function") {
+    renderRecipeModal(recipe, window._currentPortions, isBookmarked);
+    const ov = document.getElementById("recipeDetailModal")?.parentElement;
+    if(ov) ov.classList.add("on");
   }
 }
 

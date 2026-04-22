@@ -3015,9 +3015,9 @@ Réponds UNIQUEMENT en JSON valide:
 Exactement 7 jours. Valeurs nutritionnelles réalistes et cohérentes.`;
 
   try {
-    const resp=await fetch('https://api.anthropic.com/v1/messages',{
+    const resp=await fetch('/api/claude',{
       method:'POST',
-      headers:{'Content-Type':'application/json','x-api-key':getAnthropicKey(),'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+      headers:{'Content-Type':'application/json','anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
       body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:4000,messages:[{role:'user',content:prompt}]})
     });
     if(!resp.ok) {
@@ -3096,9 +3096,9 @@ async function searchWithClaudeFallback(q) {
     const p = state.profile||{};
     const prompt = `Propose 6 recettes de cuisine pour: "${q}", régime: ${diet}${p.goal?', objectif: '+p.goal:''}.
 Réponds UNIQUEMENT en JSON: {"recipes":[{"name":"Nom recette","emoji":"🍽️","time":30,"kcal":450,"prot":25,"carb":40,"fat":15,"diet":"${diet}","ingredients":[{"name":"Ingrédient","qty":100,"unit":"g"}],"instructions":["Étape 1","Étape 2"]}]}`;
-    const resp = await fetch('https://api.anthropic.com/v1/messages',{
+    const resp = await fetch('/api/claude',{
       method:'POST',
-      headers:{'Content-Type':'application/json','x-api-key':getAnthropicKey(),'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+      headers:{'Content-Type':'application/json','anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
       body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:2000,messages:[{role:'user',content:prompt}]})
     });
     const data = await resp.json();
@@ -3181,14 +3181,13 @@ async function searchWithClaude(query) {
     + '"recipes":[{"name":"string","emoji":"string","time":30,"portions":4,"kcal":450,"prot":25,"carb":40,"fat":15,"description":"string","ingredients":[{"name":"string","qty":"100","unit":"g"}],"instructions":["Étape 1","Étape 2","Étape 3"]}]}\n'
     + "Génère exactement 4 recettes dans ce format.";
   try {
-    const resp = await fetch("https://api.anthropic.com/v1/messages", {
+    const resp = await fetch("/api/claude", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-api-key": getAnthropicKey(),
+        
         "anthropic-version": "2023-06-01",
-        "anthropic-dangerous-direct-browser-access": "true"
-      },
+              },
       body: JSON.stringify({
         model: "claude-sonnet-4-20250514",
         max_tokens: 4000,
@@ -4062,20 +4061,39 @@ function selectMealDBForSlot(id, frName, day, slot) {
 // ════════════════════════════════════════════════════════════
 
 function snackAC(q) {
-  const ac = document.getElementById("snackAC");
+  const ac = document.getElementById('snackAC');
   if(!ac) return;
-  if(!q || q.length < 1) { ac.style.display="none"; return; }
-  const prods = typeof PRODUCTS !== "undefined" ? PRODUCTS : [];
-  const matches = prods.filter(p => p.name.toLowerCase().includes(q.toLowerCase())).slice(0,8);
-  if(!matches.length) { ac.style.display="none"; return; }
-  ac.style.display = "block";
-  ac.innerHTML = matches.map(p => {
-    const el = document.createElement("div");
-    el.style.cssText = "padding:9px 14px;cursor:pointer;border-bottom:1px solid var(--bg2);display:flex;align-items:center;gap:8px;";
-    el.innerHTML = '<span style="font-size:1.1rem;">' + (p.emoji||"🛍️") + '</span><span style="font-size:.82rem;font-weight:700;">' + p.name + "</span>";
-    el.onclick = function() { snackSelectItem(p.name); document.getElementById("snackAC").style.display="none"; };
-    return el.outerHTML;
-  }).join("");
+  if(!q || q.length < 1) { ac.style.display = 'none'; return; }
+  const prods = typeof PRODUCTS !== 'undefined' ? PRODUCTS : [];
+  const matches = prods.filter(p => p.name.toLowerCase().includes(q.toLowerCase())).slice(0, 8);
+  if(!matches.length) { ac.style.display = 'none'; return; }
+  ac.style.display = 'block';
+  ac.innerHTML = '';
+  matches.forEach(function(p) {
+    const row = document.createElement('div');
+    row.style.cssText = 'padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--bg2);display:flex;align-items:center;gap:10px;';
+    const em = document.createElement('span');
+    em.style.fontSize = '1.2rem';
+    em.textContent = p.emoji || '🛍️';
+    const nm = document.createElement('span');
+    nm.style.cssText = 'font-size:.84rem;font-weight:700;flex:1;';
+    nm.textContent = p.name;
+    row.appendChild(em);
+    row.appendChild(nm);
+    row.addEventListener('click', function() {
+      snackSelectItem(p.name);
+    });
+    row.addEventListener('mouseenter', function() { this.style.background = 'var(--bg2)'; });
+    row.addEventListener('mouseleave', function() { this.style.background = ''; });
+    ac.appendChild(row);
+  });
+}
+
+function snackAddFromInput() {
+  const inp = document.getElementById('snackInput');
+  const val = inp?.value?.trim();
+  if(!val) return;
+  snackSelectItem(val);
 }
 
 function snackSelectItem(name) {
@@ -4666,13 +4684,17 @@ function openSnackBuilder(day) {
           </div>`).join('') : '<div style="font-size:.75rem;color:var(--tx3);text-align:center;padding:8px;">Aucun élément · ajoutez ci-dessous</div>'}
       </div>
 
-      <!-- Ajout libre -->
-      <div style="display:flex;gap:6px;margin-bottom:8px;position:relative;">
-        <input class="inp" id="snackInput" placeholder="🔍 Ex: banane, yaourt, noix..." style="flex:1;"
-          oninput="snackAC(this.value)"
-          onkeydown="if(event.key==='Enter'){event.preventDefault();addSnackItem();}"
-          autocomplete="off">
-        <button class="btn acc sm" onclick="addSnackItem()" style="flex-shrink:0;padding:10px 14px;">+</button>
+      <!-- Ajout avec autocomplète -->
+      <div style="position:relative;margin-bottom:8px;">
+        <div style="display:flex;gap:6px;">
+          <input class="inp" id="snackInput" placeholder="🔍 Ex: banane, yaourt, noix..."
+            style="flex:1;"
+            oninput="snackAC(this.value)"
+            onkeydown="if(event.key==='Enter'){event.preventDefault();snackAddFromInput();}"
+            autocomplete="off">
+          <button class="btn acc sm" onclick="snackAddFromInput()" style="flex-shrink:0;padding:10px 14px;">+</button>
+        </div>
+        <div id="snackAC" style="display:none;position:absolute;left:0;right:52px;top:46px;background:var(--bg);border:1px solid var(--bg2);border-radius:var(--rs);box-shadow:0 8px 24px rgba(0,0,0,.2);z-index:100;max-height:200px;overflow-y:auto;"></div>
       </div>
 
       <div style="display:flex;gap:8px;margin-top:12px;">
@@ -4932,7 +4954,7 @@ async function regenDayAI(day) {
   const prompt=`Génère un menu pour ${dayName}: régime ${diet}${cals?', '+cals+' kcal/jour':''}.
 JSON: {"breakfast":{"name":"...","emoji":"...","kcal":0},"lunch":{"name":"...","emoji":"...","kcal":0},"dinner":{"name":"...","emoji":"...","kcal":0},"snack":{"name":"...","emoji":"...","kcal":0},"total_kcal":0,"prot":0,"carb":0,"fat":0,"quality":"good","tip":"..."}`;
   try {
-    const resp=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':getAnthropicKey(),'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:600,messages:[{role:'user',content:prompt}]})});
+    const resp=await fetch('/api/claude',{method:'POST',headers:{'Content-Type':'application/json','anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:600,messages:[{role:'user',content:prompt}]})});
     const data=await resp.json();
     const text=(data.content||[]).find(c=>c.type==='text')?.text||'';
     const r=JSON.parse(text.replace(/```json|```/g,'').trim());
@@ -5437,7 +5459,7 @@ Donne 4 conseils nutritionnels personnalisés et précis en JSON:
 [{"type":"tip|warn|bad|info","title":"Titre court","body":"Conseil de 2 phrases précises et actionnables"}]
 Pas de généralités. Adapte à ce profil spécifique.`;
   try {
-    const resp=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':getAnthropicKey(),'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:800,messages:[{role:'user',content:prompt}]})});
+    const resp=await fetch('/api/claude',{method:'POST',headers:{'Content-Type':'application/json','anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:800,messages:[{role:'user',content:prompt}]})});
     const data=await resp.json();
     const text=(data.content||[]).find(c=>c.type==='text')?.text||'';
     const items=JSON.parse(text.replace(/```json|```/g,'').trim());

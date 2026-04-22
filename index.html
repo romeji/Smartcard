@@ -1130,6 +1130,15 @@ svg{display:block;flex-shrink:0;}
           <div style="font-size:.68rem;font-weight:800;color:var(--ac);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;">⚙️ Mon profil nutritionnel</div>
           <div id="menuProfileSummary" style="font-size:.8rem;color:var(--tx);font-weight:600;">Complétez votre profil pour personnaliser vos menus →</div>
         </div>
+        <!-- Clé API Claude -->
+        <div id="apiKeyBanner" style="display:none;background:rgba(214,63,49,.08);border:1px solid rgba(214,63,49,.2);border-radius:var(--rs);padding:10px 14px;margin-bottom:10px;">
+          <div style="font-size:.72rem;font-weight:800;color:var(--rd);margin-bottom:6px;">🔑 Clé API Claude requise</div>
+          <div style="display:flex;gap:6px;">
+            <input class="inp" id="apiKeyInput" type="password" placeholder="sk-ant-api03-..." style="flex:1;font-size:.75rem;font-family:monospace;">
+            <button onclick="saveApiKey()" class="btn acc sm" style="flex-shrink:0;padding:9px 12px;">✓ Sauver</button>
+          </div>
+          <div style="font-size:.65rem;color:var(--tx3);margin-top:4px;">Obtenez votre clé sur console.anthropic.com · Stockée localement</div>
+        </div>
 
         <!-- IA Generation -->
         <div class="card mb14">
@@ -3008,13 +3017,18 @@ Exactement 7 jours. Valeurs nutritionnelles réalistes et cohérentes.`;
   try {
     const resp=await fetch('https://api.anthropic.com/v1/messages',{
       method:'POST',
-      headers:{'Content-Type':'application/json','x-api-key':ANTHROPIC_KEY,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+      headers:{'Content-Type':'application/json','x-api-key':getAnthropicKey(),'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
       body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:4000,messages:[{role:'user',content:prompt}]})
     });
-    if(!resp.ok) throw new Error(resp.status);
+    if(!resp.ok) {
+      if(resp.status === 401) { showApiKeyBanner(); }
+      throw new Error('API ' + resp.status);
+    }
     const data=await resp.json();
     const text=(data.content||[]).find(c=>c.type==='text')?.text||'';
-    const parsed=JSON.parse(text.replace(/```json|```/g,'').trim());
+    const jsonS = text.indexOf('{'); const jsonE = text.lastIndexOf('}');
+    const cleanTxt = jsonS !== -1 && jsonE !== -1 ? text.slice(jsonS, jsonE+1) : text.replace(/```json|```/g,'').trim();
+    const parsed = JSON.parse(cleanTxt);
     applyAIMenuResult(parsed);
   } catch(e) {
     applyDemoMenu(diet);
@@ -3084,7 +3098,7 @@ async function searchWithClaudeFallback(q) {
 Réponds UNIQUEMENT en JSON: {"recipes":[{"name":"Nom recette","emoji":"🍽️","time":30,"kcal":450,"prot":25,"carb":40,"fat":15,"diet":"${diet}","ingredients":[{"name":"Ingrédient","qty":100,"unit":"g"}],"instructions":["Étape 1","Étape 2"]}]}`;
     const resp = await fetch('https://api.anthropic.com/v1/messages',{
       method:'POST',
-      headers:{'Content-Type':'application/json','x-api-key':ANTHROPIC_KEY,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+      headers:{'Content-Type':'application/json','x-api-key':getAnthropicKey(),'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
       body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:2000,messages:[{role:'user',content:prompt}]})
     });
     const data = await resp.json();
@@ -3171,7 +3185,7 @@ async function searchWithClaude(query) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-api-key": ANTHROPIC_KEY,
+        "x-api-key": getAnthropicKey(),
         "anthropic-version": "2023-06-01",
         "anthropic-dangerous-direct-browser-access": "true"
       },
@@ -3184,6 +3198,7 @@ async function searchWithClaude(query) {
 
     if(!resp.ok) {
       const errBody = await resp.text();
+      if(resp.status === 401) { showApiKeyBanner(); }
       throw new Error("API " + resp.status + ": " + errBody.slice(0,100));
     }
 
@@ -4071,6 +4086,8 @@ function snackSelectItem(name) {
   }
   const inp = document.getElementById('snackInput');
   if(inp) inp.value = '';
+  const ac = document.getElementById('snackAC');
+  if(ac) ac.style.display = 'none';
 }
 
 function snackAddFromInput() {
@@ -4350,6 +4367,37 @@ async function saveCustomRecipeFull() {
   if(typeof renderRecipesGrid === 'function') renderRecipesGrid();
 }
 
+
+function saveApiKey() {
+  const key = document.getElementById('apiKeyInput')?.value?.trim();
+  if(!key || !key.startsWith('sk-ant')) {
+    showToast('⚠️','Clé invalide','La clé doit commencer par sk-ant-api03-');
+    return;
+  }
+  localStorage.setItem('sc_anthropic_key', key);
+  document.getElementById('apiKeyBanner').style.display = 'none';
+  showToast('✅','Clé sauvegardée','Vous pouvez maintenant générer vos menus !');
+}
+
+function showApiKeyBanner() {
+  const banner = document.getElementById('apiKeyBanner');
+  if(banner) {
+    banner.style.display = 'block';
+    const inp = document.getElementById('apiKeyInput');
+    if(inp) {
+      const saved = localStorage.getItem('sc_anthropic_key');
+      if(saved) inp.value = saved;
+    }
+  }
+}
+
+// Check on load if key works
+function checkApiKeyOnLoad() {
+  const saved = localStorage.getItem('sc_anthropic_key');
+  if(saved) return; // user has set a key
+  // Show banner proactively (key might be revoked)
+}
+
 function openMealEdit(day, slot) {
   if(slot === 'b') { openBreakfastBuilder(day); return; }
   if(slot === 'snack') { openSnackBuilder(day); return; }
@@ -4620,8 +4668,10 @@ function openSnackBuilder(day) {
 
       <!-- Ajout libre -->
       <div style="display:flex;gap:6px;margin-bottom:8px;position:relative;">
-        <input class="inp" id="snackInput" placeholder="Ex: Yaourt, Pomme, Noix..." style="flex:1;"
-          onkeydown="if(event.key==='Enter'){event.preventDefault();addSnackItem();}">
+        <input class="inp" id="snackInput" placeholder="🔍 Ex: banane, yaourt, noix..." style="flex:1;"
+          oninput="snackAC(this.value)"
+          onkeydown="if(event.key==='Enter'){event.preventDefault();addSnackItem();}"
+          autocomplete="off">
         <button class="btn acc sm" onclick="addSnackItem()" style="flex-shrink:0;padding:10px 14px;">+</button>
       </div>
 
@@ -4882,7 +4932,7 @@ async function regenDayAI(day) {
   const prompt=`Génère un menu pour ${dayName}: régime ${diet}${cals?', '+cals+' kcal/jour':''}.
 JSON: {"breakfast":{"name":"...","emoji":"...","kcal":0},"lunch":{"name":"...","emoji":"...","kcal":0},"dinner":{"name":"...","emoji":"...","kcal":0},"snack":{"name":"...","emoji":"...","kcal":0},"total_kcal":0,"prot":0,"carb":0,"fat":0,"quality":"good","tip":"..."}`;
   try {
-    const resp=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':ANTHROPIC_KEY,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:600,messages:[{role:'user',content:prompt}]})});
+    const resp=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':getAnthropicKey(),'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:600,messages:[{role:'user',content:prompt}]})});
     const data=await resp.json();
     const text=(data.content||[]).find(c=>c.type==='text')?.text||'';
     const r=JSON.parse(text.replace(/```json|```/g,'').trim());
@@ -5387,7 +5437,7 @@ Donne 4 conseils nutritionnels personnalisés et précis en JSON:
 [{"type":"tip|warn|bad|info","title":"Titre court","body":"Conseil de 2 phrases précises et actionnables"}]
 Pas de généralités. Adapte à ce profil spécifique.`;
   try {
-    const resp=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':ANTHROPIC_KEY,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:800,messages:[{role:'user',content:prompt}]})});
+    const resp=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':getAnthropicKey(),'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:800,messages:[{role:'user',content:prompt}]})});
     const data=await resp.json();
     const text=(data.content||[]).find(c=>c.type==='text')?.text||'';
     const items=JSON.parse(text.replace(/```json|```/g,'').trim());

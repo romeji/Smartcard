@@ -1739,9 +1739,10 @@ async function callClaude(body) {
     }
   }
   // Fallback : appel direct avec clé localStorage (dev local uniquement)
-  const key = getAnthropicKey();
-  if(!key) throw new Error('no_key');
-  const resp = await callClaude({
+ const key = getAnthropicKey();
+if (!key) throw new Error('no_key');
+
+const resp = await callClaude({
   items: [],
   fridge: [],
   history: [],
@@ -1760,21 +1761,31 @@ async function callClaude(body) {
   houseId: null,
   houseName: null,
   houseCode: null,
+
   // MENU PREMIUM
   recipeBookmarks: [],
-  spoonCache: {},       // Cache Spoonacular searches
-  aiInsights: null,     // Last AI analysis
-  menuGoalSummary: null // AI goal summary
-}) {
+  spoonCache: {},
+  aiInsights: null,
+  menuGoalSummary: null
+});
+
+// 👉 ton debug doit être dans une fonction séparée
+function dbg(msg, col) {
   const panel = document.getElementById('dbgPanel');
   const log = document.getElementById('dbgLog');
-  if(!panel || !log) return;
+  if (!panel || !log) return;
+
   panel.style.display = 'block';
+
   const d = document.createElement('div');
   d.style.color = col || '#00ff88';
   d.textContent = new Date().toLocaleTimeString('fr') + ' ' + msg;
+
   log.prepend(d);
-  if(log.children.length > 15) log.lastChild.remove();
+
+  if (log.children.length > 15) {
+    log.lastChild.remove();
+  }
 }
 
 // ═══════════════════════════════════════════════

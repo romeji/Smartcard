@@ -3269,7 +3269,7 @@ async function translateInline(containerId) {
     container.innerHTML = '<div style="text-align:center;padding:16px;">'
       + '<div style="font-size:1.2rem;margin-bottom:8px;">❌</div>'
       + '<div style="font-size:.8rem;color:var(--rd);font-weight:700;">Traduction échouée</div>'
-      + '<button class="btn sm" style="margin-top:10px;" onclick="translateInline(\'' + containerId + '\')">🔄 Réessayer</button>'
+      + '<button class="btn sm" style="margin-top:10px;" onclick="translateInline(&quot;' + containerId + '&quot;)">🔄 Réessayer</button>'
       + '</div>';
     return;
   }
@@ -3319,7 +3319,7 @@ async function translateInline(containerId) {
 
 async function saveTranslatedRecipe() {
   const translated = window._lastTranslation;
-  if(!translated) { showToast('⚠️','Rien à sauvegarder','Lancez dabord la traduction.'); return; }
+  if(!translated) { showToast('⚠️','Rien à sauvegarder','Lancez d\'abord la traduction.'); return; }
   if(!state.customRecipes) state.customRecipes = [];
   const src = window._translateRecipe || {};
   const recipe = {
@@ -3608,9 +3608,7 @@ async function searchWithClaudeFallback(q) {
     const p = state.profile||{};
     const prompt = `Propose 6 recettes de cuisine pour: "${q}", régime: ${diet}${p.goal?', objectif: '+p.goal:''}.
 Réponds UNIQUEMENT en JSON: {"recipes":[{"name":"Nom recette","emoji":"🍽️","time":30,"kcal":450,"prot":25,"carb":40,"fat":15,"diet":"${diet}","ingredients":[{"name":"Ingrédient","qty":100,"unit":"g"}],"instructions":["Étape 1","Étape 2"]}]}`;
-    const resp = await callClaude({model:'claude-sonnet-4-20250514',max_tokens:2000,messages:[{role:'user',content:prompt}]})
-    });
-    const data = await resp.json();
+    const data = await callClaude({model:'claude-sonnet-4-20250514',max_tokens:2000,messages:[{role:'user',content:prompt}]});
     const text = (data.content||[]).find(c=>c.type==='text')?.text||'';
     const parsed = JSON.parse(text.replace(/```json|```/g,'').trim());
     const recipes = (parsed.recipes||[]).map((r,i)=>({...r,id:'claude_'+Date.now()+'_'+i,source:'claude'}));
@@ -5450,8 +5448,8 @@ async function regenDayAI(day) {
   const prompt=`Génère un menu pour ${dayName}: régime ${diet}${cals?', '+cals+' kcal/jour':''}.
 JSON: {"breakfast":{"name":"...","emoji":"...","kcal":0},"lunch":{"name":"...","emoji":"...","kcal":0},"dinner":{"name":"...","emoji":"...","kcal":0},"snack":{"name":"...","emoji":"...","kcal":0},"total_kcal":0,"prot":0,"carb":0,"fat":0,"quality":"good","tip":"..."}`;
   try {
-    const resp=await callClaude({model:'claude-sonnet-4-20250514',max_tokens:600,messages:[{role:'user',content:prompt}]})});
-    const data=await resp.json();
+    const resp=await callClaude({model:'claude-sonnet-4-20250514',max_tokens:600,messages:[{role:'user',content:prompt}]});
+    const data=resp;
     const text=(data.content||[]).find(c=>c.type==='text')?.text||'';
     const r=JSON.parse(text.replace(/```json|```/g,'').trim());
     state.weekMenu[day]={
@@ -6083,8 +6081,8 @@ Donne 4 conseils nutritionnels personnalisés et précis en JSON:
 [{"type":"tip|warn|bad|info","title":"Titre court","body":"Conseil de 2 phrases précises et actionnables"}]
 Pas de généralités. Adapte à ce profil spécifique.`;
   try {
-    const resp=await callClaude({model:'claude-sonnet-4-20250514',max_tokens:800,messages:[{role:'user',content:prompt}]})});
-    const data=await resp.json();
+// SYNTAX_FIX:     const resp=await callClaude({model:'claude-sonnet-4-20250514',max_tokens:800,messages:[{role:'user',content:prompt}]});
+    const data=resp;
     const text=(data.content||[]).find(c=>c.type==='text')?.text||'';
     const items=JSON.parse(text.replace(/```json|```/g,'').trim());
     const icons={tip:'💡',warn:'⚠️',bad:'🚨',info:'ℹ️'};

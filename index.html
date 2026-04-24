@@ -3189,8 +3189,7 @@ async function translateRecipeFull(recipe) {
   const recipeText = JSON.stringify({
     name: recipe.name,
     ingredients: (recipe.ingredients||recipe.extendedIngredients||[]).map(i => i.name || i.original || (i.amount + ' ' + i.unit + ' ' + i.name)),
-    instructions: (recipe.analyzedInstructions?.[0]?.steps||[]).map(s=>s.step).join('
-') || recipe.instructions || ''
+    instructions: (recipe.analyzedInstructions?.[0]?.steps || []).map(s => s.step).join('\n') || recipe.instructions || ''
   });
 
   try {

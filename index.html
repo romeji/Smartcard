@@ -1709,19 +1709,39 @@ const FIREBASE_CONFIG = {
   messagingSenderId: "126521073547",
   appId: "1:126521073547:web:bdf2c727024098527f198e"
 };
-const ANTHROPIC_KEY = "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"
-const SPOONACULAR_KEY = "fe1df9e1047c4023b712a0a9db65dd3a";
-const APP_VERSION = "v3.0";
+// Clé Claude — NE PAS hardcoder ici
+// Les appels passent par /api/claude (proxy Vercel) pour sécuriser la clé
+const ANTHROPIC_KEY = ""; // vide intentionnellement
 
-let auth, db, currentUser, houseUnsub, itemsUnsub;
-let menuUnlocked = false;
-let menuTapCount = 0;
-let menuTapTimer = null;
+// Endpoint Claude : proxy Vercel en prod, direct en dev avec clé localStorage
+const CLAUDE_ENDPOINT = '/api/claude';
 
-// ═══════════════════════════════════════════════
-// STATE
-// ═══════════════════════════════════════════════
-let state = {
+function getAnthropicKey() {
+  return localStorage.getItem('sc_anthropic_key') || '';
+}
+
+// Appel Claude unifié — passe par /api/claude (proxy Vercel)
+// body = { model, max_tokens, system, messages }
+async function callClaude(body) {
+  // Essayer d'abord le proxy Vercel (prod)
+  try {
+    const resp = await fetch(CLAUDE_ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    if(resp.ok) return await resp.json();
+    // Si 404 (proxy pas dispo = dev local), tomber sur appel direct
+    if(resp.status !== 404) throw new Error('Proxy error ' + resp.status);
+  } catch(proxyErr) {
+    if(!proxyErr.message.includes('404') && !proxyErr.message.includes('Failed to fetch')) {
+      throw proxyErr;
+    }
+  }
+  // Fallback : appel direct avec clé localStorage (dev local uniquement)
+  const key = getAnthropicKey();
+  if(!key) throw new Error('no_key');
+  const resp = await callClaude({
   items: [],
   fridge: [],
   history: [],
@@ -1745,13 +1765,7 @@ let state = {
   spoonCache: {},       // Cache Spoonacular searches
   aiInsights: null,     // Last AI analysis
   menuGoalSummary: null // AI goal summary
-};
-let confirmCallback = null;
-
-// ═══════════════════════════════════════════════
-// DEBUG
-// ═══════════════════════════════════════════════
-function dbg(msg, col) {
+}) {
   const panel = document.getElementById('dbgPanel');
   const log = document.getElementById('dbgLog');
   if(!panel || !log) return;
@@ -3187,46 +3201,39 @@ async function translateRecipeFull(recipe) {
   });
 
   try {
-    const resp = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': key,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true'
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 1500,
-        system: `Tu es un expert en gastronomie française. Traduis cette recette anglaise en français de manière naturelle et professionnelle.
-- Adapte les mesures (cups → dl/g, oz → g, fahrenheit → celsius)
-- Utilise les termes culinaires français corrects (sauté, julienne, brunoise, etc.)
-- Traduis les noms des ingrédients avec précision
-- Réponds UNIQUEMENT en JSON valide, pas de texte autour`,
-        messages: [{
-          role: 'user',
-          content: `Traduis cette recette en français professionnel:
-${recipeText}
-
-Réponds en JSON: {"name":"...","ingredients":["..."],"instructions":["étape 1...","étape 2..."],"tips":"conseil optionnel"}`
-        }]
-      })
+    // callClaude() retourne déjà le JSON parsé (pas un Response)
+    const data = await callClaude({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 1500,
+      system: 'Tu es un expert en gastronomie française. Traduis cette recette anglaise en français de manière naturelle et professionnelle.\n- Adapte les mesures (cups → dl/g, oz → g, fahrenheit → celsius)\n- Utilise les termes culinaires français corrects (sauté, julienne, brunoise, etc.)\n- Traduis les noms des ingrédients avec précision\n- Réponds UNIQUEMENT en JSON valide, sans texte autour',
+      messages: [{
+        role: 'user',
+        content: 'Traduis cette recette en français professionnel:\n' + recipeText + '\n\nRéponds en JSON: {"name":"...","ingredients":["..."],"instructions":["étape 1...","étape 2..."],"tips":"conseil optionnel"}'
+      }]
     });
-
-    if(!resp.ok) throw new Error('Claude API ' + resp.status);
-    const data = await resp.json();
-    const raw = data.content?.[0]?.text || '';
+    const raw = (data.content && data.content[0] && data.content[0].text) ? data.content[0].text : '';
     const clean = raw.replace(/```json|```/g,'').trim();
     const parsed = JSON.parse(clean);
+    if(!parsed.name) throw new Error('empty result');
     return parsed;
   } catch(e) {
-    console.error('Claude translation error:', e);
-    // Fallback: MyMemory par champ
-    const [tName, ...tIngrs] = await Promise.all([
-      translateText(recipe.name || '', 'en', 'fr'),
-      ...(recipe.ingredients||[]).slice(0,10).map(i => translateText(i.name||i.original||'', 'en', 'fr'))
+    console.error('Claude translation error:', e.message);
+    // Fallback MyMemory champ par champ
+    const recipeName = recipe.title || recipe.name || '';
+    const ingrs = (recipe.extendedIngredients || recipe.ingredients || []).slice(0, 12);
+    const steps = (recipe.analyzedInstructions && recipe.analyzedInstructions[0] && recipe.analyzedInstructions[0].steps) || [];
+    const [tName, ...rest] = await Promise.all([
+      translateText(recipeName, 'en', 'fr'),
+      ...ingrs.map(function(i){ return translateText(i.originalName || i.name || i.original || '', 'en', 'fr'); })
     ]);
-    return { name: tName, ingredients: tIngrs, instructions: [] };
+    const tSteps = steps.length
+      ? await Promise.all(steps.slice(0,10).map(function(s){ return translateText(s.step || '', 'en', 'fr'); }))
+      : [];
+    return {
+      name: tName || recipeName,
+      ingredients: rest.filter(Boolean),
+      instructions: tSteps.filter(Boolean)
+    };
   }
 }
 
@@ -3255,15 +3262,14 @@ async function translateInline(containerId) {
 
   const result = await translateRecipeFull(recipe);
 
-  if (!result) {
-  container.innerHTML =
-    '<div style="text-align:center;padding:16px;">' +
-    '<div style="font-size:1.2rem;margin-bottom:8px;">❌</div>' +
-    '<div style="font-size:.8rem;color:var(--rd);font-weight:700;">Traduction échouée</div>' +
-    '<button class="btn sm" style="margin-top:10px;" onclick="translateInline(\'' + containerId + '\')">🔄 Réessayer</button>' +
-    '</div>';
-  return;
-}
+  if(!result) {
+    container.innerHTML = '<div style="text-align:center;padding:16px;">'
+      + '<div style="font-size:1.2rem;margin-bottom:8px;">❌</div>'
+      + '<div style="font-size:.8rem;color:var(--rd);font-weight:700;">Traduction échouée</div>'
+      + '<button class="btn sm" style="margin-top:10px;" onclick="translateInline('' + containerId + '')">🔄 Réessayer</button>'
+      + '</div>';
+    return;
+  }
 
   // Stocker pour sauvegarder
   window._lastTranslation = result;
@@ -3310,7 +3316,7 @@ async function translateInline(containerId) {
 
 async function saveTranslatedRecipe() {
   const translated = window._lastTranslation;
-if (!translated) {showToast('⚠️', 'Rien à sauvegarder', "Lancez d'abord la traduction."); return;}
+  if(!translated) { showToast('⚠️','Rien à sauvegarder','Lancez d'abord la traduction.'); return; }
   if(!state.customRecipes) state.customRecipes = [];
   const src = window._translateRecipe || {};
   const recipe = {
@@ -3520,9 +3526,7 @@ Réponds UNIQUEMENT en JSON valide:
 Exactement 7 jours. Valeurs nutritionnelles réalistes et cohérentes.`;
 
   try {
-    const resp=await fetch('https://api.anthropic.com/v1/messages',{
-      method:'POST',
-      headers:{'Content-Type':'application/json','x-api-key':getAnthropicKey(),'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+    const resp=await callClaude({
       body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:4000,messages:[{role:'user',content:prompt}]})
     });
     if(!resp.ok) {
@@ -3601,10 +3605,7 @@ async function searchWithClaudeFallback(q) {
     const p = state.profile||{};
     const prompt = `Propose 6 recettes de cuisine pour: "${q}", régime: ${diet}${p.goal?', objectif: '+p.goal:''}.
 Réponds UNIQUEMENT en JSON: {"recipes":[{"name":"Nom recette","emoji":"🍽️","time":30,"kcal":450,"prot":25,"carb":40,"fat":15,"diet":"${diet}","ingredients":[{"name":"Ingrédient","qty":100,"unit":"g"}],"instructions":["Étape 1","Étape 2"]}]}`;
-    const resp = await fetch('https://api.anthropic.com/v1/messages',{
-      method:'POST',
-      headers:{'Content-Type':'application/json','x-api-key':getAnthropicKey(),'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-      body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:2000,messages:[{role:'user',content:prompt}]})
+    const resp = await callClaude({model:'claude-sonnet-4-20250514',max_tokens:2000,messages:[{role:'user',content:prompt}]})
     });
     const data = await resp.json();
     const text = (data.content||[]).find(c=>c.type==='text')?.text||'';
@@ -5446,7 +5447,7 @@ async function regenDayAI(day) {
   const prompt=`Génère un menu pour ${dayName}: régime ${diet}${cals?', '+cals+' kcal/jour':''}.
 JSON: {"breakfast":{"name":"...","emoji":"...","kcal":0},"lunch":{"name":"...","emoji":"...","kcal":0},"dinner":{"name":"...","emoji":"...","kcal":0},"snack":{"name":"...","emoji":"...","kcal":0},"total_kcal":0,"prot":0,"carb":0,"fat":0,"quality":"good","tip":"..."}`;
   try {
-    const resp=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':getAnthropicKey(),'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:600,messages:[{role:'user',content:prompt}]})});
+    const resp=await callClaude({model:'claude-sonnet-4-20250514',max_tokens:600,messages:[{role:'user',content:prompt}]})});
     const data=await resp.json();
     const text=(data.content||[]).find(c=>c.type==='text')?.text||'';
     const r=JSON.parse(text.replace(/```json|```/g,'').trim());
@@ -6079,7 +6080,7 @@ Donne 4 conseils nutritionnels personnalisés et précis en JSON:
 [{"type":"tip|warn|bad|info","title":"Titre court","body":"Conseil de 2 phrases précises et actionnables"}]
 Pas de généralités. Adapte à ce profil spécifique.`;
   try {
-    const resp=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':getAnthropicKey(),'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:800,messages:[{role:'user',content:prompt}]})});
+    const resp=await callClaude({model:'claude-sonnet-4-20250514',max_tokens:800,messages:[{role:'user',content:prompt}]})});
     const data=await resp.json();
     const text=(data.content||[]).find(c=>c.type==='text')?.text||'';
     const items=JSON.parse(text.replace(/```json|```/g,'').trim());

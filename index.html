@@ -1739,10 +1739,9 @@ async function callClaude(body) {
     }
   }
   // Fallback : appel direct avec clé localStorage (dev local uniquement)
- const key = getAnthropicKey();
-if (!key) throw new Error('no_key');
-
-const resp = await callClaude({
+  const key = getAnthropicKey();
+  if(!key) throw new Error('no_key');
+  const resp = await callClaude({
   items: [],
   fridge: [],
   history: [],
@@ -1761,31 +1760,21 @@ const resp = await callClaude({
   houseId: null,
   houseName: null,
   houseCode: null,
-
   // MENU PREMIUM
   recipeBookmarks: [],
-  spoonCache: {},
-  aiInsights: null,
-  menuGoalSummary: null
-});
-
-// 👉 ton debug doit être dans une fonction séparée
-function dbg(msg, col) {
+  spoonCache: {},       // Cache Spoonacular searches
+  aiInsights: null,     // Last AI analysis
+  menuGoalSummary: null // AI goal summary
+}) {
   const panel = document.getElementById('dbgPanel');
   const log = document.getElementById('dbgLog');
-  if (!panel || !log) return;
-
+  if(!panel || !log) return;
   panel.style.display = 'block';
-
   const d = document.createElement('div');
   d.style.color = col || '#00ff88';
   d.textContent = new Date().toLocaleTimeString('fr') + ' ' + msg;
-
   log.prepend(d);
-
-  if (log.children.length > 15) {
-    log.lastChild.remove();
-  }
+  if(log.children.length > 15) log.lastChild.remove();
 }
 
 // ═══════════════════════════════════════════════
@@ -3273,15 +3262,14 @@ async function translateInline(containerId) {
 
   const result = await translateRecipeFull(recipe);
 
-  if (!result) {
-  container.innerHTML = `
-    <div style="text-align:center;padding:16px;">
-      <div style="font-size:1.2rem;margin-bottom:8px;">❌</div>
-      <div style="font-size:.8rem;color:var(--rd);font-weight:700;">Traduction échouée</div>
-      <button class="btn sm" style="margin-top:10px;" onclick="translateInline('${containerId}')">🔄 Réessayer</button>
-    </div>`;
-  return;
-}
+  if(!result) {
+    container.innerHTML = '<div style="text-align:center;padding:16px;">'
+      + '<div style="font-size:1.2rem;margin-bottom:8px;">❌</div>'
+      + '<div style="font-size:.8rem;color:var(--rd);font-weight:700;">Traduction échouée</div>'
+      + '<button class="btn sm" style="margin-top:10px;" onclick="translateInline('' + containerId + '')">🔄 Réessayer</button>'
+      + '</div>';
+    return;
+  }
 
   // Stocker pour sauvegarder
   window._lastTranslation = result;
@@ -3328,7 +3316,7 @@ async function translateInline(containerId) {
 
 async function saveTranslatedRecipe() {
   const translated = window._lastTranslation;
-  if (!translated) {showToast('⚠️', 'Rien à sauvegarder', "Lancez d'abord la traduction.");return;}
+  if(!translated) { showToast('⚠️','Rien à sauvegarder','Lancez d'abord la traduction.'); return; }
   if(!state.customRecipes) state.customRecipes = [];
   const src = window._translateRecipe || {};
   const recipe = {
@@ -3611,43 +3599,28 @@ async function searchWithTheMealDB(query) {
 
 async function searchWithClaudeFallback(q) {
   const grid = document.getElementById('spoonResults');
-  if (!grid) return;
-
+  if(!grid) return;
   try {
-    const diet = state.selectedDiet[0] || 'omnivore';
-    const p = state.profile || {};
-
-    const prompt = `Propose 6 recettes de cuisine pour: "${q}", régime: ${diet}${p.goal ? ', objectif: ' + p.goal : ''}.
+    const diet = state.selectedDiet[0]||'omnivore';
+    const p = state.profile||{};
+    const prompt = `Propose 6 recettes de cuisine pour: "${q}", régime: ${diet}${p.goal?', objectif: '+p.goal:''}.
 Réponds UNIQUEMENT en JSON: {"recipes":[{"name":"Nom recette","emoji":"🍽️","time":30,"kcal":450,"prot":25,"carb":40,"fat":15,"diet":"${diet}","ingredients":[{"name":"Ingrédient","qty":100,"unit":"g"}],"instructions":["Étape 1","Étape 2"]}]}`;
-
-    const resp = await callClaude({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 2000,
-      messages: [{ role: 'user', content: prompt }]
-    }); // ✅ corrigé ici
-
+    const resp = await callClaude({model:'claude-sonnet-4-20250514',max_tokens:2000,messages:[{role:'user',content:prompt}]})
+    });
     const data = await resp.json();
-    const text = (data.content || []).find(c => c.type === 'text')?.text || '';
-    const parsed = JSON.parse(text.replace(/```json|```/g, '').trim());
-
-    const recipes = (parsed.recipes || []).map((r, i) => ({
-      ...r,
-      id: 'claude_' + Date.now() + '_' + i,
-      source: 'claude'
-    }));
-
-    if (recipes.length) {
+    const text = (data.content||[]).find(c=>c.type==='text')?.text||'';
+    const parsed = JSON.parse(text.replace(/```json|```/g,'').trim());
+    const recipes = (parsed.recipes||[]).map((r,i)=>({...r,id:'claude_'+Date.now()+'_'+i,source:'claude'}));
+    if(recipes.length) {
       state.spoonCache[q.toLowerCase()] = recipes;
       renderSpoonResults(recipes);
-      showToast('🤖', 'IA Claude', 'Recettes générées par IA (Spoonacular indisponible)');
+      showToast('🤖','IA Claude','Recettes générées par IA (Spoonacular indisponible)');
     }
-
-  } catch (e) {
-    if (grid) {
-      grid.innerHTML = '<div style="text-align:center;padding:30px;color:var(--tx3);font-size:.82rem;">Recherche temporairement indisponible. Réessayez.</div>';
-    }
+  } catch(e) {
+    if(grid) grid.innerHTML = '<div style="text-align:center;padding:30px;color:var(--tx3);font-size:.82rem;">Recherche temporairement indisponible. Réessayez.</div>';
   }
 }
+
 
 function translateQueryToEnglish(query) {
   if(!query) return query;
@@ -5467,43 +5440,28 @@ function closeMealEdit() { document.getElementById('mealEditOverlay')?.classList
 
 // ── Génération IA d'un jour ─────────────────────────────────
 async function regenDayAI(day) {
-  const p = state.profile || {};
-  const diet = state.selectedDiet[0] || p.diet || 'omnivore';
-  const dayName = DAYS[day - 1];
-  const cals = calculateDailyCalories(p);
-
-  const prompt = `Génère un menu pour ${dayName}: régime ${diet}${cals ? ', ' + cals + ' kcal/jour' : ''}.
+  const p=state.profile||{};
+  const diet=state.selectedDiet[0]||p.diet||'omnivore';
+  const dayName=DAYS[day-1];
+  const cals=calculateDailyCalories(p);
+  const prompt=`Génère un menu pour ${dayName}: régime ${diet}${cals?', '+cals+' kcal/jour':''}.
 JSON: {"breakfast":{"name":"...","emoji":"...","kcal":0},"lunch":{"name":"...","emoji":"...","kcal":0},"dinner":{"name":"...","emoji":"...","kcal":0},"snack":{"name":"...","emoji":"...","kcal":0},"total_kcal":0,"prot":0,"carb":0,"fat":0,"quality":"good","tip":"..."}`;
-
   try {
-    const resp = await callClaude({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 600,
-      messages: [{ role: 'user', content: prompt }]
-    }); // ✅ corrigé ici
-
-    const data = await resp.json();
-    const text = (data.content || []).find(c => c.type === 'text')?.text || '';
-    const r = JSON.parse(text.replace(/```json|```/g, '').trim());
-
-    state.weekMenu[day] = {
-      b: (r.breakfast?.emoji || '') + ' ' + (r.breakfast?.name || ''),
-      l: (r.lunch?.emoji || '') + ' ' + (r.lunch?.name || ''),
-      d: (r.dinner?.emoji || '') + ' ' + (r.dinner?.name || ''),
-      snack: r.snack ? (r.snack.emoji || '') + ' ' + (r.snack.name || '') : null,
-      nutri: { kcal: r.total_kcal, prot: r.prot, carb: r.carb, fat: r.fat },
-      quality: r.quality || 'ok',
-      tip: r.tip || '',
+    const resp=await callClaude({model:'claude-sonnet-4-20250514',max_tokens:600,messages:[{role:'user',content:prompt}]})});
+    const data=await resp.json();
+    const text=(data.content||[]).find(c=>c.type==='text')?.text||'';
+    const r=JSON.parse(text.replace(/```json|```/g,'').trim());
+    state.weekMenu[day]={
+      b:(r.breakfast?.emoji||'')+' '+(r.breakfast?.name||''),
+      l:(r.lunch?.emoji||'')+' '+(r.lunch?.name||''),
+      d:(r.dinner?.emoji||'')+' '+(r.dinner?.name||''),
+      snack:r.snack?(r.snack.emoji||'')+' '+(r.snack.name||''):null,
+      nutri:{kcal:r.total_kcal,prot:r.prot,carb:r.carb,fat:r.fat},
+      quality:r.quality||'ok', tip:r.tip||'',
     };
-
-    saveWeekMenu();
-    renderWeek();
-
-    showToast('🤖', 'Repas IA', 'Régénéré pour ' + dayName);
-
-  } catch (e) {
-    generateDayMenu(day);
-  }
+    saveWeekMenu(); renderWeek();
+    showToast('🤖','Repas IA','Régénéré pour '+dayName);
+  } catch(e) { generateDayMenu(day); }
 }
 async function generateAIDayMenu(day) { regenDayAI(day); } // compat
 
@@ -6111,64 +6069,48 @@ function renderNutriWeek(calTarget) {
 }
 
 async function generateNutriAdvice() {
-  const zone = document.getElementById('nutriAdviceZone');
-  if (!zone) return;
-
-  zone.innerHTML = `<div class="ai-loading"><div class="ai-loading-spinner"></div><div>Analyse IA en cours...</div></div>`;
-
-  const p = state.profile || {};
-  const cals = calculateDailyCalories(p);
-  const weekData = Object.values(state.weekMenu)
-    .filter(m => m?.nutri)
-    .map(m => `${m.nutri.kcal}kcal, ${m.nutri.prot}g prot`)
-    .join(' | ');
-
-  const prompt = `Tu es nutritionniste expert. Profil: ${p.age||'?'}ans, ${p.sex==='H'?'homme':'femme'}, ${p.poids||'?'}kg, objectif: ${p.goal||'équilibre'}, régime: ${p.diet||'omnivore'}. Objectif: ${cals||'?'}kcal/j. Menu semaine: ${weekData||'non défini'}.
+  const zone=document.getElementById('nutriAdviceZone');
+  if(!zone) return;
+  zone.innerHTML=`<div class="ai-loading"><div class="ai-loading-spinner"></div><div>Analyse IA en cours...</div></div>`;
+  const p=state.profile||{};
+  const cals=calculateDailyCalories(p);
+  const weekData=Object.values(state.weekMenu).filter(m=>m?.nutri).map(m=>`${m.nutri.kcal}kcal, ${m.nutri.prot}g prot`).join(' | ');
+  const prompt=`Tu es nutritionniste expert. Profil: ${p.age||'?'}ans, ${p.sex==='H'?'homme':'femme'}, ${p.poids||'?'}kg, objectif: ${p.goal||'équilibre'}, régime: ${p.diet||'omnivore'}. Objectif: ${cals||'?'}kcal/j. Menu semaine: ${weekData||'non défini'}.
 Donne 4 conseils nutritionnels personnalisés et précis en JSON:
 [{"type":"tip|warn|bad|info","title":"Titre court","body":"Conseil de 2 phrases précises et actionnables"}]
 Pas de généralités. Adapte à ce profil spécifique.`;
-
   try {
-    const resp = await callClaude({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 800,
-      messages: [{ role: 'user', content: prompt }]
-    }); // ✅ corrigé ici
-
-    const data = await resp.json();
-    const text = (data.content || []).find(c => c.type === 'text')?.text || '';
-    const items = JSON.parse(text.replace(/```json|```/g, '').trim());
-
-    const icons = { tip: '💡', warn: '⚠️', bad: '🚨', info: 'ℹ️' };
-
-    zone.innerHTML = items.map(a => `
+    const resp=await callClaude({model:'claude-sonnet-4-20250514',max_tokens:800,messages:[{role:'user',content:prompt}]})});
+    const data=await resp.json();
+    const text=(data.content||[]).find(c=>c.type==='text')?.text||'';
+    const items=JSON.parse(text.replace(/```json|```/g,'').trim());
+    const icons={tip:'💡',warn:'⚠️',bad:'🚨',info:'ℹ️'};
+    zone.innerHTML=items.map(a=>`
       <div class="advice-card ${a.type}">
-        <div class="advice-card-ic">${icons[a.type] || '💡'}</div>
+        <div class="advice-card-ic">${icons[a.type]||'💡'}</div>
         <div class="advice-card-title">${a.title}</div>
         <div class="advice-card-body">${a.body}</div>
       </div>`).join('') +
       `<button class="btn ghost" style="width:100%;margin-top:8px;font-size:.78rem;" onclick="generateNutriAdvice()">🔄 Actualiser les conseils</button>`;
-
-  } catch (e) {
-    // fallback inchangé
-    const defaults = [
+  } catch(e) {
+    // Default advice
+    const defaults=[
       {type:'tip',title:'💧 Hydratation',body:`Avec votre objectif de ${calculateDailyCalories(p)||'?'} kcal/j, visez 35mL d'eau/kg de poids (${Math.round((+(p.poids)||70)*35/1000)}L/jour minimum). L'hydratation optimise votre métabolisme.`},
       {type:'tip',title:'🥦 Micronutriments',body:'Variez les couleurs dans vos assiettes : légumes verts (magnésium), oranges (vitamine C), rouges (lycopène). 5 portions de fruits & légumes minimum.'},
       {type:'warn',title:'⏰ Rythme des repas',body:'Espacez vos repas de 3-4h pour stabiliser la glycémie. Un petit-déjeuner riche en protéines réduit les fringales de 30%.'},
       {type:'info',title:'💪 Protéines',body:`Pour votre profil, visez ${Math.round((+(p.poids)||70)*1.6)}g de protéines/jour (1.6g/kg). Répartissez sur 3 repas pour maximiser la synthèse musculaire.`},
     ];
-
-    const icons = { tip: '💡', warn: '⚠️', bad: '🚨', info: 'ℹ️' };
-
-    zone.innerHTML = defaults.map(a => `
+    const icons={tip:'💡',warn:'⚠️',bad:'🚨',info:'ℹ️'};
+    zone.innerHTML=defaults.map(a=>`
       <div class="advice-card ${a.type}">
-        <div class="advice-card-ic">${icons[a.type] || '💡'}</div>
+        <div class="advice-card-ic">${icons[a.type]||'💡'}</div>
         <div class="advice-card-title">${a.title}</div>
         <div class="advice-card-body">${a.body}</div>
       </div>`).join('') +
       `<button class="btn ghost" style="width:100%;margin-top:8px;font-size:.78rem;" onclick="generateNutriAdvice()">🔄 Actualiser les conseils</button>`;
   }
 }
+
 // ── Compatibilité ancien code ────────────────────────────────
 function handleMenuTap(event) { /* désactivé - menu direct */ }
 function renderDayDetailCompat() { renderDayDetail(); }
@@ -7143,79 +7085,23 @@ function displayBarcodeProduct(product) {
   const cat0 = (product.categories[0]||'').replace(/'/g,"\\'");
 
   zone.innerHTML = `
-  <!-- Carte compacte — toujours visible -->
-  <div class="off-product-card" style="margin-bottom:0;">
-    <div style="display:flex;align-items:center;gap:12px;padding:14px 16px;cursor:pointer;" onclick="toggleProductDetails(this)">
-      
-      ${
-        product.image
-          ? `<img class="off-product-img product-img-${product.barcode}"
-              src="${product.image}"
-              style="width:56px;height:56px;"
-              alt="${product.name}">`
-          : `<div style="width:56px;height:56px;border-radius:var(--rs);
-                    background:var(--bg2);
-                    display:flex;align-items:center;justify-content:center;
-                    font-size:1.8rem;flex-shrink:0;">🛒</div>`
-      }
-
-      <div style="flex:1;min-width:0;">
-        <div style="font-weight:900;font-size:.92rem;color:var(--tx);">
-          ${product.name}
+    <!-- Carte compacte — toujours visible -->
+    <div class="off-product-card" style="margin-bottom:0;">
+      <div style="display:flex;align-items:center;gap:12px;padding:14px 16px;cursor:pointer;" onclick="toggleProductDetails(this)">
+        ${product.image
+          ? `<img class="off-product-img" src="${product.image}" style="width:56px;height:56px;" alt="${product.name}" onerror="this.outerHTML='<div style=\\'width:56px;height:56px;border-radius:var(--rs);background:var(--bg2);display:flex;align-items:center;justify-content:center;font-size:1.8rem;flex-shrink:0;\\'>🛒</div>'">`
+          : `<div style="width:56px;height:56px;border-radius:var(--rs);background:var(--bg2);display:flex;align-items:center;justify-content:center;font-size:1.8rem;flex-shrink:0;">🛒</div>`}
+        <div style="flex:1;min-width:0;">
+          <div style="font-weight:900;font-size:.92rem;color:var(--tx);">${product.name}</div>
+          ${product.brand ? `<div style="font-size:.72rem;color:var(--tx2);">${product.brand}${product.quantity?' · '+product.quantity:''}</div>` : ''}
+          <!-- Mini nutriscore bar -->
+          <div style="margin-top:6px;">${nutriscoreSVG(ns)}</div>
         </div>
-
-        ${
-          product.brand
-            ? `<div style="font-size:.72rem;color:var(--tx2);">
-                 ${product.brand}${product.quantity ? ' · ' + product.quantity : ''}
-               </div>`
-            : ''
-        }
-
-        <div style="margin-top:6px;">${nutriscoreSVG(ns)}</div>
+        ${es !== 'u' ? `<div class="eco-score eco-${es}" title="Éco-Score">${es.toUpperCase()}</div>` : ''}
+        <div style="color:var(--tx3);font-size:.9rem;transition:transform .3s;flex-shrink:0;" class="product-chevron">▼</div>
       </div>
 
-      ${
-        es !== 'u'
-          ? `<div class="eco-score eco-${es}" title="Éco-Score">
-               ${es.toUpperCase()}
-             </div>`
-          : ''
-      }
-
-      <div style="color:var(--tx3);font-size:.9rem;transition:transform .3s;flex-shrink:0;" class="product-chevron">
-        ▼
-      </div>
-    </div>
-
-    <!-- Boutons action — toujours visibles -->
-    <div style="padding:0 14px 12px;">
-      <div style="display:flex;gap:8px;margin-bottom:8px;">
-        <button class="btn acc"
-          style="flex:1;padding:11px;font-size:.82rem;"
-          onclick="addBarcodeToList(JSON.parse(this.closest('.off-product-card').dataset.product))">
-          🛒 Ma liste
-        </button>
-
-        <button class="btn acc3"
-          style="flex:1;padding:11px;font-size:.82rem;"
-          onclick="addBarcodeToFridge(JSON.parse(this.closest('.off-product-card').dataset.product))">
-          🧊 Au frigo
-        </button>
-      </div>
-
-      <button class="btn"
-        style="width:100%;padding:9px;font-size:.75rem;color:var(--tx2);"
-        onclick="document.getElementById('barcodeResult').style.display='none';
-                 document.getElementById('barcodeInput').value='';
-                 document.getElementById('barcodeInput').focus();">
-        🔍 Scanner un autre produit
-      </button>
-    </div>
-  </div>
-`;
-
-      <!-- Boutons daction — toujours visibles -->
+      <!-- Boutons d'action — toujours visibles -->
       <div style="padding:0 14px 12px;">
         <div style="display:flex;gap:8px;margin-bottom:8px;">
           <button class="btn acc" style="flex:1;padding:11px;font-size:.82rem;" onclick="addBarcodeToList(JSON.parse(this.closest('.off-product-card').dataset.product))">
@@ -7674,7 +7560,6 @@ try {
   const t = localStorage.getItem('sc_theme');
   if(t) document.documentElement.dataset.theme = t;
 } catch(e) {}
-
 </script>
 </body>
 </html>

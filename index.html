@@ -3611,28 +3611,43 @@ async function searchWithTheMealDB(query) {
 
 async function searchWithClaudeFallback(q) {
   const grid = document.getElementById('spoonResults');
-  if(!grid) return;
+  if (!grid) return;
+
   try {
-    const diet = state.selectedDiet[0]||'omnivore';
-    const p = state.profile||{};
-    const prompt = `Propose 6 recettes de cuisine pour: "${q}", régime: ${diet}${p.goal?', objectif: '+p.goal:''}.
+    const diet = state.selectedDiet[0] || 'omnivore';
+    const p = state.profile || {};
+
+    const prompt = `Propose 6 recettes de cuisine pour: "${q}", régime: ${diet}${p.goal ? ', objectif: ' + p.goal : ''}.
 Réponds UNIQUEMENT en JSON: {"recipes":[{"name":"Nom recette","emoji":"🍽️","time":30,"kcal":450,"prot":25,"carb":40,"fat":15,"diet":"${diet}","ingredients":[{"name":"Ingrédient","qty":100,"unit":"g"}],"instructions":["Étape 1","Étape 2"]}]}`;
-    const resp = await callClaude({model:'claude-sonnet-4-20250514',max_tokens:2000,messages:[{role:'user',content:prompt}]})
-    });
+
+    const resp = await callClaude({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 2000,
+      messages: [{ role: 'user', content: prompt }]
+    }); // ✅ corrigé ici
+
     const data = await resp.json();
-    const text = (data.content||[]).find(c=>c.type==='text')?.text||'';
-    const parsed = JSON.parse(text.replace(/```json|```/g,'').trim());
-    const recipes = (parsed.recipes||[]).map((r,i)=>({...r,id:'claude_'+Date.now()+'_'+i,source:'claude'}));
-    if(recipes.length) {
+    const text = (data.content || []).find(c => c.type === 'text')?.text || '';
+    const parsed = JSON.parse(text.replace(/```json|```/g, '').trim());
+
+    const recipes = (parsed.recipes || []).map((r, i) => ({
+      ...r,
+      id: 'claude_' + Date.now() + '_' + i,
+      source: 'claude'
+    }));
+
+    if (recipes.length) {
       state.spoonCache[q.toLowerCase()] = recipes;
       renderSpoonResults(recipes);
-      showToast('🤖','IA Claude','Recettes générées par IA (Spoonacular indisponible)');
+      showToast('🤖', 'IA Claude', 'Recettes générées par IA (Spoonacular indisponible)');
     }
-  } catch(e) {
-    if(grid) grid.innerHTML = '<div style="text-align:center;padding:30px;color:var(--tx3);font-size:.82rem;">Recherche temporairement indisponible. Réessayez.</div>';
+
+  } catch (e) {
+    if (grid) {
+      grid.innerHTML = '<div style="text-align:center;padding:30px;color:var(--tx3);font-size:.82rem;">Recherche temporairement indisponible. Réessayez.</div>';
+    }
   }
 }
-
 
 function translateQueryToEnglish(query) {
   if(!query) return query;

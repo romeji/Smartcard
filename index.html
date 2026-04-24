@@ -6111,48 +6111,64 @@ function renderNutriWeek(calTarget) {
 }
 
 async function generateNutriAdvice() {
-  const zone=document.getElementById('nutriAdviceZone');
-  if(!zone) return;
-  zone.innerHTML=`<div class="ai-loading"><div class="ai-loading-spinner"></div><div>Analyse IA en cours...</div></div>`;
-  const p=state.profile||{};
-  const cals=calculateDailyCalories(p);
-  const weekData=Object.values(state.weekMenu).filter(m=>m?.nutri).map(m=>`${m.nutri.kcal}kcal, ${m.nutri.prot}g prot`).join(' | ');
-  const prompt=`Tu es nutritionniste expert. Profil: ${p.age||'?'}ans, ${p.sex==='H'?'homme':'femme'}, ${p.poids||'?'}kg, objectif: ${p.goal||'équilibre'}, régime: ${p.diet||'omnivore'}. Objectif: ${cals||'?'}kcal/j. Menu semaine: ${weekData||'non défini'}.
+  const zone = document.getElementById('nutriAdviceZone');
+  if (!zone) return;
+
+  zone.innerHTML = `<div class="ai-loading"><div class="ai-loading-spinner"></div><div>Analyse IA en cours...</div></div>`;
+
+  const p = state.profile || {};
+  const cals = calculateDailyCalories(p);
+  const weekData = Object.values(state.weekMenu)
+    .filter(m => m?.nutri)
+    .map(m => `${m.nutri.kcal}kcal, ${m.nutri.prot}g prot`)
+    .join(' | ');
+
+  const prompt = `Tu es nutritionniste expert. Profil: ${p.age||'?'}ans, ${p.sex==='H'?'homme':'femme'}, ${p.poids||'?'}kg, objectif: ${p.goal||'équilibre'}, régime: ${p.diet||'omnivore'}. Objectif: ${cals||'?'}kcal/j. Menu semaine: ${weekData||'non défini'}.
 Donne 4 conseils nutritionnels personnalisés et précis en JSON:
 [{"type":"tip|warn|bad|info","title":"Titre court","body":"Conseil de 2 phrases précises et actionnables"}]
 Pas de généralités. Adapte à ce profil spécifique.`;
+
   try {
-    const resp=await callClaude({model:'claude-sonnet-4-20250514',max_tokens:800,messages:[{role:'user',content:prompt}]})});
-    const data=await resp.json();
-    const text=(data.content||[]).find(c=>c.type==='text')?.text||'';
-    const items=JSON.parse(text.replace(/```json|```/g,'').trim());
-    const icons={tip:'💡',warn:'⚠️',bad:'🚨',info:'ℹ️'};
-    zone.innerHTML=items.map(a=>`
+    const resp = await callClaude({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 800,
+      messages: [{ role: 'user', content: prompt }]
+    }); // ✅ corrigé ici
+
+    const data = await resp.json();
+    const text = (data.content || []).find(c => c.type === 'text')?.text || '';
+    const items = JSON.parse(text.replace(/```json|```/g, '').trim());
+
+    const icons = { tip: '💡', warn: '⚠️', bad: '🚨', info: 'ℹ️' };
+
+    zone.innerHTML = items.map(a => `
       <div class="advice-card ${a.type}">
-        <div class="advice-card-ic">${icons[a.type]||'💡'}</div>
+        <div class="advice-card-ic">${icons[a.type] || '💡'}</div>
         <div class="advice-card-title">${a.title}</div>
         <div class="advice-card-body">${a.body}</div>
       </div>`).join('') +
       `<button class="btn ghost" style="width:100%;margin-top:8px;font-size:.78rem;" onclick="generateNutriAdvice()">🔄 Actualiser les conseils</button>`;
-  } catch(e) {
-    // Default advice
-    const defaults=[
+
+  } catch (e) {
+    // fallback inchangé
+    const defaults = [
       {type:'tip',title:'💧 Hydratation',body:`Avec votre objectif de ${calculateDailyCalories(p)||'?'} kcal/j, visez 35mL d'eau/kg de poids (${Math.round((+(p.poids)||70)*35/1000)}L/jour minimum). L'hydratation optimise votre métabolisme.`},
       {type:'tip',title:'🥦 Micronutriments',body:'Variez les couleurs dans vos assiettes : légumes verts (magnésium), oranges (vitamine C), rouges (lycopène). 5 portions de fruits & légumes minimum.'},
       {type:'warn',title:'⏰ Rythme des repas',body:'Espacez vos repas de 3-4h pour stabiliser la glycémie. Un petit-déjeuner riche en protéines réduit les fringales de 30%.'},
       {type:'info',title:'💪 Protéines',body:`Pour votre profil, visez ${Math.round((+(p.poids)||70)*1.6)}g de protéines/jour (1.6g/kg). Répartissez sur 3 repas pour maximiser la synthèse musculaire.`},
     ];
-    const icons={tip:'💡',warn:'⚠️',bad:'🚨',info:'ℹ️'};
-    zone.innerHTML=defaults.map(a=>`
+
+    const icons = { tip: '💡', warn: '⚠️', bad: '🚨', info: 'ℹ️' };
+
+    zone.innerHTML = defaults.map(a => `
       <div class="advice-card ${a.type}">
-        <div class="advice-card-ic">${icons[a.type]||'💡'}</div>
+        <div class="advice-card-ic">${icons[a.type] || '💡'}</div>
         <div class="advice-card-title">${a.title}</div>
         <div class="advice-card-body">${a.body}</div>
       </div>`).join('') +
       `<button class="btn ghost" style="width:100%;margin-top:8px;font-size:.78rem;" onclick="generateNutriAdvice()">🔄 Actualiser les conseils</button>`;
   }
 }
-
 // ── Compatibilité ancien code ────────────────────────────────
 function handleMenuTap(event) { /* désactivé - menu direct */ }
 function renderDayDetailCompat() { renderDayDetail(); }

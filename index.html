@@ -2296,26 +2296,6 @@ function fillProfileForm() {
   set('profileBudget', state.budget || 80);
 }
 
-function updateMenuProfileCard() {
-  const p = state.profile || {};
-  const el = document.getElementById('menuProfileSummary');
-  if(!el) return;
-  if(!p.age && !p.poids) { el.textContent = 'Complétez votre profil pour une personnalisation IA optimale.'; return; }
-  let parts = [];
-  if(p.age) parts.push(p.age + ' ans');
-  if(p.sex === 'H') parts.push('Homme');
-  if(p.sex === 'F') parts.push('Femme');
-  if(p.poids) parts.push(p.poids + ' kg');
-  if(p.taille) parts.push(p.taille + ' cm');
-  if(p.poidsObj) parts.push('→ objectif ' + p.poidsObj + ' kg');
-  if(p.diet && p.diet !== 'omnivore') {
-    const diets = {veg:'Végétarien',vegan:'Vegan',pesc:'Pescétarien',gluten:'Sans gluten',keto:'Keto'};
-    parts.push(diets[p.diet] || p.diet);
-  }
-  if(p.sport) parts.push('Sport: ' + p.sport);
-  el.textContent = parts.join(' · ');
-}
-
 function renderAll() {
   renderList();
   renderFridge();
@@ -3056,11 +3036,14 @@ async function showSpoonRecipe(recipeId) {
         ${missing.length?`<button class="btn acc" style="width:100%;padding:13px;" onclick="addSpoonMissing(${JSON.stringify(missing.map(m=>m.name)).replace(/"/g,'&quot;')})">
           🛒 Ajouter ${missing.length} manquant(s) à ma liste
         </button>`:`<div style="text-align:center;font-size:.8rem;color:var(--gn);font-weight:800;padding:8px;">✅ Vous avez tous les ingrédients !</div>`}
-        <button class="btn" style="width:100%;padding:12px;" onclick="closeRecipe()">Fermer</button>
-        <button class="btn" style="width:100%;padding:10px;margin-top:6px;font-size:.78rem;color:var(--bl);"
-          onclick="openTranslateModal(window._currentSpoonRecipe||d,'${recipeId}')">
-          🌐 Traduire en français
+        <!-- Bouton traduction inline -->
+        <button class="btn" style="width:100%;padding:11px;font-size:.82rem;color:var(--bl);display:flex;align-items:center;justify-content:center;gap:6px;"
+          id="spoonTranslateBtn" onclick="window._translateRecipe=window._currentSpoonRecipe;document.getElementById('spoonTranslateZone').style.display==='none'?translateInline('spoonTranslateZone'):null;this.style.display='none';">
+          🌐 Traduire cette recette en français
         </button>
+        <!-- Zone résultat traduction — même fenêtre -->
+        <div id="spoonTranslateZone" style="display:none;"></div>
+        <button class="btn" style="width:100%;padding:12px;" onclick="closeRecipe()">Fermer</button>
       </div>`;
   } catch(e) {
     content.innerHTML = `<div class="mhdl"></div>
@@ -3180,16 +3163,27 @@ async function translateText(text, from='en', to='fr') {
 
 async function translateRecipeFull(recipe) {
   // Traduire une recette complète EN → FR via Claude AI pour une qualité culinaire
-  const key = localStorage.getItem('sc_anthropic_key') || (typeof ANTHROPIC_KEY !== 'undefined' ? ANTHROPIC_KEY : '');
+  const key = (typeof ANTHROPIC_KEY !== 'undefined' ? ANTHROPIC_KEY : '') 
+    || localStorage.getItem('sc_anthropic_key') || '';
+  // Si pas de clé Claude → fallback immédiat sur MyMemory
   if(!key) {
-    showToast('⚠️','Clé API requise','Configurez votre clé Claude dans le menu.');
-    return null;
+    console.log('No Claude key, using MyMemory fallback');
+    const src = recipe;
+    const ingrs = (src.ingredients||src.extendedIngredients||[]).slice(0,15);
+    const [tName, ...tIngrs] = await Promise.all([
+      translateText(src.name||src.title||'', 'en', 'fr'),
+      ...ingrs.map(function(i){ return translateText(i.name||i.originalName||i.original||'', 'en', 'fr'); })
+    ]);
+    const tSteps = await Promise.all(
+      (src.analyzedInstructions?.[0]?.steps||[]).slice(0,10).map(function(s){ return translateText(s.step||'', 'en', 'fr'); })
+    );
+    return { name: tName, ingredients: tIngrs.filter(Boolean), instructions: tSteps.filter(Boolean) };
   }
 
   const recipeText = JSON.stringify({
     name: recipe.name,
     ingredients: (recipe.ingredients||recipe.extendedIngredients||[]).map(i => i.name || i.original || (i.amount + ' ' + i.unit + ' ' + i.name)),
-    instructions: (recipe.analyzedInstructions?.[0]?.steps || []).map(s => s.step).join('\n') || recipe.instructions || ''
+    instructions: (recipe.analyzedInstructions?.[0]?.steps||[]).map(function(s){return s.step;}).join('\n') || recipe.instructions || ''
   });
 
   try {
@@ -3236,97 +3230,112 @@ Réponds en JSON: {"name":"...","ingredients":["..."],"instructions":["étape 1.
   }
 }
 
-function openTranslateModal(recipe, recipeId) {
-  const existing = document.getElementById('translateModal');
-  if(existing) existing.remove();
+// ════════════════════════════════════════════════════════════
+// TRADUCTION INLINE — s'affiche dans la même fenêtre
+// ════════════════════════════════════════════════════════════
 
-  const modal = document.createElement('div');
-  modal.className = 'overlay on';
-  modal.id = 'translateModal';
-  modal.onclick = e => { if(e.target===modal) modal.remove(); };
-  modal.innerHTML = `<div class="modal">
-    <div class="modal-hd">
-      <div class="modal-ti">🌐 Traduire la recette</div>
-      <button class="btn ico" onclick="document.getElementById('translateModal').remove()">✕</button>
-    </div>
-    <div style="text-align:center;padding:20px;">
-      <div style="font-size:1.5rem;margin-bottom:8px;">🇬🇧 → 🇫🇷</div>
-      <div style="font-weight:800;font-size:.95rem;margin-bottom:6px;">${recipe.name || recipe.strMeal || 'Recette'}</div>
-      <div style="font-size:.78rem;color:var(--tx2);margin-bottom:16px;">Traduction intelligente avec adaptation culinaire</div>
-      <button class="btn acc" id="translateBtn" onclick="doTranslateRecipe('${recipeId}')" style="width:100%;padding:13px;font-weight:800;">
-        ✨ Traduire avec Claude IA
-      </button>
-      <div style="font-size:.65rem;color:var(--tx3);margin-top:8px;">Traduction culinaire professionnelle · Mesures adaptées</div>
-    </div>
-    <div id="translateResult" style="display:none;margin-top:10px;"></div>
-  </div>`;
-
-  // Store recipe for translation
-  window._translateRecipe = recipe;
-  document.body.appendChild(modal);
-}
-
-async function doTranslateRecipe(recipeId) {
-  const btn = document.getElementById('translateBtn');
-  if(btn) { btn.disabled = true; btn.textContent = '⏳ Traduction en cours…'; }
+// Lance la traduction directement dans le modal courant
+async function translateInline(containerId) {
+  const container = document.getElementById(containerId);
+  if(!container) return;
 
   const recipe = window._translateRecipe;
-  const result = await translateRecipeFull(recipe);
-
-  if(!result) {
-    if(btn) { btn.disabled = false; btn.textContent = '✨ Réessayer'; }
+  if(!recipe) {
+    showToast('⚠️','Erreur','Recette introuvable pour la traduction.');
     return;
   }
 
-  const zone = document.getElementById('translateResult');
-  if(zone) {
-    zone.style.display = 'block';
-    zone.innerHTML = `
-      <div style="font-size:.7rem;font-weight:800;color:var(--tx3);text-transform:uppercase;margin-bottom:8px;">Résultat</div>
-      <div style="font-weight:900;font-size:.95rem;margin-bottom:10px;">🇫🇷 ${result.name}</div>
-      ${result.ingredients?.length ? `
-      <div style="font-size:.72rem;font-weight:800;color:var(--tx3);margin-bottom:6px;">Ingrédients</div>
-      <div style="margin-bottom:12px;">
-        ${result.ingredients.map(i=>`<div style="font-size:.8rem;padding:5px 0;border-bottom:1px solid var(--bg2);">· ${i}</div>`).join('')}
-      </div>` : ''}
-      ${result.instructions?.length ? `
-      <div style="font-size:.72rem;font-weight:800;color:var(--tx3);margin-bottom:6px;">Préparation</div>
-      ${result.instructions.map((s,i)=>`<div style="display:flex;gap:8px;padding:7px 0;border-bottom:1px solid var(--bg2);">
-        <div style="width:20px;height:20px;border-radius:50%;background:var(--grad);color:#fff;font-size:.65rem;font-weight:900;display:flex;align-items:center;justify-content:center;flex-shrink:0;">${i+1}</div>
-        <div style="font-size:.78rem;color:var(--tx);line-height:1.6;">${s}</div>
-      </div>`).join('')}` : ''}
-      ${result.tips ? `<div style="background:rgba(52,152,219,.08);border-radius:var(--rs);padding:10px;margin-top:10px;font-size:.75rem;color:var(--bl);">💡 ${result.tips}</div>` : ''}
-      <div style="display:flex;gap:8px;margin-top:14px;">
-        <button class="btn acc" style="flex:1;padding:12px;" onclick="saveTranslatedRecipe(${JSON.stringify(result).replace(/"/g,'&quot;')})">
-          💾 Sauvegarder en français
-        </button>
-        <button class="btn" style="flex:1;padding:12px;" onclick="document.getElementById('translateModal').remove()">Fermer</button>
-      </div>`;
-    if(btn) btn.style.display = 'none';
+  // Afficher le loader dans le container
+  container.style.display = 'block';
+  container.innerHTML = '<div style="text-align:center;padding:20px;">'
+    + '<div style="width:32px;height:32px;border-radius:50%;border:3px solid var(--bg2);border-top-color:var(--ac);animation:spin .8s linear infinite;margin:0 auto 10px;"></div>'
+    + '<div style="font-size:.8rem;color:var(--tx2);font-weight:600;">Traduction IA en cours…</div>'
+    + '<div style="font-size:.65rem;color:var(--tx3);margin-top:4px;">Adaptation culinaire français</div>'
+    + '</div>';
+
+  const result = await translateRecipeFull(recipe);
+
+  if(!result) {
+    container.innerHTML = '<div style="text-align:center;padding:16px;">'
+      + '<div style="font-size:1.2rem;margin-bottom:8px;">❌</div>'
+      + '<div style="font-size:.8rem;color:var(--rd);font-weight:700;">Traduction échouée</div>'
+      + '<button class="btn sm" style="margin-top:10px;" onclick="translateInline('' + containerId + '')">🔄 Réessayer</button>'
+      + '</div>';
+    return;
   }
+
+  // Stocker pour sauvegarder
+  window._lastTranslation = result;
+
+  // Construire le HTML du résultat
+  var html = '<div style="background:var(--bg2);border-radius:var(--rs);padding:14px;margin-top:2px;">'
+    + '<div style="display:flex;align-items:center;gap:6px;margin-bottom:12px;">'
+    + '<span style="font-size:1.1rem;">🇫🇷</span>'
+    + '<div style="font-weight:900;font-size:.92rem;color:var(--tx);">' + (result.name || '') + '</div>'
+    + '</div>';
+
+  if(result.ingredients && result.ingredients.length) {
+    html += '<div style="font-size:.68rem;font-weight:800;color:var(--tx3);text-transform:uppercase;letter-spacing:.7px;margin-bottom:6px;">Ingrédients</div>';
+    result.ingredients.forEach(function(ing) {
+      html += '<div style="display:flex;align-items:center;gap:6px;padding:5px 0;border-bottom:1px solid var(--bg3);">'
+        + '<div style="width:5px;height:5px;border-radius:50%;background:var(--ac);flex-shrink:0;"></div>'
+        + '<div style="font-size:.78rem;color:var(--tx);">' + ing + '</div>'
+        + '</div>';
+    });
+    html += '<div style="height:8px;"></div>';
+  }
+
+  if(result.instructions && result.instructions.length) {
+    html += '<div style="font-size:.68rem;font-weight:800;color:var(--tx3);text-transform:uppercase;letter-spacing:.7px;margin:10px 0 6px;">Préparation</div>';
+    result.instructions.forEach(function(step, i) {
+      html += '<div style="display:flex;gap:8px;padding:8px 0;border-bottom:1px solid var(--bg3);">'
+        + '<div style="width:22px;height:22px;border-radius:50%;background:var(--grad);color:#fff;font-size:.68rem;font-weight:900;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px;">' + (i+1) + '</div>'
+        + '<div style="font-size:.78rem;color:var(--tx);line-height:1.6;">' + step + '</div>'
+        + '</div>';
+    });
+  }
+
+  if(result.tips) {
+    html += '<div style="background:rgba(52,152,219,.1);border-radius:var(--rx);padding:10px;margin-top:10px;font-size:.75rem;color:var(--bl);">💡 ' + result.tips + '</div>';
+  }
+
+  html += '<button class="btn acc" style="width:100%;padding:12px;margin-top:14px;font-weight:800;" onclick="saveTranslatedRecipe()">'
+    + '💾 Sauvegarder cette recette en français'
+    + '</button>'
+    + '</div>';
+
+  container.innerHTML = html;
 }
 
-async function saveTranslatedRecipe(translated) {
+async function saveTranslatedRecipe() {
+  const translated = window._lastTranslation;
+  if(!translated) { showToast('⚠️','Rien à sauvegarder','Lancez d'abord la traduction.'); return; }
   if(!state.customRecipes) state.customRecipes = [];
+  const src = window._translateRecipe || {};
   const recipe = {
     id: 'translated_' + Date.now(),
     emoji: '🌐',
     name: translated.name,
-    time: window._translateRecipe?.readyInMinutes || 30,
-    portions: window._translateRecipe?.servings || 4,
+    time: src.readyInMinutes || 30,
+    portions: src.servings || 4,
     kcal: 0,
     diet: 'omnivore',
     mealTypes: ['l','d'],
-    ingredients: (translated.ingredients||[]).map(i => ({name:i, qty:'', unit:'', emoji:'🛍️'})),
+    ingredients: (translated.ingredients||[]).map(function(i){ return {name:i, qty:'', unit:'', emoji:'🛍️'}; }),
     instructions: translated.instructions || [],
+    photo: src.image || null,
     source: 'translated',
-    originalName: window._translateRecipe?.name || '',
+    originalName: src.name || src.title || '',
     createdAt: Date.now()
   };
   state.customRecipes.unshift(recipe);
   await saveState();
-  document.getElementById('translateModal')?.remove();
-  showToast('✅', '🇫🇷 ' + translated.name, 'Recette sauvegardée en français !');
+  window._lastTranslation = null;
+  // Fermer le modal
+  closeRecipe();
+  const ro = document.getElementById('recipeDetailOverlay');
+  if(ro) ro.classList.remove('on');
+  showToast('✅', '🇫🇷 ' + translated.name, 'Recette sauvegardée dans Mes Recettes !');
   if(typeof renderRecipesGrid === 'function') renderRecipesGrid();
 }
 
@@ -3887,9 +3896,12 @@ function renderRecipeModal(recipe, portions, isBookmarked) {
   modal.innerHTML = `
     <div class="mhdl"></div>
     <button onclick="closeRecipeDetail()" style="display:inline-flex;align-items:center;gap:6px;background:none;border:none;cursor:pointer;color:var(--tx2);font-size:.82rem;font-weight:700;padding:0 0 12px 0;">← Retour</button>
-      <button class="btn" style="width:100%;padding:11px;font-size:.78rem;color:var(--bl);margin-top:6px;" onclick="openTranslateModal(window._currentRecipe||r,'')">
+      <button class="btn" id="localTranslateBtn"
+        style="width:100%;padding:11px;font-size:.82rem;color:var(--bl);display:flex;align-items:center;justify-content:center;gap:6px;"
+        onclick="window._translateRecipe=window._currentRecipe;document.getElementById('localTranslateZone').style.display==='none'?translateInline('localTranslateZone'):null;this.style.display='none';">
         🌐 Traduire cette recette en français
-      </button></button>
+      </button>
+      <div id="localTranslateZone" style="display:none;"></div></button>
     ${recipe.photo ? `<img src="${recipe.photo}" loading="lazy" style="width:calc(100% + 36px);height:200px;object-fit:cover;margin:-20px -18px 16px;border-radius:var(--r) var(--r) 0 0;">` : ''}
     <div style="font-size:1.15rem;font-weight:900;margin-bottom:10px;line-height:1.3;">${frName}</div>
 
@@ -5586,9 +5598,6 @@ const RECIPES_FR = [
 ];
 
 // Merged recipe getter - includes all sources
-function getAllFrenchRecipes() {
-  return [...(window.RECIPES_DB || []), ...RECIPES_FR, ...state.customRecipes];
-}
 function getAllRecipes() {
   const db = typeof RECIPES_DB !== 'undefined' ? RECIPES_DB : [];
   const fr = typeof RECIPES_FR !== 'undefined' ? RECIPES_FR : [];
@@ -5908,73 +5917,99 @@ function renderMacroRings(macros) {
   const el = document.getElementById('macroRings');
   if(!el) return;
   if(!macros) {
-    el.innerHTML = `<div style="text-align:center;padding:16px;">
-      <div style="font-size:1.5rem;margin-bottom:6px;">📊</div>
-      <div style="font-size:.78rem;color:var(--tx2);">Complétez votre profil pour voir vos objectifs macros.</div>
-      <button class="btn sm" onclick="openMenuProfile()" style="margin-top:10px;">⚙️ Mon profil</button>
-    </div>`;
+    el.innerHTML = '<div style="text-align:center;padding:16px;">'
+      + '<div style="font-size:1.5rem;margin-bottom:6px;">📊</div>'
+      + '<div style="font-size:.78rem;color:var(--tx2);">Complétez votre profil pour voir vos objectifs macros.</div>'
+      + '<button class="btn sm" onclick="openMenuProfile()" style="margin-top:10px;">⚙️ Mon profil</button>'
+      + '</div>';
     return;
   }
-  const planned = Object.values(state.weekMenu).filter(m=>m?.nutri);
-  const avg = k => planned.length ? Math.round(planned.reduce((s,m)=>s+(m.nutri[k]||0),0)/planned.length) : 0;
-  const R=28, CX=36, CY=36, CIRC=2*Math.PI*R;
-  const list = [
+  const planned = Object.values(state.weekMenu).filter(m => m && m.nutri);
+  const avg = k => planned.length ? Math.round(planned.reduce((s,m) => s + (m.nutri[k]||0), 0) / planned.length) : 0;
+  const R = 28, CX = 36, CY = 36, CIRC = 2 * Math.PI * R;
+
+  const macroList = [
     {label:'Calories',  icon:'🔥', actual:avg('kcal'), target:macros.kcal||macros.cals||2000, color:'#e74c3c', unit:'kcal'},
     {label:'Protéines', icon:'💪', actual:avg('prot'),  target:macros.prot,  color:'#3498db', unit:'g'},
     {label:'Glucides',  icon:'🍞', actual:avg('carb'),  target:macros.carb,  color:'#f39c12', unit:'g'},
     {label:'Lipides',   icon:'🥑', actual:avg('fat'),   target:macros.fat,   color:'#9b59b6', unit:'g'},
   ];
-  el.innerHTML = `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
-    ${list.map(m => {
-      const pct  = m.target ? Math.min(100, Math.round(m.actual/m.target*100)) : 0;
-      const dash = (pct/100)*CIRC, gap = CIRC-dash;
-      const badge = pct>=90&&pct<=110?'✅':pct>110?'⚠️':'';
-      return `<div style="background:var(--bg);border-radius:var(--rs);box-shadow:var(--so);padding:10px;display:flex;align-items:center;gap:8px;">
-        <svg width="68" height="68" viewBox="0 0 72 72" style="flex-shrink:0;">
-          <circle cx="${CX}" cy="${CY}" r="${R}" fill="none" stroke="var(--bg2)" stroke-width="7"/>
-          <circle cx="${CX}" cy="${CY}" r="${R}" fill="none" stroke="${m.color}" stroke-width="7"
-            stroke-dasharray="${dash} ${gap}" stroke-dashoffset="${CIRC/4}" stroke-linecap="round">
-            <animate attributeName="stroke-dasharray" from="0 ${CIRC}" to="${dash} ${gap}" dur=".7s" fill="freeze"/>
-          </circle>
-          <text x="${CX}" y="${CY+1}" text-anchor="middle" dominant-baseline="middle" font-size="13" font-weight="900" fill="var(--tx)">${pct}%</text>
-        </svg>
-        <div style="flex:1;min-width:0;">
-          <div style="font-size:.78rem;font-weight:800;">${m.icon} ${m.label} ${badge}</div>
-          <div style="font-size:.95rem;font-weight:900;color:${m.color};">${m.actual}<span style="font-size:.55rem;"> ${m.unit}</span></div>
-          <div style="font-size:.6rem;color:var(--tx3);">/ ${m.target} ${m.unit}</div>
-          <div style="height:3px;background:var(--bg2);border-radius:99px;margin-top:4px;">
-            <div style="height:100%;width:${Math.min(100,pct)}%;background:${m.color};border-radius:99px;transition:width .5s;"></div>
-          </div>
-        </div>
-      </div>`;
-    }).join('')}
-  </div>
-  ${(() => {
-    const prot=avg('prot')*4, carb=avg('carb')*4, fat=avg('fat')*9, total=prot+carb+fat;
-    if(!total) return '<div style="text-align:center;font-size:.72rem;color:var(--tx3);padding:8px;">Planifiez votre semaine pour voir la répartition</div>';
-    const pctP=Math.round(prot/total*100), pctC=Math.round(carb/total*100), pctF=100-pctP-pctC;
-    const R2=44, CX2=56, CY2=56, SW=16, CIRC2=2*Math.PI*R2;
-    const segs=[{l:'Prot.',p:pctP,c:'#3498db'},{l:'Gluc.',p:pctC,c:'#f39c12'},{l:'Lip.',p:pctF,c:'#9b59b6'}];
-    let off=CIRC2/4;
-    const paths=segs.map(s=>{const l=(s.p/100)*CIRC2;const el=`<circle cx="${CX2}" cy="${CY2}" r="${R2}" fill="none" stroke="${s.c}" stroke-width="${SW}" stroke-dasharray="${l} ${CIRC2-l}" stroke-dashoffset="${off}" stroke-linecap="butt"/>`;off-=l;return el;}).join('');
-    const avgKcal=Math.round(total/(planned.length||1));
-    return `<div style="background:var(--bg);border-radius:var(--rs);box-shadow:var(--so);padding:12px;">
-      <div style="font-weight:800;font-size:.8rem;margin-bottom:10px;">🍽️ Répartition calorique</div>
-      <div style="display:flex;align-items:center;gap:14px;">
-        <svg width="112" height="112" viewBox="0 0 112 112">
-          <circle cx="${CX2}" cy="${CY2}" r="${R2}" fill="none" stroke="var(--bg2)" stroke-width="${SW}"/>
-          ${paths}
-          <text x="${CX2}" y="${CY2-5}" text-anchor="middle" font-size="12" font-weight="900" fill="var(--tx)">${avgKcal}</text>
-          <text x="${CX2}" y="${CY2+9}" text-anchor="middle" font-size="9" fill="var(--tx2)">kcal/j</text>
-        </svg>
-        <div>${segs.map(s=>`<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
-          <div style="width:10px;height:10px;border-radius:3px;background:${s.c};"></div>
-          <div style="font-size:.73rem;font-weight:700;flex:1;">${s.l}</div>
-          <div style="font-size:.8rem;font-weight:900;color:${s.c};">${s.p}%</div>
-        </div>`).join('')}</div>
-      </div>
-    </div>`;
-  })()}`;
+
+  // Build rings grid HTML
+  const ringsHTML = macroList.map(function(m) {
+    const pct  = m.target ? Math.min(100, Math.round(m.actual / m.target * 100)) : 0;
+    const dash = (pct / 100) * CIRC;
+    const gap  = CIRC - dash;
+    const badge = pct >= 90 && pct <= 110 ? '✅' : pct > 110 ? '⚠️' : '';
+    return '<div style="background:var(--bg);border-radius:var(--rs);box-shadow:var(--so);padding:10px;display:flex;align-items:center;gap:8px;">'
+      + '<svg width="68" height="68" viewBox="0 0 72 72" style="flex-shrink:0;">'
+      + '<circle cx="' + CX + '" cy="' + CY + '" r="' + R + '" fill="none" stroke="var(--bg2)" stroke-width="7"/>'
+      + '<circle cx="' + CX + '" cy="' + CY + '" r="' + R + '" fill="none" stroke="' + m.color + '" stroke-width="7"'
+      + ' stroke-dasharray="' + dash.toFixed(1) + ' ' + gap.toFixed(1) + '"'
+      + ' stroke-dashoffset="' + (CIRC / 4).toFixed(1) + '" stroke-linecap="round">'
+      + '<animate attributeName="stroke-dasharray" from="0 ' + CIRC.toFixed(1) + '" to="' + dash.toFixed(1) + ' ' + gap.toFixed(1) + '" dur=".7s" fill="freeze"/>'
+      + '</circle>'
+      + '<text x="' + CX + '" y="' + (CY+1) + '" text-anchor="middle" dominant-baseline="middle" font-size="13" font-weight="900" fill="var(--tx)">' + pct + '%</text>'
+      + '</svg>'
+      + '<div style="flex:1;min-width:0;">'
+      + '<div style="font-size:.78rem;font-weight:800;">' + m.icon + ' ' + m.label + ' ' + badge + '</div>'
+      + '<div style="font-size:.95rem;font-weight:900;color:' + m.color + ';">' + m.actual + '<span style="font-size:.55rem;"> ' + m.unit + '</span></div>'
+      + '<div style="font-size:.6rem;color:var(--tx3);">/ ' + m.target + ' ' + m.unit + '</div>'
+      + '<div style="height:3px;background:var(--bg2);border-radius:99px;margin-top:4px;">'
+      + '<div style="height:100%;width:' + Math.min(100,pct) + '%;background:' + m.color + ';border-radius:99px;transition:width .5s;"></div>'
+      + '</div></div></div>';
+  }).join('');
+
+  // Build donut chart HTML
+  var prot = avg('prot') * 4, carb = avg('carb') * 4, fat = avg('fat') * 9;
+  var total = prot + carb + fat;
+  var donutHTML = '';
+  if(total > 0) {
+    var pctP = Math.round(prot/total*100);
+    var pctC = Math.round(carb/total*100);
+    var pctF = 100 - pctP - pctC;
+    var R2 = 44, CX2 = 56, CY2 = 56, SW = 16;
+    var CIRC2 = 2 * Math.PI * R2;
+    var segs = [
+      {l:'Prot.', p:pctP, c:'#3498db'},
+      {l:'Gluc.', p:pctC, c:'#f39c12'},
+      {l:'Lip.',  p:pctF, c:'#9b59b6'}
+    ];
+    var off = CIRC2 / 4;
+    var paths = segs.map(function(s) {
+      var l = (s.p / 100) * CIRC2;
+      var seg = '<circle cx="' + CX2 + '" cy="' + CY2 + '" r="' + R2 + '" fill="none"'
+        + ' stroke="' + s.c + '" stroke-width="' + SW + '"'
+        + ' stroke-dasharray="' + l.toFixed(1) + ' ' + (CIRC2-l).toFixed(1) + '"'
+        + ' stroke-dashoffset="' + off.toFixed(1) + '" stroke-linecap="butt"/>';
+      off -= l;
+      return seg;
+    }).join('');
+    var avgKcal = Math.round(total / (planned.length || 1));
+    var legendHTML = segs.map(function(s) {
+      return '<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">'
+        + '<div style="width:10px;height:10px;border-radius:3px;background:' + s.c + ';"></div>'
+        + '<div style="font-size:.73rem;font-weight:700;flex:1;">' + s.l + '</div>'
+        + '<div style="font-size:.8rem;font-weight:900;color:' + s.c + ';">' + s.p + '%</div>'
+        + '</div>';
+    }).join('');
+    donutHTML = '<div style="background:var(--bg);border-radius:var(--rs);box-shadow:var(--so);padding:12px;">'
+      + '<div style="font-weight:800;font-size:.8rem;margin-bottom:10px;">🍽️ Répartition calorique</div>'
+      + '<div style="display:flex;align-items:center;gap:14px;">'
+      + '<svg width="112" height="112" viewBox="0 0 112 112">'
+      + '<circle cx="' + CX2 + '" cy="' + CY2 + '" r="' + R2 + '" fill="none" stroke="var(--bg2)" stroke-width="' + SW + '"/>'
+      + paths
+      + '<text x="' + CX2 + '" y="' + (CY2-5) + '" text-anchor="middle" font-size="12" font-weight="900" fill="var(--tx)">' + avgKcal + '</text>'
+      + '<text x="' + CX2 + '" y="' + (CY2+9) + '" text-anchor="middle" font-size="9" fill="var(--tx2)">kcal/j</text>'
+      + '</svg>'
+      + '<div>' + legendHTML + '</div>'
+      + '</div></div>';
+  } else {
+    donutHTML = '<div style="text-align:center;font-size:.72rem;color:var(--tx3);padding:8px;">Planifiez votre semaine pour voir la répartition</div>';
+  }
+
+  el.innerHTML = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">'
+    + ringsHTML + '</div>' + donutHTML;
 }
 
 // ── Graphique barres calories/semaine SVG ─────────────────────

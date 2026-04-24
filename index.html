@@ -3328,7 +3328,7 @@ async function translateInline(containerId) {
 
 async function saveTranslatedRecipe() {
   const translated = window._lastTranslation;
-  if(!translated) { showToast('⚠️','Rien à sauvegarder','Lancez d'abord la traduction.'); return; }
+  if (!translated) {showToast('⚠️', 'Rien à sauvegarder', "Lancez d'abord la traduction.");return;}
   if(!state.customRecipes) state.customRecipes = [];
   const src = window._translateRecipe || {};
   const recipe = {

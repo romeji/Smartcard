@@ -7143,21 +7143,51 @@ function displayBarcodeProduct(product) {
   const cat0 = (product.categories[0]||'').replace(/'/g,"\\'");
 
   zone.innerHTML = `
-    <!-- Carte compacte — toujours visible -->
-    <div class="off-product-card" style="margin-bottom:0;">
-      <div style="display:flex;align-items:center;gap:12px;padding:14px 16px;cursor:pointer;" onclick="toggleProductDetails(this)">
-        ${product.image
-          ? `<img class="off-product-img" src="${product.image}" style="width:56px;height:56px;" alt="${product.name}" onerror="this.outerHTML='<div style=\\'width:56px;height:56px;border-radius:var(--rs);background:var(--bg2);display:flex;align-items:center;justify-content:center;font-size:1.8rem;flex-shrink:0;\\'>🛒</div>'">`
-          : `<div style="width:56px;height:56px;border-radius:var(--rs);background:var(--bg2);display:flex;align-items:center;justify-content:center;font-size:1.8rem;flex-shrink:0;">🛒</div>`}
-        <div style="flex:1;min-width:0;">
-          <div style="font-weight:900;font-size:.92rem;color:var(--tx);">${product.name}</div>
-          ${product.brand ? `<div style="font-size:.72rem;color:var(--tx2);">${product.brand}${product.quantity?' · '+product.quantity:''}</div>` : ''}
-          <!-- Mini nutriscore bar -->
-          <div style="margin-top:6px;">${nutriscoreSVG(ns)}</div>
+  <!-- Carte compacte — toujours visible -->
+  <div class="off-product-card" style="margin-bottom:0;">
+    <div style="display:flex;align-items:center;gap:12px;padding:14px 16px;cursor:pointer;" onclick="toggleProductDetails(this)">
+      
+      ${
+        product.image
+          ? `<img class="off-product-img product-img-${product.barcode}"
+              src="${product.image}"
+              style="width:56px;height:56px;"
+              alt="${product.name}">`
+          : `<div style="width:56px;height:56px;border-radius:var(--rs);
+                    background:var(--bg2);
+                    display:flex;align-items:center;justify-content:center;
+                    font-size:1.8rem;flex-shrink:0;">🛒</div>`
+      }
+
+      <div style="flex:1;min-width:0;">
+        <div style="font-weight:900;font-size:.92rem;color:var(--tx);">
+          ${product.name}
         </div>
-        ${es !== 'u' ? `<div class="eco-score eco-${es}" title="Éco-Score">${es.toUpperCase()}</div>` : ''}
-        <div style="color:var(--tx3);font-size:.9rem;transition:transform .3s;flex-shrink:0;" class="product-chevron">▼</div>
+
+        ${
+          product.brand
+            ? `<div style="font-size:.72rem;color:var(--tx2);">
+                 ${product.brand}${product.quantity ? ' · ' + product.quantity : ''}
+               </div>`
+            : ''
+        }
+
+        <div style="margin-top:6px;">${nutriscoreSVG(ns)}</div>
       </div>
+
+      ${
+        es !== 'u'
+          ? `<div class="eco-score eco-${es}" title="Éco-Score">
+               ${es.toUpperCase()}
+             </div>`
+          : ''
+      }
+
+      <div style="color:var(--tx3);font-size:.9rem;transition:transform .3s;flex-shrink:0;" class="product-chevron">
+        ▼
+      </div>
+    </div>
+`;
 
       <!-- Boutons d'action — toujours visibles -->
       <div style="padding:0 14px 12px;">

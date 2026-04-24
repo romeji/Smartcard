@@ -1709,34 +1709,14 @@ const FIREBASE_CONFIG = {
   messagingSenderId: "126521073547",
   appId: "1:126521073547:web:bdf2c727024098527f198e"
 };
-// Clé Claude — NE PAS hardcoder ici
-// Les appels passent par /api/claude (proxy Vercel) pour sécuriser la clé
-const ANTHROPIC_KEY = ""; // vide intentionnellement
+const ANTHROPIC_KEY = "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"
+const SPOONACULAR_KEY = "fe1df9e1047c4023b712a0a9db65dd3a";
+const APP_VERSION = "v3.0";
 
-// Endpoint Claude : proxy Vercel en prod, direct en dev avec clé localStorage
-const CLAUDE_ENDPOINT = '/api/claude';
-
-function getAnthropicKey() {
-  return localStorage.getItem('sc_anthropic_key') || '';
-}
-
-// Appel Claude unifié — passe par /api/claude (proxy Vercel)
-// body = { model, max_tokens, system, messages }
-async function callClaude(body) {
-  try {
-    const resp = await fetch(CLAUDE_ENDPOINT, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
-    });
-    if(resp.ok) return await resp.json();
-    const errData = await resp.json().catch(() => ({}));
-    throw new Error('Proxy error ' + resp.status + ': ' + (errData.error || ''));
-  } catch(e) {
-    console.error('callClaude error:', e.message);
-    throw e;
-  }
-}
+let auth, db, currentUser, houseUnsub, itemsUnsub;
+let menuUnlocked = false;
+let menuTapCount = 0;
+let menuTapTimer = null;
 
 // ═══════════════════════════════════════════════
 // STATE
@@ -1755,17 +1735,22 @@ let state = {
   budget: 80,
   profile: {
     name: '', age: '', sex: '', poids: '', taille: '', poidsObj: '',
-    diet: 'omnivore', sport: '', sportFreq: '0', showPrix: true
+    diet: 'omnivore', sport: '', sportFreq: '0'
   },
   houseId: null,
   houseName: null,
   houseCode: null,
+  // MENU PREMIUM
   recipeBookmarks: [],
-  spoonCache: {},
-  aiInsights: null,
-  menuGoalSummary: null
+  spoonCache: {},       // Cache Spoonacular searches
+  aiInsights: null,     // Last AI analysis
+  menuGoalSummary: null // AI goal summary
 };
+let confirmCallback = null;
 
+// ═══════════════════════════════════════════════
+// DEBUG
+// ═══════════════════════════════════════════════
 function dbg(msg, col) {
   const panel = document.getElementById('dbgPanel');
   const log = document.getElementById('dbgLog');
@@ -2309,6 +2294,26 @@ function fillProfileForm() {
   const budgetSec = document.getElementById('budgetSection');
   if(budgetSec) budgetSec.style.display = showPrix ? 'block' : 'none';
   set('profileBudget', state.budget || 80);
+}
+
+function updateMenuProfileCard() {
+  const p = state.profile || {};
+  const el = document.getElementById('menuProfileSummary');
+  if(!el) return;
+  if(!p.age && !p.poids) { el.textContent = 'Complétez votre profil pour une personnalisation IA optimale.'; return; }
+  let parts = [];
+  if(p.age) parts.push(p.age + ' ans');
+  if(p.sex === 'H') parts.push('Homme');
+  if(p.sex === 'F') parts.push('Femme');
+  if(p.poids) parts.push(p.poids + ' kg');
+  if(p.taille) parts.push(p.taille + ' cm');
+  if(p.poidsObj) parts.push('→ objectif ' + p.poidsObj + ' kg');
+  if(p.diet && p.diet !== 'omnivore') {
+    const diets = {veg:'Végétarien',vegan:'Vegan',pesc:'Pescétarien',gluten:'Sans gluten',keto:'Keto'};
+    parts.push(diets[p.diet] || p.diet);
+  }
+  if(p.sport) parts.push('Sport: ' + p.sport);
+  el.textContent = parts.join(' · ');
 }
 
 function renderAll() {
@@ -2989,7 +2994,6 @@ async function showSpoonRecipe(recipeId) {
       _spoonDetailCache[recipeId] = await r.json();
     }
     const d = _spoonDetailCache[recipeId];
-    window._currentSpoonRecipe = d; // store for translate
     const fridgeNames = state.fridge.map(f=>f.name.toLowerCase());
     const ingredients = (d.extendedIngredients||[]).map(ing => ({
       name: ing.originalName || ing.name,
@@ -3051,13 +3055,6 @@ async function showSpoonRecipe(recipeId) {
         ${missing.length?`<button class="btn acc" style="width:100%;padding:13px;" onclick="addSpoonMissing(${JSON.stringify(missing.map(m=>m.name)).replace(/"/g,'&quot;')})">
           🛒 Ajouter ${missing.length} manquant(s) à ma liste
         </button>`:`<div style="text-align:center;font-size:.8rem;color:var(--gn);font-weight:800;padding:8px;">✅ Vous avez tous les ingrédients !</div>`}
-        <!-- Bouton traduction inline -->
-        <button class="btn" style="width:100%;padding:11px;font-size:.82rem;color:var(--bl);display:flex;align-items:center;justify-content:center;gap:6px;"
-          id="spoonTranslateBtn" onclick="window._translateRecipe=window._currentSpoonRecipe||d;this.style.display='none';translateInline('spoonTranslateZone');">
-          🌐 Traduire cette recette en français
-        </button>
-        <!-- Zone résultat traduction — même fenêtre -->
-        <div id="spoonTranslateZone" style="display:none;"></div>
         <button class="btn" style="width:100%;padding:12px;" onclick="closeRecipe()">Fermer</button>
       </div>`;
   } catch(e) {
@@ -3149,206 +3146,6 @@ menuTapCount = 0;
 menuTapTimer = null; // kept for compat
 
 // ── Initialisation ──────────────────────────────────────────
-// ═══════════════════════════════════════════════════════
-// MODULE TRADUCTION RECETTES
-// MyMemory API (gratuit) + Claude AI (haute qualité)
-// ═══════════════════════════════════════════════════════
-let _translateCache = {}; // cache des traductions
-
-async function translateText(text, from='en', to='fr') {
-  if(!text || text.trim().length < 3) return text;
-  const cacheKey = from + '|' + to + '|' + text.slice(0,50);
-  if(_translateCache[cacheKey]) return _translateCache[cacheKey];
-
-  try {
-    // MyMemory API — gratuit, 1000 req/jour
-    const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=${from}|${to}&de=smartcard-app@user.com`;
-    const resp = await fetch(url);
-    const data = await resp.json();
-    if(data.responseStatus === 200 && data.responseData?.translatedText) {
-      const result = data.responseData.translatedText;
-      _translateCache[cacheKey] = result;
-      return result;
-    }
-  } catch(e) {
-    console.warn('MyMemory translation failed:', e);
-  }
-  return text; // fallback: texte original
-}
-
-async function translateRecipeFull(recipe) {
-  // Traduire une recette complète EN → FR via Claude AI pour une qualité culinaire
-  const key = (typeof ANTHROPIC_KEY !== 'undefined' ? ANTHROPIC_KEY : '') 
-    || localStorage.getItem('sc_anthropic_key') || '';
-  // Si pas de clé Claude → fallback immédiat sur MyMemory
-  if(!key) {
-    console.log('No Claude key, using MyMemory fallback');
-    const src = recipe;
-    const ingrs = (src.ingredients||src.extendedIngredients||[]).slice(0,15);
-    const [tName, ...tIngrs] = await Promise.all([
-      translateText(src.name||src.title||'', 'en', 'fr'),
-      ...ingrs.map(function(i){ return translateText(i.name||i.originalName||i.original||'', 'en', 'fr'); })
-    ]);
-    const tSteps = await Promise.all(
-      (src.analyzedInstructions?.[0]?.steps||[]).slice(0,10).map(function(s){ return translateText(s.step||'', 'en', 'fr'); })
-    );
-    return { name: tName, ingredients: tIngrs.filter(Boolean), instructions: tSteps.filter(Boolean) };
-  }
-
-  const recipeText = JSON.stringify({
-    name: recipe.name,
-    ingredients: (recipe.ingredients||recipe.extendedIngredients||[]).map(i => i.name || i.original || (i.amount + ' ' + i.unit + ' ' + i.name)),
-    instructions: (recipe.analyzedInstructions?.[0]?.steps||[]).map(function(s){return s.step;}).join('\n') || recipe.instructions || ''
-  });
-
-  try {
-    // callClaude() retourne déjà le JSON parsé (pas un Response)
-    const data = await callClaude({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 1500,
-      system: 'Tu es un expert en gastronomie française. Traduis cette recette anglaise en français de manière naturelle et professionnelle.\n- Adapte les mesures (cups → dl/g, oz → g, fahrenheit → celsius)\n- Utilise les termes culinaires français corrects (sauté, julienne, brunoise, etc.)\n- Traduis les noms des ingrédients avec précision\n- Réponds UNIQUEMENT en JSON valide, sans texte autour',
-      messages: [{
-        role: 'user',
-        content: 'Traduis cette recette en français professionnel:\n' + recipeText + '\n\nRéponds en JSON: {"name":"...","ingredients":["..."],"instructions":["étape 1...","étape 2..."],"tips":"conseil optionnel"}'
-      }]
-    });
-    const raw = (data.content && data.content[0] && data.content[0].text) ? data.content[0].text : '';
-    const clean = raw.replace(/```json|```/g,'').trim();
-    const parsed = JSON.parse(clean);
-    if(!parsed.name) throw new Error('empty result');
-    return parsed;
-  } catch(e) {
-    console.error('Claude translation error:', e.message);
-    // Fallback MyMemory champ par champ
-    const recipeName = recipe.title || recipe.name || '';
-    const ingrs = (recipe.extendedIngredients || recipe.ingredients || []).slice(0, 12);
-    const steps = (recipe.analyzedInstructions && recipe.analyzedInstructions[0] && recipe.analyzedInstructions[0].steps) || [];
-    const [tName, ...rest] = await Promise.all([
-      translateText(recipeName, 'en', 'fr'),
-      ...ingrs.map(function(i){ return translateText(i.originalName || i.name || i.original || '', 'en', 'fr'); })
-    ]);
-    const tSteps = steps.length
-      ? await Promise.all(steps.slice(0,10).map(function(s){ return translateText(s.step || '', 'en', 'fr'); }))
-      : [];
-    return {
-      name: tName || recipeName,
-      ingredients: rest.filter(Boolean),
-      instructions: tSteps.filter(Boolean)
-    };
-  }
-}
-
-// ════════════════════════════════════════════════════════════
-// TRADUCTION INLINE — s'affiche dans la même fenêtre
-// ════════════════════════════════════════════════════════════
-
-// Lance la traduction directement dans le modal courant
-async function translateInline(containerId) {
-  const container = document.getElementById(containerId);
-  if(!container) return;
-
-  const recipe = window._translateRecipe;
-  if(!recipe || (typeof recipe !== 'object')) {
-    container.innerHTML = '<div style="text-align:center;padding:16px;color:var(--rd);font-weight:700;">❌ Recette non trouvée</div>';
-    return;
-  }
-  // Normaliser le nom (Spoonacular = title, custom = name)
-  if(!recipe.name && recipe.title) recipe.name = recipe.title;
-
-  // Afficher le loader dans le container
-  container.style.display = 'block';
-  container.innerHTML = '<div style="text-align:center;padding:20px;">'
-    + '<div style="width:32px;height:32px;border-radius:50%;border:3px solid var(--bg2);border-top-color:var(--ac);animation:spin .8s linear infinite;margin:0 auto 10px;"></div>'
-    + '<div style="font-size:.8rem;color:var(--tx2);font-weight:600;">Traduction IA en cours…</div>'
-    + '<div style="font-size:.65rem;color:var(--tx3);margin-top:4px;">Adaptation culinaire français</div>'
-    + '</div>';
-
-  const result = await translateRecipeFull(recipe);
-
-  if(!result) {
-    container.innerHTML = '<div style="text-align:center;padding:16px;">'
-      + '<div style="font-size:1.2rem;margin-bottom:8px;">❌</div>'
-      + '<div style="font-size:.8rem;color:var(--rd);font-weight:700;">Traduction échouée</div>'
-      + '<button class="btn sm" style="margin-top:10px;" onclick="translateInline(&quot;' + containerId + '&quot;)">🔄 Réessayer</button>'
-      + '</div>';
-    return;
-  }
-
-  // Stocker pour sauvegarder
-  window._lastTranslation = result;
-
-  // Construire le HTML du résultat
-  var html = '<div style="background:var(--bg2);border-radius:var(--rs);padding:14px;margin-top:2px;">'
-    + '<div style="display:flex;align-items:center;gap:6px;margin-bottom:12px;">'
-    + '<span style="font-size:1.1rem;">🇫🇷</span>'
-    + '<div style="font-weight:900;font-size:.92rem;color:var(--tx);">' + (result.name || '') + '</div>'
-    + '</div>';
-
-  if(result.ingredients && result.ingredients.length) {
-    html += '<div style="font-size:.68rem;font-weight:800;color:var(--tx3);text-transform:uppercase;letter-spacing:.7px;margin-bottom:6px;">Ingrédients</div>';
-    result.ingredients.forEach(function(ing) {
-      html += '<div style="display:flex;align-items:center;gap:6px;padding:5px 0;border-bottom:1px solid var(--bg3);">'
-        + '<div style="width:5px;height:5px;border-radius:50%;background:var(--ac);flex-shrink:0;"></div>'
-        + '<div style="font-size:.78rem;color:var(--tx);">' + ing + '</div>'
-        + '</div>';
-    });
-    html += '<div style="height:8px;"></div>';
-  }
-
-  if(result.instructions && result.instructions.length) {
-    html += '<div style="font-size:.68rem;font-weight:800;color:var(--tx3);text-transform:uppercase;letter-spacing:.7px;margin:10px 0 6px;">Préparation</div>';
-    result.instructions.forEach(function(step, i) {
-      html += '<div style="display:flex;gap:8px;padding:8px 0;border-bottom:1px solid var(--bg3);">'
-        + '<div style="width:22px;height:22px;border-radius:50%;background:var(--grad);color:#fff;font-size:.68rem;font-weight:900;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px;">' + (i+1) + '</div>'
-        + '<div style="font-size:.78rem;color:var(--tx);line-height:1.6;">' + step + '</div>'
-        + '</div>';
-    });
-  }
-
-  if(result.tips) {
-    html += '<div style="background:rgba(52,152,219,.1);border-radius:var(--rx);padding:10px;margin-top:10px;font-size:.75rem;color:var(--bl);">💡 ' + result.tips + '</div>';
-  }
-
-  html += '<button class="btn acc" style="width:100%;padding:12px;margin-top:14px;font-weight:800;" onclick="saveTranslatedRecipe()">'
-    + '💾 Sauvegarder cette recette en français'
-    + '</button>'
-    + '</div>';
-
-  container.innerHTML = html;
-}
-
-async function saveTranslatedRecipe() {
-  const translated = window._lastTranslation;
-  if(!translated) { showToast('⚠️','Rien à sauvegarder','Lancez d\'abord la traduction.'); return; }
-  if(!state.customRecipes) state.customRecipes = [];
-  const src = window._translateRecipe || {};
-  const recipe = {
-    id: 'translated_' + Date.now(),
-    emoji: '🌐',
-    name: translated.name,
-    time: src.readyInMinutes || 30,
-    portions: src.servings || 4,
-    kcal: 0,
-    diet: 'omnivore',
-    mealTypes: ['l','d'],
-    ingredients: (translated.ingredients||[]).map(function(i){ return {name:i, qty:'', unit:'', emoji:'🛍️'}; }),
-    instructions: translated.instructions || [],
-    photo: src.image || null,
-    source: 'translated',
-    originalName: src.name || src.title || '',
-    createdAt: Date.now()
-  };
-  state.customRecipes.unshift(recipe);
-  await saveState();
-  window._lastTranslation = null;
-  // Fermer le modal
-  closeRecipe();
-  const ro = document.getElementById('recipeDetailOverlay');
-  if(ro) ro.classList.remove('on');
-  showToast('✅', '🇫🇷 ' + translated.name, 'Recette sauvegardée dans Mes Recettes !');
-  if(typeof renderRecipesGrid === 'function') renderRecipesGrid();
-}
-
 function initMenuModule() {
   updateMenuProfileCard();
   renderWeek();
@@ -3529,7 +3326,9 @@ Réponds UNIQUEMENT en JSON valide:
 Exactement 7 jours. Valeurs nutritionnelles réalistes et cohérentes.`;
 
   try {
-    const resp=await callClaude({
+    const resp=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','x-api-key':getAnthropicKey(),'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
       body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:4000,messages:[{role:'user',content:prompt}]})
     });
     if(!resp.ok) {
@@ -3608,7 +3407,12 @@ async function searchWithClaudeFallback(q) {
     const p = state.profile||{};
     const prompt = `Propose 6 recettes de cuisine pour: "${q}", régime: ${diet}${p.goal?', objectif: '+p.goal:''}.
 Réponds UNIQUEMENT en JSON: {"recipes":[{"name":"Nom recette","emoji":"🍽️","time":30,"kcal":450,"prot":25,"carb":40,"fat":15,"diet":"${diet}","ingredients":[{"name":"Ingrédient","qty":100,"unit":"g"}],"instructions":["Étape 1","Étape 2"]}]}`;
-    const data = await callClaude({model:'claude-sonnet-4-20250514',max_tokens:2000,messages:[{role:'user',content:prompt}]});
+    const resp = await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','x-api-key':getAnthropicKey(),'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+      body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:2000,messages:[{role:'user',content:prompt}]})
+    });
+    const data = await resp.json();
     const text = (data.content||[]).find(c=>c.type==='text')?.text||'';
     const parsed = JSON.parse(text.replace(/```json|```/g,'').trim());
     const recipes = (parsed.recipes||[]).map((r,i)=>({...r,id:'claude_'+Date.now()+'_'+i,source:'claude'}));
@@ -3899,12 +3703,6 @@ function renderRecipeModal(recipe, portions, isBookmarked) {
   modal.innerHTML = `
     <div class="mhdl"></div>
     <button onclick="closeRecipeDetail()" style="display:inline-flex;align-items:center;gap:6px;background:none;border:none;cursor:pointer;color:var(--tx2);font-size:.82rem;font-weight:700;padding:0 0 12px 0;">← Retour</button>
-      <button class="btn" id="localTranslateBtn"
-        style="width:100%;padding:11px;font-size:.82rem;color:var(--bl);display:flex;align-items:center;justify-content:center;gap:6px;"
-        onclick="window._translateRecipe=window._currentRecipe;this.style.display='none';translateInline('localTranslateZone');">
-        🌐 Traduire cette recette en français
-      </button>
-      <div id="localTranslateZone" style="display:none;"></div></button>
     ${recipe.photo ? `<img src="${recipe.photo}" loading="lazy" style="width:calc(100% + 36px);height:200px;object-fit:cover;margin:-20px -18px 16px;border-radius:var(--r) var(--r) 0 0;">` : ''}
     <div style="font-size:1.15rem;font-weight:900;margin-bottom:10px;line-height:1.3;">${frName}</div>
 
@@ -3955,6 +3753,12 @@ function renderRecipeModal(recipe, portions, isBookmarked) {
       <button onclick="toggleBookmark('${recipe.id}')" style="padding:13px;border-radius:var(--rs);background:${isBookmarked?'rgba(246,211,101,.2)':'var(--bg2)'};border:none;font-size:1.1rem;cursor:pointer;">${isBookmarked?'⭐':'☆'}</button>
       ${recipe.sourceUrl ? `<a href="${recipe.sourceUrl}" target="_blank" style="padding:13px;border-radius:var(--rs);background:var(--bg2);color:var(--tx2);font-size:.75rem;display:flex;align-items:center;text-decoration:none;">🔗</a>` : ''}
     </div>
+    ${(!recipe._translated && (recipe.sourceUrl || recipe.isSpoon || recipe.id?.startsWith('sp_'))) ? `
+    <button id="translateRecipeBtn" onclick="translateAndShowRecipe(window._currentRecipe)"
+      style="width:100%;margin-top:8px;padding:12px;border-radius:var(--rs);background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;font-size:.82rem;font-weight:800;display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;border:none;">
+      🇫🇷 Traduire la recette en français (IA)
+    </button>` : (recipe._translated ? `
+    <div style="text-align:center;font-size:.7rem;color:var(--gn);font-weight:700;margin-top:6px;">✅ Recette traduite en français</div>` : '')}
   `;
 }
 
@@ -4613,6 +4417,237 @@ function snackAddFromInput() {
 // 📊 NUTRITION PANEL
 // ════════════════════════════════════════════════════════════
 
+function renderNutriPanel() {
+  const p = state.profile || {};
+  const cals = typeof calculateDailyCalories==='function' ? calculateDailyCalories(p) : null;
+  const macros = typeof getMacroTargets==='function' ? getMacroTargets(p, cals) : null;
+  const planned = Object.values(state.weekMenu).filter(m => m && m.nutri && m.nutri.kcal);
+  const avgKcal = planned.length ? Math.round(planned.reduce((s,m)=>s+(m.nutri.kcal||0),0)/7) : 0;
+  const diff = cals && avgKcal ? avgKcal - cals : null;
+  const goal = p.goal || 'equilibre';
+  const goalTxt = {equilibre:'Équilibre alimentaire',perte:'Perte de poids',prise:'Prise de masse',maintien:'Maintien du poids',perf:'Performance sportive'};
+
+  // ── Stats Grid (4 hero cards) ──────────────────────────────
+  const statsGrid = document.getElementById('nutriStatsGrid');
+  if(statsGrid) {
+    const diffColor = diff===null?'var(--tx2)':Math.abs(diff)<150?'var(--gn)':diff>0?'var(--rd)':'var(--yl)';
+    const diffLabel = diff===null?'—':(diff>0?'+':'')+diff+' kcal';
+    const imc = p.poids&&p.taille ? (p.poids/((p.taille/100)**2)).toFixed(1) : null;
+    const imcColor = !imc?'var(--tx2)':+imc<18.5?'var(--bl)':+imc<25?'var(--gn)':+imc<30?'var(--yl)':'var(--rd)';
+    const stats = [
+      {icon:'🔥',label:'Objectif calorique',val:cals?cals+' kcal':'Non défini',sub:goalTxt[goal]||goal,color:'var(--ac)',bar:null},
+      {icon:'📅',label:'Jours planifiés',val:planned.length+'/7',sub:planned.length>=7?'✅ Semaine complète':planned.length+' jour'+(planned.length>1?'s':'')+' planifié'+(planned.length>1?'s':''),color:planned.length>=7?'var(--gn)':'var(--or)',bar:planned.length/7*100},
+      {icon:'📊',label:'Moy. hebdomadaire',val:avgKcal?avgKcal+' kcal':'—',sub:cals&&avgKcal?Math.round(avgKcal/cals*100)+'% de l\'objectif':'Générez un menu',color:'var(--tl)',bar:cals&&avgKcal?Math.min(110,Math.round(avgKcal/cals*100)):null},
+      {icon:'⚖️',label:'IMC',val:imc||'—',sub:!imc?'Profil incomplet':+imc<18.5?'Insuffisance pondérale':+imc<25?'Poids normal ✅':+imc<30?'Surpoids':'Obésité',color:imcColor,bar:null},
+    ];
+    statsGrid.innerHTML = stats.map(s => `
+      <div style="background:var(--bg);border-radius:var(--rs);box-shadow:var(--so);padding:14px 12px;position:relative;overflow:hidden;">
+        <div style="font-size:1.4rem;margin-bottom:6px;">${s.icon}</div>
+        <div style="font-size:1.05rem;font-weight:900;color:${s.color};line-height:1.1;">${s.val}</div>
+        <div style="font-size:.58rem;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.6px;margin:3px 0 2px;">${s.label}</div>
+        <div style="font-size:.64rem;color:var(--tx2);">${s.sub}</div>
+        ${s.bar!==null?`<div style="margin-top:8px;height:3px;background:var(--bg2);border-radius:99px;overflow:hidden;"><div style="height:100%;width:${Math.min(100,s.bar)}%;background:${s.color};border-radius:99px;transition:width .6s ease;"></div></div>`:''}
+      </div>`).join('');
+  }
+
+  renderNutriWeekChart(cals);
+  renderMacroRings(macros);
+  renderNutriDonut(macros, planned);
+  renderSeasonalNutri && renderSeasonalNutri();
+  if(state.aiInsights && typeof updateAIInsightCard==='function') updateAIInsightCard(state.aiInsights);
+}
+
+// ── SVG Bar Chart — Calories per day ──────────────────────────
+function renderNutriWeekChart(target) {
+  const chart = document.getElementById('nutriWeekChart');
+  if(!chart) return;
+  const days = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
+  const allKcal = days.map((_,i) => state.weekMenu[i+1]?.nutri?.kcal||0);
+  const maxVal = Math.max(target||2000, ...allKcal, 500);
+  const W = 100, H = 90, pad = 6, bw = (W - pad*(days.length+1)) / days.length;
+  const today = (new Date().getDay()||7) - 1;
+
+  // SVG chart
+  let svgBars = '';
+  let svgLabels = '';
+  let svgVals = '';
+
+  days.forEach((d,i) => {
+    const kcal = allKcal[i];
+    const bh = kcal ? Math.max(6, Math.round(kcal/maxVal*(H-28))) : 4;
+    const x = pad + i*(bw+pad);
+    const y = H - bh - 16;
+    const isToday = i===today;
+    const col = !kcal ? '#e5e7eb'
+      : target && Math.abs(kcal-target)<150 ? '#10b981'
+      : target && kcal>target*1.1 ? '#ef4444' : '#f59e0b';
+    const opacity = isToday ? '1' : '0.8';
+    svgBars += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${bh.toFixed(1)}"
+      rx="3" fill="${col}" opacity="${opacity}"
+      style="transition:height .5s ease,y .5s ease;"/>`;
+    // Day labels
+    svgLabels += `<text x="${(x+bw/2).toFixed(1)}" y="${H-2}" text-anchor="middle"
+      font-size="5.5" font-weight="${isToday?'900':'700'}" fill="${isToday?'var(--ac)':'var(--tx3)'}">${d}</text>`;
+    // Value above bar
+    if(kcal) svgVals += `<text x="${(x+bw/2).toFixed(1)}" y="${(y-3).toFixed(1)}" text-anchor="middle"
+      font-size="4.5" fill="${col}" font-weight="700">${kcal}</text>`;
+    // Today indicator
+    if(isToday) svgBars += `<circle cx="${(x+bw/2).toFixed(1)}" cy="${(H-10).toFixed(1)}" r="2" fill="var(--ac)"/>`;
+  });
+
+  // Target line
+  const targetY = target ? (H - Math.round(target/maxVal*(H-28)) - 16) : null;
+  const targetLine = targetY ? `<line x1="${pad}" y1="${targetY.toFixed(1)}" x2="${(W-pad).toFixed(1)}" y2="${targetY.toFixed(1)}"
+    stroke="var(--ac)" stroke-width="0.8" stroke-dasharray="3 2" opacity="0.6"/>
+    <text x="${(W-pad-1).toFixed(1)}" y="${(targetY-2).toFixed(1)}" text-anchor="end"
+    font-size="4.5" fill="var(--ac)" font-weight="700">${target}</text>` : '';
+
+  chart.innerHTML = `<svg viewBox="0 0 100 90" style="width:100%;height:90px;overflow:visible;">
+    ${svgBars}${svgVals}${svgLabels}${targetLine}
+  </svg>`;
+}
+
+// ── Macro progress rings with SVG ─────────────────────────────
+function renderMacroRings(macros) {
+  const el = document.getElementById('macroRings');
+  if(!el) return;
+  if(!macros) {
+    el.innerHTML = `<div style="text-align:center;padding:16px;">
+      <div style="font-size:1.5rem;margin-bottom:6px;">⚙️</div>
+      <div style="font-size:.78rem;color:var(--tx2);">Complétez votre profil pour voir vos objectifs macros</div>
+      <button class="btn acc" onclick="openMenuProfile()" style="margin-top:10px;padding:9px 18px;font-size:.8rem;">Configurer le profil</button>
+    </div>`;
+    return;
+  }
+  const planned = Object.values(state.weekMenu).filter(m=>m?.nutri);
+  const avg = (key) => planned.length ? Math.round(planned.reduce((s,m)=>s+(m.nutri[key]||0),0)/planned.length) : 0;
+  const macroData = [
+    {label:'Protéines',icon:'💪',actual:avg('prot'),target:macros.prot,color:'#06b6d4',unit:'g',desc:'Muscles & récupération'},
+    {label:'Glucides', icon:'⚡',actual:avg('carb'),target:macros.carb,color:'#f59e0b',unit:'g',desc:'Énergie principale'},
+    {label:'Lipides',  icon:'🥑',actual:avg('fat'), target:macros.fat, color:'#a855f7',unit:'g',desc:'Hormones & cerveau'},
+  ];
+
+  el.innerHTML = macroData.map(m => {
+    const pct = m.target ? Math.min(100, Math.round(m.actual/m.target*100)) : 0;
+    const over = m.actual > m.target*1.1;
+    const under = m.actual < m.target*0.7 && m.actual > 0;
+    const statusTxt = !m.actual ? '' : over ? '⚠️ Dépassé' : under ? '🔶 À compléter' : '✅ Optimal';
+    const statusColor = !m.actual ? 'transparent' : over ? '#ef4444' : under ? '#f59e0b' : '#10b981';
+    // SVG ring (circle)
+    const R = 28, C = 2*Math.PI*R;
+    const dash = pct/100*C;
+    return `<div style="display:flex;align-items:center;gap:14px;padding:10px 0;border-bottom:1px solid var(--bg2);">
+      <!-- SVG Ring -->
+      <div style="position:relative;flex-shrink:0;width:64px;height:64px;">
+        <svg width="64" height="64" viewBox="0 0 64 64" style="transform:rotate(-90deg);">
+          <circle cx="32" cy="32" r="${R}" fill="none" stroke="var(--bg2)" stroke-width="7"/>
+          <circle cx="32" cy="32" r="${R}" fill="none" stroke="${m.color}" stroke-width="7"
+            stroke-dasharray="${dash.toFixed(1)} ${C.toFixed(1)}"
+            stroke-linecap="round"
+            style="transition:stroke-dasharray .8s cubic-bezier(.34,1.56,.64,1);"/>
+        </svg>
+        <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;">
+          <div style="font-size:.9rem;font-weight:900;color:${m.color};line-height:1;">${m.actual||'—'}</div>
+          <div style="font-size:.42rem;color:var(--tx3);font-weight:700;text-transform:uppercase;">${m.unit}</div>
+        </div>
+      </div>
+      <!-- Info -->
+      <div style="flex:1;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+          <div style="font-size:.82rem;font-weight:800;">${m.icon} ${m.label}</div>
+          <div style="font-size:.65rem;font-weight:700;color:${statusColor};">${statusTxt}</div>
+        </div>
+        <div style="font-size:.68rem;color:var(--tx2);margin-bottom:6px;">${m.desc}</div>
+        <div style="height:5px;background:var(--bg2);border-radius:99px;overflow:hidden;">
+          <div style="height:100%;width:${pct}%;background:${m.color};border-radius:99px;transition:width .6s ease;"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;margin-top:3px;">
+          <div style="font-size:.6rem;color:var(--tx3);">Cible: ${m.target}${m.unit}</div>
+          <div style="font-size:.6rem;font-weight:800;color:${m.color};">${pct}%</div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ── Donut chart: macro repartition ────────────────────────────
+function renderNutriDonut(macros, planned) {
+  // Look for a donut container — create it inline in the macroRings card if needed
+  let donut = document.getElementById('nutriDonutZone');
+  if(!donut) {
+    const macroCard = document.getElementById('macroRings')?.parentElement;
+    if(!macroCard) return;
+    donut = document.createElement('div');
+    donut.id = 'nutriDonutZone';
+    donut.style.marginTop = '14px';
+    macroCard.appendChild(donut);
+  }
+
+  if(!macros || !planned || !planned.length) {
+    donut.innerHTML = '';
+    return;
+  }
+
+  const avg = (key) => Math.round(planned.reduce((s,m)=>s+(m.nutri[key]||0),0)/planned.length);
+  const prot = avg('prot')*4, carb = avg('carb')*4, fat = avg('fat')*9;
+  const total = prot+carb+fat||1;
+  const protPct = Math.round(prot/total*100);
+  const carbPct = Math.round(carb/total*100);
+  const fatPct = 100 - protPct - carbPct;
+  const R = 36, C = 2*Math.PI*R;
+
+  // 3-segment donut
+  const seg1 = protPct/100*C;
+  const seg2 = carbPct/100*C;
+  const seg3 = fatPct/100*C;
+
+  donut.innerHTML = `
+    <div style="border-top:1px solid var(--bg2);padding-top:14px;">
+      <div style="font-size:.72rem;font-weight:800;color:var(--tx3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:12px;">🥧 Répartition énergétique moy.</div>
+      <div style="display:flex;align-items:center;gap:16px;">
+        <div style="position:relative;flex-shrink:0;">
+          <svg width="90" height="90" viewBox="0 0 90 90" style="transform:rotate(-90deg);">
+            <circle cx="45" cy="45" r="${R}" fill="none" stroke="var(--bg2)" stroke-width="14"/>
+            <!-- Protéines -->
+            <circle cx="45" cy="45" r="${R}" fill="none" stroke="#06b6d4" stroke-width="14"
+              stroke-dasharray="${seg1.toFixed(1)} ${C.toFixed(1)}" stroke-dashoffset="0"
+              style="transition:stroke-dasharray .8s ease;"/>
+            <!-- Glucides -->
+            <circle cx="45" cy="45" r="${R}" fill="none" stroke="#f59e0b" stroke-width="14"
+              stroke-dasharray="${seg2.toFixed(1)} ${C.toFixed(1)}" stroke-dashoffset="${(-seg1).toFixed(1)}"
+              style="transition:stroke-dasharray .8s ease;"/>
+            <!-- Lipides -->
+            <circle cx="45" cy="45" r="${R}" fill="none" stroke="#a855f7" stroke-width="14"
+              stroke-dasharray="${seg3.toFixed(1)} ${C.toFixed(1)}" stroke-dashoffset="${(-(seg1+seg2)).toFixed(1)}"
+              style="transition:stroke-dasharray .8s ease;"/>
+          </svg>
+          <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none;">
+            <div style="font-size:.65rem;font-weight:900;color:var(--tx);">Moy/jour</div>
+            <div style="font-size:.6rem;color:var(--tx2);">${avg('kcal')} kcal</div>
+          </div>
+        </div>
+        <div style="flex:1;display:flex;flex-direction:column;gap:8px;">
+          ${[
+            {lbl:'Protéines',pct:protPct,g:avg('prot'),color:'#06b6d4'},
+            {lbl:'Glucides',pct:carbPct,g:avg('carb'),color:'#f59e0b'},
+            {lbl:'Lipides',pct:fatPct,g:avg('fat'),color:'#a855f7'},
+          ].map(s=>`<div>
+            <div style="display:flex;justify-content:space-between;margin-bottom:3px;">
+              <span style="display:flex;align-items:center;gap:5px;font-size:.72rem;font-weight:700;">
+                <span style="width:8px;height:8px;border-radius:50%;background:${s.color};display:inline-block;flex-shrink:0;"></span>${s.lbl}
+              </span>
+              <span style="font-size:.7rem;font-weight:800;color:${s.color};">${s.pct}% · ${s.g}g</span>
+            </div>
+            <div style="height:3px;background:var(--bg2);border-radius:99px;overflow:hidden;">
+              <div style="height:100%;width:${s.pct}%;background:${s.color};border-radius:99px;"></div>
+            </div>
+          </div>`).join('')}
+        </div>
+      </div>
+    </div>`;
+}
+
+function renderNutriTab() { renderNutriPanel(); } // alias
 
 
 
@@ -4623,34 +4658,26 @@ function snackAddFromInput() {
 function openCreateRecipeModal() {
   const existing = document.getElementById('createRecipeModal');
   if(existing) existing.remove();
-  window._crIngredients = [];
-  window._crPhotoData = null;
-
+  
   const modal = document.createElement('div');
   modal.className = 'overlay on';
   modal.id = 'createRecipeModal';
   modal.onclick = e => { if(e.target===modal) modal.remove(); };
-
-  modal.innerHTML = `<div class="modal" style="max-height:90vh;overflow-y:auto;">
-    <div class="modal-hd" style="position:sticky;top:0;background:var(--bg);z-index:10;padding-bottom:10px;">
-      <div class="modal-ti">✏️ Nouvelle recette</div>
+  
+  modal.innerHTML = `<div class="modal">
+    <div class="modal-hd">
+      <div class="modal-ti">✏️ Créer ma recette</div>
       <button class="btn ico" onclick="document.getElementById('createRecipeModal').remove()">✕</button>
     </div>
-
-    <!-- Photo -->
-    <div class="a-field">
-      <label class="a-lbl">📸 Photo (optionnel)</label>
-      <div id="crPhotoPreview" onclick="document.getElementById('crPhotoInput').click()"
-        style="width:100%;height:120px;border-radius:var(--rs);background:var(--bg2);display:flex;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;border:2px dashed var(--tx3);margin-top:4px;">
-        <div style="text-align:center;color:var(--tx3);">
-          <div style="font-size:1.8rem;margin-bottom:4px;">📷</div>
-          <div style="font-size:.72rem;font-weight:700;">Appuyer pour ajouter</div>
-        </div>
+    <!-- Photo upload -->
+    <div id="crPhotoWrap" style="width:100%;height:120px;background:var(--bg2);border-radius:var(--rs);margin-bottom:10px;display:flex;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;position:relative;" onclick="document.getElementById('crPhotoInput').click()">
+      <input type="file" id="crPhotoInput" accept="image/*" style="display:none;" onchange="crHandlePhotoUpload(this)">
+      <img id="crPhotoPreview" style="display:none;width:100%;height:100%;object-fit:cover;position:absolute;inset:0;">
+      <div id="crPhotoPlaceholder" style="text-align:center;color:var(--tx3);pointer-events:none;">
+        <div style="font-size:1.8rem;margin-bottom:4px;">📷</div>
+        <div style="font-size:.72rem;font-weight:700;">Ajouter une photo</div>
       </div>
-      <input type="file" id="crPhotoInput" accept="image/*" style="display:none;" onchange="crLoadPhoto(this)">
     </div>
-
-    <!-- Nom + Emoji -->
     <div style="display:flex;gap:8px;">
       <div class="a-field" style="flex:2;">
         <label class="a-lbl">Nom *</label>
@@ -4658,11 +4685,9 @@ function openCreateRecipeModal() {
       </div>
       <div class="a-field" style="flex:1;">
         <label class="a-lbl">Emoji</label>
-        <input class="inp" id="crEmoji" value="🍽️" style="font-size:1.2rem;text-align:center;">
+        <input class="inp" id="crEmoji" value="🍽️" style="font-size:1.2rem;">
       </div>
     </div>
-
-    <!-- Temps + Portions + Régime -->
     <div style="display:flex;gap:8px;">
       <div class="a-field" style="flex:1;">
         <label class="a-lbl">⏱ Temps (min)</label>
@@ -4670,86 +4695,46 @@ function openCreateRecipeModal() {
       </div>
       <div class="a-field" style="flex:1;">
         <label class="a-lbl">👥 Portions</label>
-        <input class="inp" id="crPortions" type="number" value="4" oninput="crCalcAutoKcal()">
-        <div id="crAutoKcal" style="font-size:.62rem;color:var(--ac);margin-top:3px;font-weight:700;"></div>
+        <input class="inp" id="crPortions" type="number" value="4">
+        <div id="crAutoKcal" style="font-size:.65rem;color:var(--ac);margin-top:3px;font-weight:700;"></div>
       </div>
     </div>
-
-    <!-- Régime alimentaire -->
-    <div class="a-field">
-      <label class="a-lbl">🥗 Régime</label>
-      <select class="inp" id="crDiet" style="margin-top:4px;">
-        <option value="omnivore">🍖 Omnivore</option>
-        <option value="veg">🥬 Végétarien</option>
-        <option value="vegan">🌱 Vegan</option>
-        <option value="pesc">🐟 Pescétarien</option>
-        <option value="gluten">🌾 Sans gluten</option>
-        <option value="keto">🥑 Keto</option>
-      </select>
-    </div>
-
-    <!-- Type de repas -->
     <div class="a-field">
       <label class="a-lbl">🍽️ Type de repas</label>
       <div style="display:flex;gap:6px;margin-top:4px;flex-wrap:wrap;">
         <button class="meal-type-btn on" id="crMt-l" onclick="this.classList.toggle('on')">☀️ Déjeuner</button>
         <button class="meal-type-btn on" id="crMt-d" onclick="this.classList.toggle('on')">🌙 Dîner</button>
         <button class="meal-type-btn" id="crMt-snack" onclick="this.classList.toggle('on')">🍎 Collation</button>
-        <button class="meal-type-btn" id="crMt-b" onclick="this.classList.toggle('on')">🌅 Petit-déj</button>
       </div>
     </div>
-
-    <!-- Ingrédients -->
     <div class="a-field">
       <label class="a-lbl">📋 Ingrédients</label>
-      <div id="crIngrList" style="display:flex;flex-direction:column;gap:5px;margin-top:4px;max-height:180px;overflow-y:auto;"></div>
+      <div id="crIngrList" style="display:flex;flex-direction:column;gap:5px;margin-top:4px;max-height:160px;overflow-y:auto;"></div>
       <div style="display:flex;gap:6px;margin-top:6px;position:relative;">
         <input class="inp" id="crIngrInput" placeholder="🔍 Chercher un ingrédient..."
           style="flex:1;" oninput="crSearchIngr(this.value)"
           onkeydown="if(event.key==='Enter'){event.preventDefault();crAddIngrFromInput();}">
         <select class="inp" id="crIngrQty" style="width:80px;padding:8px 4px;">
-          <option>25g</option><option>50g</option><option>100g</option><option selected>150g</option>
-          <option>200g</option><option>250g</option><option>300g</option><option>500g</option>
-          <option>1 u.</option><option>2 u.</option><option>3 u.</option>
-          <option>1 cs</option><option>2 cs</option><option>1 cc</option>
+          <option>50g</option><option>100g</option><option selected>150g</option><option>200g</option>
+          <option>250g</option><option>300g</option><option>1 u.</option><option>2 u.</option><option>1 cs</option><option>1 cc</option>
         </select>
         <button class="btn acc sm" onclick="crAddIngrFromInput()" style="flex-shrink:0;padding:9px 12px;">+</button>
         <div id="crIngrAC" style="display:none;position:absolute;left:0;right:90px;top:44px;background:var(--bg);border:1px solid var(--bg2);border-radius:var(--rs);box-shadow:0 8px 24px rgba(0,0,0,.15);z-index:200;max-height:150px;overflow-y:auto;"></div>
       </div>
     </div>
-
-    <!-- Instructions -->
     <div class="a-field">
       <label class="a-lbl">👨‍🍳 Instructions (optionnel)</label>
-      <textarea class="inp" id="crInstructions"
-        placeholder="1. Préchauffer le four à 180°C…&#10;2. Mélanger les ingrédients…&#10;3. Cuire 30 minutes…"
-        style="min-height:90px;resize:vertical;"></textarea>
+      <textarea class="inp" id="crInstructions" placeholder="1. Préchauffer le four...&#10;2. Mélanger les ingrédients..." style="min-height:70px;resize:vertical;"></textarea>
     </div>
-
-    <div style="display:flex;gap:8px;margin-top:12px;padding-bottom:8px;">
+    <div style="display:flex;gap:8px;margin-top:8px;">
       <button class="btn acc" onclick="saveCustomRecipeFull()" style="flex:1;padding:13px;font-weight:800;">💾 Enregistrer</button>
       <button class="btn" onclick="document.getElementById('createRecipeModal').remove()" style="flex:1;padding:13px;">Annuler</button>
     </div>
   </div>`;
-
+  
+  window._crIngredients = [];
   document.body.appendChild(modal);
   setTimeout(() => crRenderIngrList(), 50);
-}
-
-// Charger et prévisualiser la photo
-function crLoadPhoto(input) {
-  const file = input.files[0];
-  if(!file) return;
-  const reader = new FileReader();
-  reader.onload = e => {
-    window._crPhotoData = e.target.result;
-    const preview = document.getElementById('crPhotoPreview');
-    if(preview) {
-      preview.style.border = 'none';
-      preview.innerHTML = `<img src="${e.target.result}" style="width:100%;height:100%;object-fit:cover;" alt="photo">`;
-    }
-  };
-  reader.readAsDataURL(file);
 }
 
 // Autocomplete for recipe ingredient creation
@@ -4829,58 +4814,58 @@ async function saveCustomRecipeFull() {
   const ingrs = window._crIngredients || [];
   if(!name) { showToast('⚠️','Incomplet','Entrez un nom de recette.'); return; }
   if(!ingrs.length) { showToast('⚠️','Incomplet','Ajoutez au moins un ingrédient.'); return; }
-
-  const emoji    = document.getElementById('crEmoji')?.value?.trim() || '🍽️';
-  const time     = parseInt(document.getElementById('crTime')?.value)||30;
+  
+  const emoji = document.getElementById('crEmoji')?.value?.trim() || '🍽️';
+  const time = parseInt(document.getElementById('crTime')?.value)||30;
   const portions = parseInt(document.getElementById('crPortions')?.value)||4;
   const instrRaw = document.getElementById('crInstructions')?.value?.trim()||'';
-  const diet     = document.getElementById('crDiet')?.value || 'omnivore';
-  const mealTypes = ['l','d','snack','b'].filter(mt => document.getElementById('crMt-'+mt)?.classList.contains('on'));
-  const photo    = window._crPhotoData || null; // base64 ou null
-
+  const mealTypes = ['l','d','snack'].filter(mt => document.getElementById('crMt-'+mt)?.classList.contains('on'));
+  
   // Auto-calc kcal
   let totalKcal = 0;
   ingrs.forEach(ing => {
-    const key = Object.keys(NUTRI_APPROX||{}).find(k => ing.name.toLowerCase().includes(k.toLowerCase()));
-    if(key) totalKcal += (NUTRI_APPROX[key].kcal||0) * (parseFloat(ing.qty)||100) / 100;
+    const key = Object.keys(NUTRI_APPROX).find(k => ing.name.toLowerCase().includes(k.toLowerCase()));
+    if(key) totalKcal += NUTRI_APPROX[key].kcal * (parseFloat(ing.qty)||100) / 100;
   });
   const kcal = Math.round(totalKcal/portions);
+  
+  // Get photo if uploaded
+  const photoPreview = document.getElementById('crPhotoPreview');
+  const photo = photoPreview && photoPreview.style.display!=='none' ? photoPreview.src : null;
 
   const recipe = {
-    id: 'custom_' + Date.now(),
+    id: 'custom_'+Date.now(),
     emoji, name, time, portions, kcal,
-    diet,
-    mealTypes: mealTypes.length ? mealTypes : ['l','d'],
+    diet: 'omnivore', mealTypes: mealTypes.length ? mealTypes : ['l','d'],
     ingredients: ingrs.map(i => ({name:i.name, qty:i.qty, unit:'', emoji:i.emoji})),
-    instructions: instrRaw
-      ? instrRaw.split('\n').filter(l=>l.trim()).map(l=>l.replace(/^\d+\.\s*/,''))
-      : [],
-    photo,
-    source: 'custom',
-    createdAt: Date.now()
+    instructions: instrRaw ? instrRaw.split('\n').filter(l=>l.trim()).map(l=>l.replace(/^\d+\.\s*/,'')) : [],
+    source: 'custom', photo: photo, createdAt: Date.now()
   };
-
-  if(!state.customRecipes) state.customRecipes = [];
+  
   state.customRecipes.unshift(recipe);
   await saveState();
-
   document.getElementById('createRecipeModal')?.remove();
-  window._crIngredients = [];
-  window._crPhotoData   = null;
+  showToast('✅', emoji+' '+name, kcal ? kcal+' kcal/portion' : 'Recette créée !');
+  // Switch to "Mes recettes" so user sees their recipe immediately
+  _recipeDietFilter = 'custom';
+  document.querySelectorAll('#recipeDietFilter .diet-chip').forEach(c=>c.classList.toggle('on', c.dataset.v==='custom'));
+  if(typeof renderRecipesGrid === 'function') renderRecipesGrid();
+}
 
-  showToast('✅', emoji + ' ' + name, kcal ? kcal + ' kcal/portion · Recette créée !' : 'Recette créée !');
-
-  // Refresh the recipes grid if visible
-  try {
-    if(typeof renderRecipesGrid === 'function') renderRecipesGrid();
-  } catch(e) {}
-  // Also refresh fridge recipes if visible
-  try {
-    if(document.getElementById('vFrigo')?.classList.contains('on') && typeof loadRecipes === 'function') {
-      _spoonCache = null; // invalidate cache
-      loadRecipes();
-    }
-  } catch(e) {}
+// Photo upload handler for create recipe modal
+function crHandlePhotoUpload(input) {
+  const file = input?.files?.[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const preview = document.getElementById('crPhotoPreview');
+    const placeholder = document.getElementById('crPhotoPlaceholder');
+    const wrap = document.getElementById('crPhotoWrap');
+    if(preview) { preview.src = e.target.result; preview.style.display = 'block'; }
+    if(placeholder) placeholder.style.display = 'none';
+    if(wrap) wrap.style.borderRadius = 'var(--rs)';
+  };
+  reader.readAsDataURL(file);
 }
 
 
@@ -5345,17 +5330,138 @@ const TRANSLATE_MAP = {
 
 function translateRecipeName(name) {
   if(!name) return '';
-  // Check if already French (has French accents)
+  // Already French (has French accents)?
   if(/[àâäéèêëîïôùûüœæç]/i.test(name)) return name;
   let translated = name;
-  // Sort by length descending to match longer phrases first
+  // Sort by length descending
   const entries = Object.entries(TRANSLATE_MAP).sort((a,b)=>b[0].length-a[0].length);
   entries.forEach(([en, fr]) => {
     const regex = new RegExp('\\b'+en.replace(/[-]/g,'[-\\s]')+'\\b','gi');
     translated = translated.replace(regex, fr);
   });
-  // Capitalize first letter
   return translated.charAt(0).toUpperCase() + translated.slice(1);
+}
+
+// ═══════════════════════════════════════════════
+// MODULE TRADUCTION IA (Claude) — Recettes EN→FR
+// ═══════════════════════════════════════════════
+
+// Cache pour éviter les appels API répétés
+const _translateCache = {};
+
+async function translateRecipeAI(recipe) {
+  if(!recipe) return recipe;
+  const cacheKey = recipe.id || recipe.name;
+
+  // Already translated?
+  if(_translateCache[cacheKey]) return _translateCache[cacheKey];
+
+  // Already French (detect accents in name)?
+  const hasFrench = /[àâäéèêëîïôùûüœæç]/i.test(recipe.title||recipe.name||'');
+  if(hasFrench) { _translateCache[cacheKey]=recipe; return recipe; }
+
+  const apiKey = typeof ANTHROPIC_KEY !== 'undefined' ? ANTHROPIC_KEY : (localStorage.getItem('sc_anthropic_key')||'');
+  if(!apiKey) {
+    // Fallback: use simple dict translation
+    const r = {...recipe};
+    r.name = translateRecipeName(r.title || r.name || '');
+    r.instructions = (r.instructions||r.analyzedInstructions?.[0]?.steps||[]).map(s=>
+      typeof s==='string' ? translateText(s) : translateText(s.step||'')
+    );
+    _translateCache[cacheKey] = r;
+    return r;
+  }
+
+  const titleToTranslate = recipe.title || recipe.name || '';
+  const stepsToTranslate = (recipe.instructions||recipe.analyzedInstructions?.[0]?.steps||[]).map(s=>
+    typeof s==='string' ? s : (s.step||'')
+  ).filter(Boolean).slice(0,10);
+  const ingrToTranslate = (recipe.extendedIngredients||recipe.ingredients||[]).map(i=>
+    typeof i==='string' ? i : (i.originalName||i.name||i.original||'')
+  ).filter(Boolean).slice(0,20);
+
+  const prompt = `Tu es un traducteur culinaire expert français. Traduis cette recette de l'anglais vers le français de manière naturelle et gastronomique. Utilise les termes culinaires français appropriés (pas de traductions littérales).
+
+Recette à traduire:
+Titre: "${titleToTranslate}"
+Ingrédients: ${JSON.stringify(ingrToTranslate)}
+Instructions: ${JSON.stringify(stepsToTranslate)}
+
+Réponds UNIQUEMENT en JSON valide (sans markdown):
+{"title":"Titre en français","ingredients":["ingrédient 1","ingrédient 2"],"steps":["Étape 1 en français","Étape 2 en français"]}
+
+Règles importantes:
+- Titre: nom gastronomique français naturel (ex: "Chicken tikka masala" → "Poulet tikka masala", "Beef stew" → "Bœuf en daube")
+- Ingrédients: traduction précise avec termes culinaires français
+- Étapes: style culinaire français, phrases fluides (pas de traduction mot à mot)`;
+
+  try {
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001', // Haiku = rapide et économique pour traduction
+        max_tokens: 1500,
+        messages: [{role:'user', content: prompt}]
+      })
+    });
+    if(!resp.ok) throw new Error(resp.status);
+    const data = await resp.json();
+    const text = (data.content||[]).find(c=>c.type==='text')?.text||'';
+    const parsed = JSON.parse(text.replace(/```json|```/g,'').trim());
+
+    const translated = {
+      ...recipe,
+      name: parsed.title || recipe.title || recipe.name,
+      title: parsed.title || recipe.title || recipe.name,
+      _translatedIngredients: parsed.ingredients || [],
+      _translatedSteps: parsed.steps || [],
+      _translated: true,
+    };
+    _translateCache[cacheKey] = translated;
+    return translated;
+  } catch(e) {
+    console.warn('Translation error:', e.message);
+    // Fallback to dict translation
+    const r = {...recipe};
+    r.name = translateRecipeName(r.title || r.name || '');
+    _translateCache[cacheKey] = r;
+    return r;
+  }
+}
+
+// Traduction simple texte via dictionnaire (fallback sans API)
+function translateText(text) {
+  if(!text) return '';
+  if(/[àâäéèêëîïôùûüœæç]/i.test(text)) return text;
+  let t = text;
+  const entries = Object.entries(TRANSLATE_MAP).sort((a,b)=>b[0].length-a[0].length);
+  entries.forEach(([en,fr]) => {
+    t = t.replace(new RegExp('\\b'+en.replace(/[-]/g,'[-\\s]')+'\\b','gi'), fr);
+  });
+  return t;
+}
+
+// Traduit et affiche une recette dans le modal de détail
+async function translateAndShowRecipe(recipe) {
+  const btn = document.getElementById('translateRecipeBtn');
+  if(btn) { btn.disabled=true; btn.textContent='⏳ Traduction...'; }
+
+  try {
+    const translated = await translateRecipeAI(recipe);
+    window._currentRecipe = translated;
+    renderRecipeModal(translated, window._currentPortions||translated.portions||4, false);
+    if(btn) { btn.disabled=false; btn.textContent='✅ Traduit'; }
+    showToast('🇫🇷','Recette traduite','Traduction IA complète');
+  } catch(e) {
+    if(btn) { btn.disabled=false; btn.textContent='🌐 Traduire'; }
+    showToast('⚠️','Erreur de traduction','');
+  }
 }
 
 async function searchSpoonForMeal(day, slot) {
@@ -5448,8 +5554,8 @@ async function regenDayAI(day) {
   const prompt=`Génère un menu pour ${dayName}: régime ${diet}${cals?', '+cals+' kcal/jour':''}.
 JSON: {"breakfast":{"name":"...","emoji":"...","kcal":0},"lunch":{"name":"...","emoji":"...","kcal":0},"dinner":{"name":"...","emoji":"...","kcal":0},"snack":{"name":"...","emoji":"...","kcal":0},"total_kcal":0,"prot":0,"carb":0,"fat":0,"quality":"good","tip":"..."}`;
   try {
-    const resp=await callClaude({model:'claude-sonnet-4-20250514',max_tokens:600,messages:[{role:'user',content:prompt}]});
-    const data=resp;
+    const resp=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':getAnthropicKey(),'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:600,messages:[{role:'user',content:prompt}]})});
+    const data=await resp.json();
     const text=(data.content||[]).find(c=>c.type==='text')?.text||'';
     const r=JSON.parse(text.replace(/```json|```/g,'').trim());
     state.weekMenu[day]={
@@ -5601,6 +5707,9 @@ const RECIPES_FR = [
 ];
 
 // Merged recipe getter - includes all sources
+function getAllFrenchRecipes() {
+  return [...(window.RECIPES_DB || []), ...RECIPES_FR, ...state.customRecipes];
+}
 function getAllRecipes() {
   const db = typeof RECIPES_DB !== 'undefined' ? RECIPES_DB : [];
   const fr = typeof RECIPES_FR !== 'undefined' ? RECIPES_FR : [];
@@ -5622,11 +5731,13 @@ function renderRecipesGrid() {
   const grid=document.getElementById('recipesGrid');
   if(!grid) return;
   const all=getAllRecipes();
-  const fridgeNames=state.fridge.map(f=>f.name.toLowerCase());
+  const fridgeNames=(state.fridge||[]).map(f=>f.name.toLowerCase());
 
   const filtered=all.filter(r=>{
     const nameOk=!_recipeSearch||r.name.toLowerCase().includes(_recipeSearch);
-    const dietOk=_recipeDietFilter==='all'||!r.diet||r.diet===_recipeDietFilter;
+    const dietOk=_recipeDietFilter==='all'
+      ||(r.diet&&r.diet===_recipeDietFilter)
+      ||(_recipeDietFilter==='custom'&&(r.source==='custom'||state.customRecipes.some(c=>c.id===r.id)));
     return nameOk&&dietOk;
   });
 
@@ -5680,7 +5791,6 @@ function openRecipeDetail(idOrName) {
   const modal = document.getElementById('recipeDetailModal');
   if(!modal) return;
   
-  window._currentRecipe = r; // store for translate
   renderRecipeModal(r, window._currentPortions, isBookmarked);
   document.getElementById('recipeDetailModal').parentElement.classList.add('on');
 }
@@ -5820,6 +5930,7 @@ function saveNewRecipe() {
   const name=document.getElementById('cr_name')?.value?.trim();
   if(!name) { showToast('⚠️','Nom requis',''); return; }
   const get=id=>document.getElementById(id)?.value?.trim()||'';
+  const photo = _crState.photo || null;
   const recipe={
     id:'cr_'+Date.now(),
     emoji:get('cr_emoji')||'🍳',
@@ -5832,26 +5943,32 @@ function saveNewRecipe() {
     carb:+get('cr_carb')||null,
     fat:+get('cr_fat')||null,
     notes:get('cr_notes'),
-    ingredients:_crState.ingredients.slice(),
-    steps:_crState.steps.slice(),
-    photo:_crState.photo||null,
+    ingredients:(_crState.ingredients||[]).slice(),
+    steps:(_crState.steps||[]).slice(),
+    photo:photo,
+    source:'custom',
     createdAt:Date.now(),
   };
-  state.customRecipes.push(recipe);
-  // Add missing ingredients
-  const fridgeNames=state.fridge.map(f=>f.name.toLowerCase());
+  if(!state.customRecipes) state.customRecipes=[];
+  state.customRecipes.unshift(recipe); // unshift = appears first
+  // Add missing ingredients to shopping list
+  const fridgeNames=(state.fridge||[]).map(f=>f.name.toLowerCase());
   let added=0;
   recipe.ingredients.forEach(ing=>{
-    if(!fridgeNames.some(fn=>fn.includes(ing.name.toLowerCase().split(' ')[0]))&&!state.items.some(it=>it.name.toLowerCase().includes(ing.name.toLowerCase().split(' ')[0]))) {
+    const key=ing.name.toLowerCase().split(' ')[0];
+    if(!fridgeNames.some(fn=>fn.includes(key))&&!(state.items||[]).some(it=>it.name.toLowerCase().includes(key))) {
       state.items.unshift({id:'i'+Date.now()+Math.random().toString(36).slice(2,6),name:ing.name,emoji:'🛒',cat:'🍝 Épicerie',price:0,qty:1,checked:false,addedAt:Date.now()});
       added++;
     }
   });
-  if(added>0) saveItems();
-  saveState();
+  if(added>0 && typeof saveItems==='function') saveItems();
+  if(typeof saveState==='function') saveState();
   closeCreateRecipe();
+  // Force re-render and switch to "Mes recettes" filter so user sees their recipe
+  _recipeDietFilter='custom';
+  document.querySelectorAll('#recipeDietFilter .diet-chip').forEach(c=>c.classList.toggle('on',c.dataset.v==='custom'));
   renderRecipesGrid();
-  showToast('✅',name,'Recette créée !'+(added?' '+added+' ingrédients ajoutés à la liste':''));
+  showToast('✅',recipe.emoji+' '+name, recipe.kcal?recipe.kcal+' kcal/portion · '+(added?added+' ingr. ajoutés':'Aucun ingrédient manquant'):'Recette créée !');
 }
 function saveCustomRecipe() { saveNewRecipe(); } // compat alias
 
@@ -5915,136 +6032,6 @@ function renderNutriTab() {
   if(adviceZone&&adviceZone.innerHTML.includes('Analyser')) {} // keep button
 }
 
-// ── Anneaux macro SVG (appelé depuis renderNutriTab) ──────────
-function renderMacroRings(macros) {
-  const el = document.getElementById('macroRings');
-  if(!el) return;
-  if(!macros) {
-    el.innerHTML = '<div style="text-align:center;padding:16px;">'
-      + '<div style="font-size:1.5rem;margin-bottom:6px;">📊</div>'
-      + '<div style="font-size:.78rem;color:var(--tx2);">Complétez votre profil pour voir vos objectifs macros.</div>'
-      + '<button class="btn sm" onclick="openMenuProfile()" style="margin-top:10px;">⚙️ Mon profil</button>'
-      + '</div>';
-    return;
-  }
-  const planned = Object.values(state.weekMenu).filter(m => m && m.nutri);
-  const avg = k => planned.length ? Math.round(planned.reduce((s,m) => s + (m.nutri[k]||0), 0) / planned.length) : 0;
-  const R = 28, CX = 36, CY = 36, CIRC = 2 * Math.PI * R;
-
-  const macroList = [
-    {label:'Calories',  icon:'🔥', actual:avg('kcal'), target:macros.kcal||macros.cals||2000, color:'#e74c3c', unit:'kcal'},
-    {label:'Protéines', icon:'💪', actual:avg('prot'),  target:macros.prot,  color:'#3498db', unit:'g'},
-    {label:'Glucides',  icon:'🍞', actual:avg('carb'),  target:macros.carb,  color:'#f39c12', unit:'g'},
-    {label:'Lipides',   icon:'🥑', actual:avg('fat'),   target:macros.fat,   color:'#9b59b6', unit:'g'},
-  ];
-
-  // Build rings grid HTML
-  const ringsHTML = macroList.map(function(m) {
-    const pct  = m.target ? Math.min(100, Math.round(m.actual / m.target * 100)) : 0;
-    const dash = (pct / 100) * CIRC;
-    const gap  = CIRC - dash;
-    const badge = pct >= 90 && pct <= 110 ? '✅' : pct > 110 ? '⚠️' : '';
-    return '<div style="background:var(--bg);border-radius:var(--rs);box-shadow:var(--so);padding:10px;display:flex;align-items:center;gap:8px;">'
-      + '<svg width="68" height="68" viewBox="0 0 72 72" style="flex-shrink:0;">'
-      + '<circle cx="' + CX + '" cy="' + CY + '" r="' + R + '" fill="none" stroke="var(--bg2)" stroke-width="7"/>'
-      + '<circle cx="' + CX + '" cy="' + CY + '" r="' + R + '" fill="none" stroke="' + m.color + '" stroke-width="7"'
-      + ' stroke-dasharray="' + dash.toFixed(1) + ' ' + gap.toFixed(1) + '"'
-      + ' stroke-dashoffset="' + (CIRC / 4).toFixed(1) + '" stroke-linecap="round">'
-      + '<animate attributeName="stroke-dasharray" from="0 ' + CIRC.toFixed(1) + '" to="' + dash.toFixed(1) + ' ' + gap.toFixed(1) + '" dur=".7s" fill="freeze"/>'
-      + '</circle>'
-      + '<text x="' + CX + '" y="' + (CY+1) + '" text-anchor="middle" dominant-baseline="middle" font-size="13" font-weight="900" fill="var(--tx)">' + pct + '%</text>'
-      + '</svg>'
-      + '<div style="flex:1;min-width:0;">'
-      + '<div style="font-size:.78rem;font-weight:800;">' + m.icon + ' ' + m.label + ' ' + badge + '</div>'
-      + '<div style="font-size:.95rem;font-weight:900;color:' + m.color + ';">' + m.actual + '<span style="font-size:.55rem;"> ' + m.unit + '</span></div>'
-      + '<div style="font-size:.6rem;color:var(--tx3);">/ ' + m.target + ' ' + m.unit + '</div>'
-      + '<div style="height:3px;background:var(--bg2);border-radius:99px;margin-top:4px;">'
-      + '<div style="height:100%;width:' + Math.min(100,pct) + '%;background:' + m.color + ';border-radius:99px;transition:width .5s;"></div>'
-      + '</div></div></div>';
-  }).join('');
-
-  // Build donut chart HTML
-  var prot = avg('prot') * 4, carb = avg('carb') * 4, fat = avg('fat') * 9;
-  var total = prot + carb + fat;
-  var donutHTML = '';
-  if(total > 0) {
-    var pctP = Math.round(prot/total*100);
-    var pctC = Math.round(carb/total*100);
-    var pctF = 100 - pctP - pctC;
-    var R2 = 44, CX2 = 56, CY2 = 56, SW = 16;
-    var CIRC2 = 2 * Math.PI * R2;
-    var segs = [
-      {l:'Prot.', p:pctP, c:'#3498db'},
-      {l:'Gluc.', p:pctC, c:'#f39c12'},
-      {l:'Lip.',  p:pctF, c:'#9b59b6'}
-    ];
-    var off = CIRC2 / 4;
-    var paths = segs.map(function(s) {
-      var l = (s.p / 100) * CIRC2;
-      var seg = '<circle cx="' + CX2 + '" cy="' + CY2 + '" r="' + R2 + '" fill="none"'
-        + ' stroke="' + s.c + '" stroke-width="' + SW + '"'
-        + ' stroke-dasharray="' + l.toFixed(1) + ' ' + (CIRC2-l).toFixed(1) + '"'
-        + ' stroke-dashoffset="' + off.toFixed(1) + '" stroke-linecap="butt"/>';
-      off -= l;
-      return seg;
-    }).join('');
-    var avgKcal = Math.round(total / (planned.length || 1));
-    var legendHTML = segs.map(function(s) {
-      return '<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">'
-        + '<div style="width:10px;height:10px;border-radius:3px;background:' + s.c + ';"></div>'
-        + '<div style="font-size:.73rem;font-weight:700;flex:1;">' + s.l + '</div>'
-        + '<div style="font-size:.8rem;font-weight:900;color:' + s.c + ';">' + s.p + '%</div>'
-        + '</div>';
-    }).join('');
-    donutHTML = '<div style="background:var(--bg);border-radius:var(--rs);box-shadow:var(--so);padding:12px;">'
-      + '<div style="font-weight:800;font-size:.8rem;margin-bottom:10px;">🍽️ Répartition calorique</div>'
-      + '<div style="display:flex;align-items:center;gap:14px;">'
-      + '<svg width="112" height="112" viewBox="0 0 112 112">'
-      + '<circle cx="' + CX2 + '" cy="' + CY2 + '" r="' + R2 + '" fill="none" stroke="var(--bg2)" stroke-width="' + SW + '"/>'
-      + paths
-      + '<text x="' + CX2 + '" y="' + (CY2-5) + '" text-anchor="middle" font-size="12" font-weight="900" fill="var(--tx)">' + avgKcal + '</text>'
-      + '<text x="' + CX2 + '" y="' + (CY2+9) + '" text-anchor="middle" font-size="9" fill="var(--tx2)">kcal/j</text>'
-      + '</svg>'
-      + '<div>' + legendHTML + '</div>'
-      + '</div></div>';
-  } else {
-    donutHTML = '<div style="text-align:center;font-size:.72rem;color:var(--tx3);padding:8px;">Planifiez votre semaine pour voir la répartition</div>';
-  }
-
-  el.innerHTML = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">'
-    + ringsHTML + '</div>' + donutHTML;
-}
-
-// ── Graphique barres calories/semaine SVG ─────────────────────
-function renderNutriWeekChart(target) {
-  const chart = document.getElementById('nutriWeekChart');
-  if(!chart) return;
-  const DAYS_S = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
-  const kcals  = Array.from({length:7},(_,i)=>state.weekMenu[i+1]?.nutri?.kcal||0);
-  const tgt    = target||2000;
-  const maxV   = Math.max(tgt*1.3,...kcals,100);
-  const W=chart.offsetWidth||320, H=90, pad=8, barW=Math.floor((W-pad*2)/7);
-  let svg=`<svg width="100%" height="${H+34}" viewBox="0 0 ${W} ${H+34}" style="overflow:visible;">`;
-  const tgtY=H-Math.round(tgt/maxV*H);
-  svg+=`<line x1="${pad}" y1="${tgtY}" x2="${W-pad}" y2="${tgtY}" stroke="var(--tx3)" stroke-width="1" stroke-dasharray="5,4" opacity=".6"/>`;
-  svg+=`<text x="${W-pad}" y="${tgtY-4}" text-anchor="end" font-size="9" fill="var(--tx3)" opacity=".7">${tgt}</text>`;
-  kcals.forEach((v,i)=>{
-    const x=pad+i*barW+barW*.12, bw=barW*.76;
-    const bh=v?Math.max(5,Math.round(v/maxV*H)):4, y=H-bh;
-    const col=!v?'var(--bg2)':Math.abs(v-tgt)<tgt*.1?'#2ecc71':v>tgt*1.15?'#e74c3c':'#f39c12';
-    svg+=`<rect x="${x}" y="${y}" width="${bw}" height="${bh}" rx="4" fill="${col}" opacity="${v?'1':'.35'}">
-      <animate attributeName="height" from="0" to="${bh}" dur=".5s" begin="${i*.06}s" fill="freeze"/>
-      <animate attributeName="y" from="${H}" to="${y}" dur=".5s" begin="${i*.06}s" fill="freeze"/>
-    </rect>`;
-    if(v) svg+=`<text x="${x+bw/2}" y="${y-4}" text-anchor="middle" font-size="9" fill="var(--tx2)" font-weight="700">${v}</text>`;
-    svg+=`<text x="${x+bw/2}" y="${H+13}" text-anchor="middle" font-size="10" fill="${v?'var(--tx)':'var(--tx3)'}" font-weight="${v?'700':'400'}">${DAYS_S[i]}</text>`;
-  });
-  svg+='</svg>';
-  chart.innerHTML=svg;
-  chart.style.height=(H+34)+'px';
-}
-
-
 function renderNutriWeek(calTarget) {
   const card=document.getElementById('nutriWeekCard');
   if(!card) return;
@@ -6081,8 +6068,8 @@ Donne 4 conseils nutritionnels personnalisés et précis en JSON:
 [{"type":"tip|warn|bad|info","title":"Titre court","body":"Conseil de 2 phrases précises et actionnables"}]
 Pas de généralités. Adapte à ce profil spécifique.`;
   try {
-// SYNTAX_FIX:     const resp=await callClaude({model:'claude-sonnet-4-20250514',max_tokens:800,messages:[{role:'user',content:prompt}]});
-    const data=resp;
+    const resp=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':getAnthropicKey(),'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:800,messages:[{role:'user',content:prompt}]})});
+    const data=await resp.json();
     const text=(data.content||[]).find(c=>c.type==='text')?.text||'';
     const items=JSON.parse(text.replace(/```json|```/g,'').trim());
     const icons={tip:'💡',warn:'⚠️',bad:'🚨',info:'ℹ️'};

@@ -7187,6 +7187,32 @@ function displayBarcodeProduct(product) {
         ▼
       </div>
     </div>
+
+    <!-- Boutons action — toujours visibles -->
+    <div style="padding:0 14px 12px;">
+      <div style="display:flex;gap:8px;margin-bottom:8px;">
+        <button class="btn acc"
+          style="flex:1;padding:11px;font-size:.82rem;"
+          onclick="addBarcodeToList(JSON.parse(this.closest('.off-product-card').dataset.product))">
+          🛒 Ma liste
+        </button>
+
+        <button class="btn acc3"
+          style="flex:1;padding:11px;font-size:.82rem;"
+          onclick="addBarcodeToFridge(JSON.parse(this.closest('.off-product-card').dataset.product))">
+          🧊 Au frigo
+        </button>
+      </div>
+
+      <button class="btn"
+        style="width:100%;padding:9px;font-size:.75rem;color:var(--tx2);"
+        onclick="document.getElementById('barcodeResult').style.display='none';
+                 document.getElementById('barcodeInput').value='';
+                 document.getElementById('barcodeInput').focus();">
+        🔍 Scanner un autre produit
+      </button>
+    </div>
+  </div>
 `;
 
       <!-- Boutons daction — toujours visibles -->

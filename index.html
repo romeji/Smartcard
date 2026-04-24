@@ -5467,28 +5467,43 @@ function closeMealEdit() { document.getElementById('mealEditOverlay')?.classList
 
 // ── Génération IA d'un jour ─────────────────────────────────
 async function regenDayAI(day) {
-  const p=state.profile||{};
-  const diet=state.selectedDiet[0]||p.diet||'omnivore';
-  const dayName=DAYS[day-1];
-  const cals=calculateDailyCalories(p);
-  const prompt=`Génère un menu pour ${dayName}: régime ${diet}${cals?', '+cals+' kcal/jour':''}.
+  const p = state.profile || {};
+  const diet = state.selectedDiet[0] || p.diet || 'omnivore';
+  const dayName = DAYS[day - 1];
+  const cals = calculateDailyCalories(p);
+
+  const prompt = `Génère un menu pour ${dayName}: régime ${diet}${cals ? ', ' + cals + ' kcal/jour' : ''}.
 JSON: {"breakfast":{"name":"...","emoji":"...","kcal":0},"lunch":{"name":"...","emoji":"...","kcal":0},"dinner":{"name":"...","emoji":"...","kcal":0},"snack":{"name":"...","emoji":"...","kcal":0},"total_kcal":0,"prot":0,"carb":0,"fat":0,"quality":"good","tip":"..."}`;
+
   try {
-    const resp=await callClaude({model:'claude-sonnet-4-20250514',max_tokens:600,messages:[{role:'user',content:prompt}]})});
-    const data=await resp.json();
-    const text=(data.content||[]).find(c=>c.type==='text')?.text||'';
-    const r=JSON.parse(text.replace(/```json|```/g,'').trim());
-    state.weekMenu[day]={
-      b:(r.breakfast?.emoji||'')+' '+(r.breakfast?.name||''),
-      l:(r.lunch?.emoji||'')+' '+(r.lunch?.name||''),
-      d:(r.dinner?.emoji||'')+' '+(r.dinner?.name||''),
-      snack:r.snack?(r.snack.emoji||'')+' '+(r.snack.name||''):null,
-      nutri:{kcal:r.total_kcal,prot:r.prot,carb:r.carb,fat:r.fat},
-      quality:r.quality||'ok', tip:r.tip||'',
+    const resp = await callClaude({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 600,
+      messages: [{ role: 'user', content: prompt }]
+    }); // ✅ corrigé ici
+
+    const data = await resp.json();
+    const text = (data.content || []).find(c => c.type === 'text')?.text || '';
+    const r = JSON.parse(text.replace(/```json|```/g, '').trim());
+
+    state.weekMenu[day] = {
+      b: (r.breakfast?.emoji || '') + ' ' + (r.breakfast?.name || ''),
+      l: (r.lunch?.emoji || '') + ' ' + (r.lunch?.name || ''),
+      d: (r.dinner?.emoji || '') + ' ' + (r.dinner?.name || ''),
+      snack: r.snack ? (r.snack.emoji || '') + ' ' + (r.snack.name || '') : null,
+      nutri: { kcal: r.total_kcal, prot: r.prot, carb: r.carb, fat: r.fat },
+      quality: r.quality || 'ok',
+      tip: r.tip || '',
     };
-    saveWeekMenu(); renderWeek();
-    showToast('🤖','Repas IA','Régénéré pour '+dayName);
-  } catch(e) { generateDayMenu(day); }
+
+    saveWeekMenu();
+    renderWeek();
+
+    showToast('🤖', 'Repas IA', 'Régénéré pour ' + dayName);
+
+  } catch (e) {
+    generateDayMenu(day);
+  }
 }
 async function generateAIDayMenu(day) { regenDayAI(day); } // compat
 

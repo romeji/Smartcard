@@ -1126,6 +1126,8 @@ svg{display:block;flex-shrink:0;}
       <div class="menu-tabs" id="menuTabBar" style="margin-bottom:14px;">
         <div class="menu-tab on" id="mtab-week" onclick="switchMenuTab('week')">📅 Semaine</div>
         <div class="menu-tab" id="mtab-recipes" onclick="switchMenuTab('recipes')">👨‍🍳 Recettes</div>
+        <div class="menu-tab" id="mtab-mealdb" onclick="switchMenuTab('mealdb')">🥘 Frigo</div>
+        <div class="menu-tab" id="mtab-favorites" onclick="switchMenuTab('favorites')">⭐ Favoris</div>
         <div class="menu-tab" id="mtab-search" onclick="switchMenuTab('search')">🔍 Explorer</div>
         <div class="menu-tab" id="mtab-nutri" onclick="switchMenuTab('nutri')">📊 Nutrition</div>
       </div>
@@ -1243,6 +1245,36 @@ svg{display:block;flex-shrink:0;}
       </div>
 
       <!-- ═══ TAB: EXPLORER (Spoonacular) ═══ -->
+      <!-- ═══ TAB: FRIGO → MEALDB ═══ -->
+      <div id="menuPanelMealdb" style="display:none;">
+        <div class="card mb14" style="border-left:3px solid var(--ac);">
+          <div style="font-weight:800;font-size:.88rem;margin-bottom:4px;">🥘 Recettes depuis votre frigo</div>
+          <div style="font-size:.72rem;color:var(--tx2);">TheMealDB propose des recettes avec vos ingrédients (min. 3 requis)</div>
+        </div>
+        <div id="mdbFridgeStatus" style="margin-bottom:10px;"></div>
+        <button class="btn acc" style="width:100%;padding:12px;margin-bottom:14px;" onclick="searchMealDBFromFridge()">
+          🔍 Trouver des recettes avec mon frigo
+        </button>
+        <div id="mdbFridgeResults"></div>
+      </div>
+
+      <!-- ═══ TAB: FAVORIS ═══ -->
+      <div id="menuPanelFavorites" style="display:none;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+          <div>
+            <div style="font-weight:900;font-size:.95rem;">⭐ Mes favoris</div>
+            <div style="font-size:.72rem;color:var(--tx2);" id="favCount">0 recette sauvegardée</div>
+          </div>
+          <button class="btn sm" onclick="renderFavoritesPanel()" style="font-size:.72rem;">🔄</button>
+        </div>
+        <div id="favoritesGrid"></div>
+        <div id="favoritesEmpty" style="display:none;text-align:center;padding:32px 16px;">
+          <div style="font-size:2.5rem;margin-bottom:8px;">⭐</div>
+          <div style="font-weight:800;margin-bottom:6px;">Aucun favori</div>
+          <div style="font-size:.78rem;color:var(--tx2);">Appuyez sur ☆ dans une recette pour l'ajouter à vos favoris.</div>
+        </div>
+      </div>
+
       <div id="menuPanelSearch" style="display:none;">
         <div style="display:flex;gap:8px;margin-bottom:12px;background:var(--bg2);border-radius:var(--rs);padding:3px;">
           <button id="exptab-ai" onclick="switchExplTab('ai')" style="flex:1;padding:8px 4px;border-radius:var(--rs);border:none;font-size:.76rem;font-weight:800;cursor:pointer;background:var(--ac);color:#fff;">🤖 Claude IA</button>
@@ -2910,6 +2942,292 @@ async function saveTranslatedRecipe() {
 }
 
 
+// ═══════════════════════════════════════════════════════════
+// MEALDB — Suggestions depuis le frigo (≥ 3 ingrédients)
+// ═══════════════════════════════════════════════════════════
+const MEALDB_BASE = 'https://www.themealdb.com/api/json/v1/1';
+
+function renderMealDBFridgeStatus() {
+  const el = document.getElementById('mdbFridgeStatus');
+  if(!el) return;
+  const count = state.fridge.length;
+  if(count < 3) {
+    el.innerHTML = '<div style="background:rgba(231,76,60,.08);border-radius:var(--rs);padding:12px;text-align:center;color:var(--rd);font-size:.8rem;font-weight:700;">'
+      + '⚠️ Ajoutez au moins 3 aliments dans votre frigo (' + count + '/3 actuellement)'
+      + '</div>';
+  } else {
+    el.innerHTML = '<div style="background:rgba(39,174,96,.08);border-radius:var(--rs);padding:10px;display:flex;align-items:center;gap:8px;">'
+      + '<div style="font-size:1.2rem;">🧊</div>'
+      + '<div><div style="font-weight:800;font-size:.82rem;color:var(--gn);">' + count + ' aliments dans votre frigo</div>'
+      + '<div style="font-size:.68rem;color:var(--tx2);">' + state.fridge.slice(0,5).map(f=>f.emoji+f.name).join(' · ') + (count>5?'…':'') + '</div></div>'
+      + '</div>';
+  }
+}
+
+async function searchMealDBFromFridge() {
+  const zone = document.getElementById('mdbFridgeResults');
+  if(!zone) return;
+  if(state.fridge.length < 3) {
+    showToast('⚠️','Frigo insuffisant','Ajoutez au moins 3 aliments dans votre frigo.');
+    return;
+  }
+
+  zone.innerHTML = '<div style="text-align:center;padding:24px;"><div style="width:32px;height:32px;border-radius:50%;border:3px solid var(--bg2);border-top-color:var(--ac);animation:spin .8s linear infinite;margin:0 auto 10px;"></div><div style="font-size:.78rem;color:var(--tx2);">Recherche TheMealDB…</div></div>';
+
+  // Rechercher par ingrédient principal (les 3 premiers du frigo)
+  const ingredients = state.fridge.slice(0, 6).map(f => f.name.split(' ')[0]);
+  const allMeals = [];
+  const seen = new Set();
+
+  for(const ingr of ingredients.slice(0, 3)) {
+    try {
+      const resp = await fetch(`${MEALDB_BASE}/filter.php?i=${encodeURIComponent(ingr)}`);
+      const data = await resp.json();
+      if(data.meals) {
+        data.meals.forEach(m => {
+          if(!seen.has(m.idMeal)) {
+            seen.add(m.idMeal);
+            allMeals.push({...m, _matchIngr: ingr});
+          }
+        });
+      }
+    } catch(e) {}
+  }
+
+  if(!allMeals.length) {
+    zone.innerHTML = '<div style="text-align:center;padding:24px;color:var(--tx2);font-size:.8rem;">😕 Aucune recette trouvée pour ces ingrédients.<br>Essayez avec des ingrédients plus courants (chicken, beef, pasta…)</div>';
+    return;
+  }
+
+  // Limiter à 12 et charger les détails
+  const topMeals = allMeals.slice(0, 12);
+  window._mdbCache = window._mdbCache || [];
+
+  zone.innerHTML = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">'
+    + topMeals.map(m => `
+    <div onclick="openMealDBRecipe('${m.idMeal}')"
+      style="background:var(--bg);border-radius:var(--rs);box-shadow:var(--so);overflow:hidden;cursor:pointer;transition:transform .15s;"
+      onmousedown="this.style.transform='scale(.97)'" onmouseup="this.style.transform=''">
+      <img src="${m.strMealThumb}/preview" alt="${m.strMeal}"
+        style="width:100%;height:90px;object-fit:cover;display:block;"
+        onerror="this.style.display='none'">
+      <div style="padding:8px;">
+        <div style="font-size:.78rem;font-weight:800;line-height:1.3;margin-bottom:4px;">${m.strMeal}</div>
+        <div style="font-size:.62rem;color:var(--ac);font-weight:700;">🔍 ${m._matchIngr}</div>
+      </div>
+    </div>`).join('')
+    + '</div>';
+}
+
+async function openMealDBRecipe(mealId) {
+  // Chercher dans le cache d'abord
+  const cached = (window._mdbDetailCache||{})[mealId];
+  if(cached) { _showMealDBDetail(cached); return; }
+
+  try {
+    const resp = await fetch(`${MEALDB_BASE}/lookup.php?i=${mealId}`);
+    const data = await resp.json();
+    const meal = data.meals && data.meals[0];
+    if(!meal) { showToast('❌','','Recette introuvable'); return; }
+    if(!window._mdbDetailCache) window._mdbDetailCache = {};
+    window._mdbDetailCache[mealId] = meal;
+    _showMealDBDetail(meal);
+  } catch(e) {
+    showToast('❌','Erreur réseau','Impossible de charger la recette');
+  }
+}
+
+function _showMealDBDetail(meal) {
+  // Construire la recette au format standard
+  const ingredients = [];
+  for(let i = 1; i <= 20; i++) {
+    const name = meal['strIngredient'+i];
+    const qty  = meal['strMeasure'+i];
+    if(name && name.trim()) ingredients.push({name: name.trim(), qty: (qty||'').trim(), unit:'', emoji:'🛍️'});
+  }
+  const steps = (meal.strInstructions||'').replace(/\r/g,'').split('\n').filter(s=>s.trim().length>5).map(s=>s.trim());
+
+  const recipe = {
+    id: 'mdb_'+meal.idMeal,
+    name: meal.strMeal,
+    emoji: '🌍',
+    photo: meal.strMealThumb,
+    time: null,
+    portions: 4,
+    kcal: 0,
+    diet: 'omnivore',
+    mealTypes: ['l','d'],
+    ingredients,
+    instructions: steps,
+    source: 'mealdb',
+    area: meal.strArea,
+    category: meal.strCategory,
+    youtubeUrl: meal.strYoutube || null,
+  };
+
+  window._currentRecipe = recipe;
+
+  // Afficher dans un modal
+  const existing = document.getElementById('mdbDetailOverlay');
+  if(existing) existing.remove();
+
+  const overlay = document.createElement('div');
+  overlay.className = 'overlay on';
+  overlay.id = 'mdbDetailOverlay';
+  overlay.onclick = e => { if(e.target===overlay) overlay.remove(); };
+
+  const fridgeNames = state.fridge.map(f=>f.name.toLowerCase());
+  const missing = ingredients.filter(i => !fridgeNames.some(fn=>fn.includes(i.name.toLowerCase().split(' ')[0])));
+  const isBookmarked = (state.recipeBookmarks||[]).some(b=>b.id===recipe.id);
+
+  overlay.innerHTML = `<div class="modal" style="max-height:90vh;overflow-y:auto;padding:0;">
+    <div style="position:sticky;top:0;z-index:10;background:var(--bg);padding:14px 16px 10px;border-bottom:1px solid var(--bg2);display:flex;align-items:center;justify-content:space-between;">
+      <div class="mhdl" style="margin:0 auto;"></div>
+    </div>
+    ${meal.strMealThumb?`<img src="${meal.strMealThumb}" style="width:100%;height:200px;object-fit:cover;display:block;" alt="${meal.strMeal}">`:''}
+    <div style="padding:16px;">
+      <div style="font-weight:900;font-size:1rem;margin-bottom:6px;">${meal.strMeal}</div>
+      <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:12px;">
+        ${meal.strCategory?`<span class="off-badge off-badge-blue">🍽️ ${meal.strCategory}</span>`:''}
+        ${meal.strArea?`<span class="off-badge off-badge-blue">🌍 ${meal.strArea}</span>`:''}
+        ${meal.strYoutube?`<a href="${meal.strYoutube}" target="_blank" class="off-badge off-badge-red" style="text-decoration:none;">▶️ Vidéo</a>`:''}
+      </div>
+
+      <!-- Ingrédients -->
+      <div style="font-size:.68rem;font-weight:800;color:var(--tx3);text-transform:uppercase;letter-spacing:.7px;margin-bottom:8px;">Ingrédients (${ingredients.length})</div>
+      <div style="margin-bottom:14px;">
+        ${ingredients.map(i=>{
+          const have = fridgeNames.some(fn=>fn.includes(i.name.toLowerCase().split(' ')[0]));
+          return '<div style="display:flex;align-items:center;gap:6px;padding:5px 0;border-bottom:1px solid var(--bg2);">'
+            +'<div style="width:6px;height:6px;border-radius:50%;background:'+(have?'var(--gn)':'var(--rd)')+';flex-shrink:0;"></div>'
+            +'<div style="flex:1;font-size:.8rem;">'+(i.qty?'<span style="color:var(--tx2);font-size:.72rem;">'+i.qty+'</span> ':'')+i.name+'</div>'
+            +'<span style="font-size:.62rem;font-weight:700;color:'+(have?'var(--gn)':'var(--rd)')+';">'+(have?'✓ Dispo':'✗')+'</span>'
+            +'</div>';
+        }).join('')}
+      </div>
+
+      <!-- Instructions -->
+      ${steps.length?`<div style="font-size:.68rem;font-weight:800;color:var(--tx3);text-transform:uppercase;letter-spacing:.7px;margin-bottom:8px;">Préparation</div>
+      <div style="margin-bottom:14px;">
+        ${steps.slice(0,12).map((s,i)=>'<div style="display:flex;gap:8px;padding:8px 0;border-bottom:1px solid var(--bg2);">'
+          +'<div style="width:22px;height:22px;border-radius:50%;background:var(--grad);color:#fff;font-size:.68rem;font-weight:900;display:flex;align-items:center;justify-content:center;flex-shrink:0;">'+(i+1)+'</div>'
+          +'<div style="font-size:.78rem;line-height:1.6;color:var(--tx);">'+s+'</div></div>').join('')}
+      </div>`:''}
+
+      <!-- Actions -->
+      <div style="display:flex;flex-direction:column;gap:8px;padding-top:12px;border-top:1px solid var(--bg2);">
+        ${missing.length?`<button class="btn acc" style="width:100%;padding:13px;" onclick="addMDBMissingToList(${JSON.stringify(missing.map(m=>m.name)).replace(/"/g,'&quot;')})">
+          🛒 Ajouter les ${missing.length} manquant(s) à ma liste
+        </button>`:'<div style="text-align:center;font-size:.8rem;color:var(--gn);font-weight:800;padding:8px;">✅ Vous avez tous les ingrédients !</div>'}
+        <div style="display:flex;gap:8px;">
+          <button class="btn" style="flex:1;padding:11px;" id="mdbBmBtn"
+            onclick="toggleBookmark('${recipe.id}');document.getElementById('mdbBmBtn').textContent=isBookmarked?'☆ Favori':'⭐ Favori';">
+            ${isBookmarked?'⭐ Favori':'☆ Favori'}
+          </button>
+          <button class="btn" style="flex:1;padding:11px;font-size:.8rem;color:var(--bl);"
+            onclick="window._translateRecipe=window._currentRecipe;document.getElementById('mdbTranslateZone').style.display='block';document.getElementById('mdbTranslateBtn').style.display='none';translateInline('mdbTranslateZone');"
+            id="mdbTranslateBtn">
+            🌐 Traduire
+          </button>
+        </div>
+        <div id="mdbTranslateZone" style="display:none;"></div>
+        <button class="btn" style="width:100%;padding:11px;" onclick="document.getElementById('mdbDetailOverlay').remove()">Fermer</button>
+      </div>
+    </div>
+  </div>`;
+
+  document.body.appendChild(overlay);
+}
+
+function addMDBMissingToList(names) {
+  let added = 0;
+  names.forEach(name => {
+    if(!state.items.some(it=>it.name.toLowerCase()===name.toLowerCase())) {
+      state.items.unshift({id:'i'+Date.now()+Math.random().toString(36).slice(2,7),name,emoji:'🛒',cat:'🍝 Épicerie',price:0,qty:'',checked:false,addedAt:Date.now(),addedBy:currentUser?currentUser.email:''});
+      added++;
+    }
+  });
+  saveItems(); renderList();
+  document.getElementById('mdbDetailOverlay')?.remove();
+  showToast('✅',added+' ajouté(s)','Ingrédients manquants → liste');
+  switchTab('liste');
+}
+
+// ═══════════════════════════════════════════════════════════
+// FAVORIS — Onglet dédié
+// ═══════════════════════════════════════════════════════════
+function toggleBookmark(id) {
+  if(!state.recipeBookmarks) state.recipeBookmarks = [];
+  const idx = state.recipeBookmarks.findIndex(b=>b.id===id);
+  if(idx >= 0) {
+    state.recipeBookmarks.splice(idx, 1);
+    showToast('☆','Retiré des favoris','');
+  } else {
+    // Trouver la recette
+    const all = [...getAllRecipes(), ...(window._mdbDetailCache ? Object.values(window._mdbDetailCache).map(m=>{
+      const ings=[];for(let i=1;i<=20;i++){const n=m['strIngredient'+i];if(n&&n.trim())ings.push({name:n.trim(),qty:(m['strMeasure'+i]||'').trim()});}
+      return {id:'mdb_'+m.idMeal,name:m.strMeal,emoji:'🌍',photo:m.strMealThumb,ingredients:ings,source:'mealdb'};
+    }) : [])];
+    const r = all.find(x=>x.id===id) || window._currentRecipe;
+    if(r) {
+      state.recipeBookmarks.push({...r, bookmarkedAt: Date.now()});
+      showToast('⭐','Ajouté aux favoris',r.name);
+    }
+  }
+  saveState();
+  // Mettre à jour les boutons visibles
+  document.querySelectorAll('[onclick*="toggleBookmark"]').forEach(btn => {
+    if(btn.getAttribute('onclick')?.includes("'"+id+"'") || btn.getAttribute('onclick')?.includes('"'+id+'"')) {
+      const isNowBm = state.recipeBookmarks.some(b=>b.id===id);
+      if(btn.textContent.includes('☆') || btn.textContent.includes('⭐')) {
+        btn.textContent = isNowBm ? '⭐' : '☆';
+      }
+    }
+  });
+  if(document.getElementById('menuPanelFavorites')?.style.display !== 'none') {
+    renderFavoritesPanel();
+  }
+}
+
+function renderFavoritesPanel() {
+  const grid  = document.getElementById('favoritesGrid');
+  const empty = document.getElementById('favoritesEmpty');
+  const count = document.getElementById('favCount');
+  if(!grid) return;
+
+  const bms = state.recipeBookmarks || [];
+  if(count) count.textContent = bms.length + ' recette' + (bms.length>1?'s':'') + ' sauvegardée' + (bms.length>1?'s':'');
+
+  if(!bms.length) {
+    grid.innerHTML = '';
+    if(empty) empty.style.display = 'block';
+    return;
+  }
+  if(empty) empty.style.display = 'none';
+
+  grid.innerHTML = bms.map(r => {
+    const sourceLabel = r.source==='mealdb' ? '🌍 MealDB' : r.source==='translated' ? '🌐 Traduit' : r.source==='custom' ? '✏️ Perso' : '📖';
+    return `<div onclick="openRecipeDetail('${r.id}')"
+      style="background:var(--bg);border-radius:var(--rs);box-shadow:var(--so);display:flex;align-items:center;gap:10px;padding:12px;margin-bottom:8px;cursor:pointer;transition:all .15s;"
+      onmousedown="this.style.opacity='.8'" onmouseup="this.style.opacity=''">
+      ${r.photo
+        ? `<img src="${r.photo}" style="width:52px;height:52px;border-radius:var(--rs);object-fit:cover;flex-shrink:0;" onerror="this.outerHTML='<div style=\'width:52px;height:52px;border-radius:var(--rs);background:var(--bg2);display:flex;align-items:center;justify-content:center;font-size:1.6rem;\'>'+(r.emoji||'🍽️')+'</div>'">`
+        : `<div style="width:52px;height:52px;border-radius:var(--rs);background:var(--bg2);display:flex;align-items:center;justify-content:center;font-size:1.6rem;flex-shrink:0;">${r.emoji||'🍽️'}</div>`}
+      <div style="flex:1;min-width:0;">
+        <div style="font-weight:800;font-size:.88rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${r.name}</div>
+        <div style="display:flex;gap:5px;margin-top:4px;flex-wrap:wrap;">
+          <span style="font-size:.62rem;font-weight:700;color:var(--tx3);">${sourceLabel}</span>
+          ${r.time?`<span style="font-size:.62rem;color:var(--tx3);">⏱ ${r.time}min</span>`:''}
+          ${r.kcal?`<span style="font-size:.62rem;color:var(--tx3);">🔥 ${r.kcal}kcal</span>`:''}
+        </div>
+      </div>
+      <button onclick="event.stopPropagation();toggleBookmark('${r.id}')"
+        style="font-size:1.2rem;background:none;border:none;cursor:pointer;padding:4px;flex-shrink:0;" title="Retirer des favoris">⭐</button>
+    </div>`;
+  }).join('');
+}
+
+
 function initMenuModule() {
   updateMenuProfileCard();
   renderWeek();
@@ -2921,17 +3239,20 @@ function initMenuModule() {
 // ── Sous-onglets ────────────────────────────────────────────
 function switchMenuTab(tab) {
   _menuTab = tab;
-  // All 4 tabs: week, recipes, search, nutri
-  ['week','recipes','search','nutri'].forEach(t => {
+  // All tabs including new mealdb and favorites
+  ['week','recipes','mealdb','favorites','search','nutri'].forEach(t => {
     const btn = document.getElementById('mtab-'+t);
-    const panel = document.getElementById('menuPanel'+t.charAt(0).toUpperCase()+t.slice(1));
+    // Panel ID: capitalize first letter
+    const panelId = 'menuPanel' + t.charAt(0).toUpperCase() + t.slice(1);
+    const panel = document.getElementById(panelId);
     if(btn) btn.classList.toggle('on', t===tab);
     if(panel) panel.style.display = t===tab ? 'block' : 'none';
   });
-  if(tab==='week') { typeof renderWeek !== 'undefined' && renderWeek(); }
-  if(tab==='nutri') { typeof renderNutriPanel !== 'undefined' ? renderNutriPanel() : (typeof renderNutriTab !== 'undefined' && renderNutriTab()); }
-  if(tab==='recipes') { typeof renderRecipesGrid !== 'undefined' && renderRecipesGrid(); }
-  // Search tab: focus input
+  if(tab==='week')      { try { renderWeek(); } catch(e){} }
+  if(tab==='nutri')     { try { renderNutriTab(); } catch(e){} }
+  if(tab==='recipes')   { try { renderRecipesGrid(); } catch(e){} }
+  if(tab==='favorites') { try { renderFavoritesPanel(); } catch(e){} }
+  if(tab==='mealdb')    { try { renderMealDBFridgeStatus(); } catch(e){} }
   if(tab==='search') {
     const inp = document.getElementById('spoonSearchInp');
     if(inp) setTimeout(()=>inp.focus(), 100);
@@ -3431,7 +3752,7 @@ async function searchMealDBExplorer(query) {
       }
       // Split instructions into steps
       const instrRaw = m.strInstructions || "";
-      const instructions = instrRaw.split(/\r?\n/).map(s => s.trim()).filter(s => s.length > 10).slice(0, 8);
+      const instructions = instrRaw.split('\n').join('\r\n').split('\r\n').map(s => s.trim()).filter(s => s.length > 10).slice(0, 8);
 
 
       return {
@@ -4717,8 +5038,13 @@ async function saveCustomRecipeFull() {
   state.customRecipes.unshift(recipe);
   await saveState();
   document.getElementById('createRecipeModal')?.remove();
-  showToast('✅', emoji+' '+name, kcal ? kcal+' kcal/portion' : 'Recette créée !');
-  if(typeof renderRecipesGrid === 'function') renderRecipesGrid();
+  window._crIngredients = []; window._crPhotoData = null;
+  showToast('✅', emoji+' '+name, kcal ? kcal+' kcal/portion · Recette créée !' : 'Recette créée !');
+  // Rafraîchir immédiatement
+  renderRecipesGrid();
+  switchMenuTab('recipes');
+  window._mdbCache = null;
+  try { _spoonCache = null; } catch(e) {}
 }
 
 

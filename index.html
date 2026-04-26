@@ -1126,8 +1126,6 @@ svg{display:block;flex-shrink:0;}
       <div class="menu-tabs" id="menuTabBar" style="margin-bottom:14px;">
         <div class="menu-tab on" id="mtab-week" onclick="switchMenuTab('week')">📅 Semaine</div>
         <div class="menu-tab" id="mtab-recipes" onclick="switchMenuTab('recipes')">👨‍🍳 Recettes</div>
-        <div class="menu-tab" id="mtab-mealdb" onclick="switchMenuTab('mealdb')">🥘 Frigo</div>
-        <div class="menu-tab" id="mtab-favorites" onclick="switchMenuTab('favorites')">⭐ Favoris</div>
         <div class="menu-tab" id="mtab-search" onclick="switchMenuTab('search')">🔍 Explorer</div>
         <div class="menu-tab" id="mtab-nutri" onclick="switchMenuTab('nutri')">📊 Nutrition</div>
       </div>
@@ -1246,35 +1244,7 @@ svg{display:block;flex-shrink:0;}
 
       <!-- ═══ TAB: EXPLORER (Spoonacular) ═══ -->
       <!-- ═══ TAB: FRIGO → MEALDB ═══ -->
-      <div id="menuPanelMealdb" style="display:none;">
-        <div class="card mb14" style="border-left:3px solid var(--ac);">
-          <div style="font-weight:800;font-size:.88rem;margin-bottom:4px;">🥘 Recettes depuis votre frigo</div>
-          <div style="font-size:.72rem;color:var(--tx2);">TheMealDB propose des recettes avec vos ingrédients (min. 3 requis)</div>
-        </div>
-        <div id="mdbFridgeStatus" style="margin-bottom:10px;"></div>
-        <button class="btn acc" style="width:100%;padding:12px;margin-bottom:14px;" onclick="searchMealDBFromFridge()">
-          🔍 Trouver des recettes avec mon frigo
-        </button>
-        <div id="mdbFridgeResults"></div>
-      </div>
-
       <!-- ═══ TAB: FAVORIS ═══ -->
-      <div id="menuPanelFavorites" style="display:none;">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
-          <div>
-            <div style="font-weight:900;font-size:.95rem;">⭐ Mes favoris</div>
-            <div style="font-size:.72rem;color:var(--tx2);" id="favCount">0 recette sauvegardée</div>
-          </div>
-          <button class="btn sm" onclick="renderFavoritesPanel()" style="font-size:.72rem;">🔄</button>
-        </div>
-        <div id="favoritesGrid"></div>
-        <div id="favoritesEmpty" style="display:none;text-align:center;padding:32px 16px;">
-          <div style="font-size:2.5rem;margin-bottom:8px;">⭐</div>
-          <div style="font-weight:800;margin-bottom:6px;">Aucun favori</div>
-          <div style="font-size:.78rem;color:var(--tx2);">Appuyez sur ☆ dans une recette pour l'ajouter à vos favoris.</div>
-        </div>
-      </div>
-
       <div id="menuPanelSearch" style="display:none;">
         <div style="display:flex;gap:8px;margin-bottom:12px;background:var(--bg2);border-radius:var(--rs);padding:3px;">
           <button id="exptab-ai" onclick="switchExplTab('ai')" style="flex:1;padding:8px 4px;border-radius:var(--rs);border:none;font-size:.76rem;font-weight:800;cursor:pointer;background:var(--ac);color:#fff;">🤖 Claude IA</button>
@@ -2778,27 +2748,113 @@ function doDeleteFridge(id) {
 // ═══════════════════════════════════════════════
 // RECETTES
 // ═══════════════════════════════════════════════
-function loadRecipes() {
-  const grid = document.getElementById('recipesGrid');
+// ── Frigo → Recettes MealDB (≥3 ingrédients) + fallback Claude ──
+let _mdbFridgeCache = null;
+
+async function loadRecipes() {
+  const grid  = document.getElementById('recipesGrid');
   const empty = document.getElementById('emptyRecipes');
   if(!grid) return;
-  if(state.fridge.length < 2) { grid.innerHTML = ''; if(empty) empty.style.display = 'block'; return; }
+
+  // Toujours afficher d'abord les recettes locales/custom correspondantes
   const fridgeNames = state.fridge.map(f => f.name.toLowerCase());
-  const allRecipes = [...RECIPES_DB, ...state.customRecipes];
-  const available = allRecipes.filter(r => {
-    const matches = r.ingredients.filter(ing => fridgeNames.some(fn => fn.includes(ing.split(' ')[0].toLowerCase()) || ing.toLowerCase().includes(fn.split(' ')[0])));
-    return matches.length >= Math.min(2, Math.ceil(r.ingredients.length * 0.3));
-  }).map(r => ({...r, matchCount: r.ingredients.filter(ing => fridgeNames.some(fn => fn.includes(ing.split(' ')[0].toLowerCase()))).length})).sort((a,b) => b.matchCount - a.matchCount);
-  if(!available.length) { grid.innerHTML = ''; if(empty) empty.style.display = 'block'; return; }
-  if(empty) empty.style.display = 'none';
-  grid.innerHTML = available.slice(0,8).map((r,i) => `
-    <div class="rc" onclick="showRecipe(${i})">
-      <span class="rc-em">${r.emoji||'🍳'}</span>
-      <div class="rc-nm">${r.name}</div>
-      <div class="rc-ms">${r.ingredients.slice(0,3).join(', ')}${r.ingredients.length>3?'…':''}</div>
-      ${r.time?`<span style="font-size:.65rem;color:var(--tx2);margin-top:4px;display:block;">⏱ ${r.time}</span>`:''}
-    </div>`).join('');
-  grid._recipes = available;
+  const localMatches = [...(RECIPES_DB||[]), ...(state.customRecipes||[])].filter(r => {
+    const ings = Array.isArray(r.ingredients) ? r.ingredients.map(i => typeof i==='string' ? i : i.name||'') : [];
+    const hits = ings.filter(ing => fridgeNames.some(fn => fn.includes(ing.split(' ')[0].toLowerCase()) || ing.toLowerCase().includes(fn.split(' ')[0])));
+    return hits.length >= Math.min(2, Math.ceil(ings.length * 0.3));
+  }).map(r => ({...r, _matchCount: (Array.isArray(r.ingredients)?r.ingredients.map(i=>typeof i==='string'?i:i.name||''):[]).filter(ing=>fridgeNames.some(fn=>fn.includes(ing.split(' ')[0].toLowerCase()))).length}))
+  .sort((a,b)=>b._matchCount-a._matchCount);
+
+  if(state.fridge.length < 3) {
+    if(!localMatches.length) { grid.innerHTML=''; if(empty) empty.style.display='block'; return; }
+    if(empty) empty.style.display='none';
+    _renderFridgeRecipes(grid, localMatches);
+    return;
+  }
+
+  // ≥3 ingrédients → MealDB
+  if(empty) empty.style.display='none';
+  grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:20px;">'
+    +'<div style="width:28px;height:28px;border-radius:50%;border:3px solid var(--bg2);border-top-color:var(--ac);animation:spin .8s linear infinite;margin:0 auto 8px;"></div>'
+    +'<div style="font-size:.75rem;color:var(--tx2);">Recherche TheMealDB…</div></div>';
+
+  // Utiliser le cache si les ingrédients n'ont pas changé
+  const cacheKey = fridgeNames.slice(0,5).sort().join(',');
+  if(_mdbFridgeCache && _mdbFridgeCache.key===cacheKey) {
+    _renderFridgeRecipes(grid, [...localMatches, ..._mdbFridgeCache.meals]);
+    return;
+  }
+
+  const mealIds = new Set();
+  const meals = [];
+
+  // Requêtes MealDB sur les 4 premiers ingrédients du frigo
+  const topIngrs = state.fridge.slice(0,5).map(f => f.name.split(' ')[0]);
+  for(const ingr of topIngrs) {
+    try {
+      const englishIngr = translateQueryToEnglish ? translateQueryToEnglish(ingr) : ingr;
+      const r = await fetch(`https://www.themealdb.com/api/json/v1/1/filter.php?i=${encodeURIComponent(englishIngr)}`);
+      const d = await r.json();
+      if(d.meals) d.meals.forEach(m => { if(!mealIds.has(m.idMeal)){ mealIds.add(m.idMeal); meals.push(m); }});
+    } catch(e) {}
+  }
+
+  if(meals.length) {
+    _mdbFridgeCache = { key: cacheKey, meals: meals.slice(0,12).map(m => ({
+      id: 'mdb_'+m.idMeal, mdbId: m.idMeal,
+      name: m.strMeal, photo: m.strMealThumb,
+      emoji:'🌍', source:'mealdb', time:null, kcal:0,
+      ingredients:[], instructions:[]
+    }))};
+    _renderFridgeRecipes(grid, [...localMatches, ..._mdbFridgeCache.meals]);
+  } else {
+    // Fallback Claude si MealDB ne trouve rien
+    _loadRecipesWithClaude(grid, fridgeNames, localMatches);
+  }
+}
+
+function _renderFridgeRecipes(grid, recipes) {
+  const empty = document.getElementById('emptyRecipes');
+  if(!recipes.length){ grid.innerHTML=''; if(empty) empty.style.display='block'; return; }
+  if(empty) empty.style.display='none';
+  grid.innerHTML = recipes.slice(0,12).map((r,i) => {
+    const isMDB = r.source==='mealdb' && r.mdbId;
+    const isCustom = r.source==='custom';
+    return `<div class="rc" onclick="${isMDB?`openMealDBRecipe('${r.mdbId}')`:`showRecipe(${i})`}" style="padding:0;overflow:hidden;">
+      ${r.photo?`<img src="${r.photo}/preview" style="width:100%;height:80px;object-fit:cover;" onerror="this.style.display='none'" loading="lazy">`
+               :`<div style="height:60px;background:var(--bg2);display:flex;align-items:center;justify-content:center;font-size:1.8rem;">${r.emoji||'🍳'}</div>`}
+      <div style="padding:8px;">
+        <div class="rc-nm" style="font-size:.76rem;">${r.name}</div>
+        <div style="display:flex;gap:5px;margin-top:3px;flex-wrap:wrap;align-items:center;">
+          ${r.time?`<span style="font-size:.6rem;color:var(--tx2);">⏱${r.time}min</span>`:''}
+          ${isCustom?`<span style="font-size:.6rem;color:var(--ac);font-weight:700;">✏️ Perso</span>`:''}
+          ${isMDB?`<span style="font-size:.6rem;color:var(--bl);font-weight:700;">🌍 MealDB</span>`:''}
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+  grid._recipes = recipes;
+}
+
+async function _loadRecipesWithClaude(grid, fridgeNames, localMatches) {
+  try {
+    const ingrList = fridgeNames.slice(0,8).join(', ');
+    const resp = await fetch('/api/claude',{
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({model:'claude-sonnet-4-20250514', max_tokens:2000,
+        messages:[{role:'user',content:`Tu es chef cuisinier. Avec ces ingrédients: ${ingrList}
+Propose 4 recettes réalisables. Réponds UNIQUEMENT en JSON:
+{"recipes":[{"name":"Nom","emoji":"🍳","time":25,"kcal":400,"ingredients":["ingr1","ingr2"],"instructions":["Étape 1","Étape 2"]}]}`}]})
+    });
+    const data = await resp.json();
+    const text = (data.content||[]).find(x=>x.type==='text')?.text||'';
+    const j = text.slice(text.indexOf('{'), text.lastIndexOf('}')+1);
+    const parsed = JSON.parse(j);
+    const recipes = (parsed.recipes||[]).map((r,i)=>({...r,id:'fr_'+Date.now()+'_'+i,source:'claude_fridge',ingredients:r.ingredients||[]}));
+    _renderFridgeRecipes(grid, [...localMatches, ...recipes]);
+  } catch(e) {
+    _renderFridgeRecipes(grid, localMatches);
+  }
 }
 
 function showRecipe(i) {
@@ -2821,6 +2877,9 @@ function showRecipe(i) {
     <button class="btn acc" style="width:100%;margin-top:16px;" onclick="addMissingToList(${i})">🛒 Ajouter les manquants à la liste</button>
     <button class="btn" style="width:100%;margin-top:8px;" onclick="closeRecipe()">Fermer</button>`;
   document.getElementById('recipeOverlay').classList.add('on');
+  // Swipe-to-close + close X
+  const _modal = document.querySelector('#recipeOverlay .modal');
+  if(_modal) _attachSwipeClose(_modal.id || 'recipeModalContent', ()=>closeRecipe());
 }
 
 function closeRecipe() { document.getElementById('recipeOverlay').classList.remove('on'); }
@@ -2897,6 +2956,75 @@ async function translateRecipeFull(recipe) {
     return {name:tName,ingredients:tIngrs.filter(Boolean),instructions:[]};
   }
 }
+
+// ══ Traduction automatique via Claude — sans bouton, directement dans la modale ══
+async function autoTranslateRecipeInto(containerEl, recipe) {
+  if(!recipe) return;
+  if(!recipe.name && recipe.title) recipe.name = recipe.title;
+
+  const toTranslate = {
+    title: recipe.name || recipe.title || '',
+    ingredients: (recipe.extendedIngredients||recipe.ingredients||[]).slice(0,20).map(i=>{
+      if(typeof i==='string') return i;
+      const qty = i.amount ? (Number(i.amount).toFixed(0)+' '+(i.unit||'')) : (i.qty||'');
+      return (qty+' '+( i.originalName||i.name||i.original||'')).trim();
+    }).filter(Boolean),
+    steps: ((recipe.analyzedInstructions||[])[0]?.steps||[]).map(s=>s.step).filter(Boolean)
+           .concat( Array.isArray(recipe.instructions)
+             ? recipe.instructions.map(s=>typeof s==='string'?s:s.step||'').filter(Boolean)
+             : [] ).filter((v,i,a)=>a.indexOf(v)===i) // dedup
+  };
+
+  if(!toTranslate.title && !toTranslate.ingredients.length) return;
+
+  // Loader discret en bas du modal
+  const loader = document.createElement('div');
+  loader.id = 'autoTranslateLoader';
+  loader.innerHTML = '<div style="font-size:.65rem;color:var(--tx3);text-align:center;padding:8px;display:flex;align-items:center;gap:5px;justify-content:center;border-top:1px solid var(--bg2);">'
+    + '<div style="width:10px;height:10px;border-radius:50%;border:2px solid var(--bg2);border-top-color:var(--ac);animation:spin .7s linear infinite;flex-shrink:0;"></div>'
+    + '<span>Traduction automatique…</span></div>';
+  containerEl.appendChild(loader);
+
+  try {
+    const resp = await fetch('/api/claude', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 2000,
+        system: 'Tu es un traducteur culinaire expert francophone. Traduis ce JSON de recette vers le français. Règles: adapte les mesures (cups→ml, oz→g, tablespoon→cuillère à soupe, °F→°C), traduis tous les ingrédients y compris les plus exotiques (ex: "Casabe"→"Cassave / galette de manioc"), pour les étapes traduis naturellement comme un chef. Réponds UNIQUEMENT en JSON, sans markdown ni texte autour.',
+        messages:[{role:'user', content:'Traduis:\n'+JSON.stringify(toTranslate)+'\n\nRéponds: {"title":"...","ingredients":["..."],"steps":["..."]}'}]
+      })
+    });
+    const data = await resp.json();
+    const raw = (data.content||[]).find(x=>x.type==='text')?.text||'';
+    const j = raw.slice(raw.indexOf('{'), raw.lastIndexOf('}')+1);
+    const t = JSON.parse(j);
+
+    loader.remove();
+
+    // Mettre à jour le titre
+    containerEl.querySelectorAll('[data-recipe-title]').forEach(el=>{if(t.title)el.textContent=t.title;});
+    // Mettre à jour les ingrédients
+    containerEl.querySelectorAll('[data-ingr-idx]').forEach(el=>{
+      const i=parseInt(el.dataset.ingrIdx);
+      if(t.ingredients&&t.ingredients[i])el.textContent=t.ingredients[i];
+    });
+    // Mettre à jour les étapes
+    containerEl.querySelectorAll('[data-step-idx]').forEach(el=>{
+      const i=parseInt(el.dataset.stepIdx);
+      if(t.steps&&t.steps[i])el.textContent=t.steps[i];
+    });
+    // Badge 🇫🇷
+    containerEl.querySelectorAll('.fr-badge').forEach(el=>el.style.display='inline-flex');
+
+  } catch(e) {
+    loader?.remove();
+    console.warn('Auto-translate:', e.message);
+  }
+}
+
+// Helper: francophone common ingredient words
+
 
 async function translateInline(containerId) {
   const el = document.getElementById(containerId);
@@ -3096,12 +3224,12 @@ function _showMealDBDetail(meal) {
       <!-- Ingrédients -->
       <div style="font-size:.68rem;font-weight:800;color:var(--tx3);text-transform:uppercase;letter-spacing:.7px;margin-bottom:8px;">Ingrédients (${ingredients.length})</div>
       <div style="margin-bottom:14px;">
-        ${ingredients.map(i=>{
+        ${ingredients.map((i,idx)=>{
           const have = fridgeNames.some(fn=>fn.includes(i.name.toLowerCase().split(' ')[0]));
           return '<div style="display:flex;align-items:center;gap:6px;padding:5px 0;border-bottom:1px solid var(--bg2);">'
-            +'<div style="width:6px;height:6px;border-radius:50%;background:'+(have?'var(--gn)':'var(--rd)')+';flex-shrink:0;"></div>'
-            +'<div style="flex:1;font-size:.8rem;">'+(i.qty?'<span style="color:var(--tx2);font-size:.72rem;">'+i.qty+'</span> ':'')+i.name+'</div>'
-            +'<span style="font-size:.62rem;font-weight:700;color:'+(have?'var(--gn)':'var(--rd)')+';">'+(have?'✓ Dispo':'✗')+'</span>'
+            +'<div style="width:6px;height:6px;border-radius:50%;background:'+(have?'var(--gn)':'var(--tx3)')+';flex-shrink:0;"></div>'
+            +'<div style="flex:1;font-size:.8rem;" data-ingr-idx="'+idx+'">'+(i.qty?'<span style="color:var(--tx2);font-size:.72rem;">'+i.qty+'</span> ':'')+i.name+'</div>'
+            +'<span style="font-size:.62rem;font-weight:700;color:'+(have?'var(--gn)':'var(--tx3)')+';">'+(have?'✓':'')+'</span>'
             +'</div>';
         }).join('')}
       </div>
@@ -3111,7 +3239,7 @@ function _showMealDBDetail(meal) {
       <div style="margin-bottom:14px;">
         ${steps.slice(0,12).map((s,i)=>'<div style="display:flex;gap:8px;padding:8px 0;border-bottom:1px solid var(--bg2);">'
           +'<div style="width:22px;height:22px;border-radius:50%;background:var(--grad);color:#fff;font-size:.68rem;font-weight:900;display:flex;align-items:center;justify-content:center;flex-shrink:0;">'+(i+1)+'</div>'
-          +'<div style="font-size:.78rem;line-height:1.6;color:var(--tx);">'+s+'</div></div>').join('')}
+          +'<div style="font-size:.78rem;line-height:1.6;color:var(--tx);" data-step-idx="'+i+'">'+s+'</div></div>').join('')}
       </div>`:''}
 
       <!-- Actions -->
@@ -3121,22 +3249,22 @@ function _showMealDBDetail(meal) {
         </button>`:'<div style="text-align:center;font-size:.8rem;color:var(--gn);font-weight:800;padding:8px;">✅ Vous avez tous les ingrédients !</div>'}
         <div style="display:flex;gap:8px;">
           <button class="btn" style="flex:1;padding:11px;" id="mdbBmBtn"
-            onclick="toggleBookmark('${recipe.id}');document.getElementById('mdbBmBtn').textContent=isBookmarked?'☆ Favori':'⭐ Favori';">
+            onclick="toggleBookmark('${recipe.id}');this.innerHTML=(state.recipeBookmarks||[]).some(b=>b.id==='${recipe.id}')?'⭐ Favori':'☆ Favori';">
             ${isBookmarked?'⭐ Favori':'☆ Favori'}
           </button>
-          <button class="btn" style="flex:1;padding:11px;font-size:.8rem;color:var(--bl);"
-            onclick="window._translateRecipe=window._currentRecipe;document.getElementById('mdbTranslateZone').style.display='block';document.getElementById('mdbTranslateBtn').style.display='none';translateInline('mdbTranslateZone');"
-            id="mdbTranslateBtn">
-            🌐 Traduire
-          </button>
         </div>
-        <div id="mdbTranslateZone" style="display:none;"></div>
-        <button class="btn" style="width:100%;padding:11px;" onclick="document.getElementById('mdbDetailOverlay').remove()">Fermer</button>
+        <div class="fr-badge" style="display:none;font-size:.62rem;color:var(--gn);font-weight:700;text-align:center;padding:4px;">🇫🇷 Traduit automatiquement</div>
+        <button class="btn" style="width:100%;padding:11px;margin-top:4px;" onclick="document.getElementById('mdbDetailOverlay').remove()">Fermer</button>
       </div>
     </div>
   </div>`;
 
   document.body.appendChild(overlay);
+  // Swipe-to-close
+  _attachSwipeClose('mdbDetailModal', ()=>overlay.remove());
+  // Auto-traduction immédiate
+  const modalEl = document.getElementById('mdbDetailModal');
+  if(modalEl) autoTranslateRecipeInto(modalEl, recipe);
 }
 
 function addMDBMissingToList(names) {
@@ -3240,7 +3368,7 @@ function initMenuModule() {
 function switchMenuTab(tab) {
   _menuTab = tab;
   // All tabs including new mealdb and favorites
-  ['week','recipes','mealdb','favorites','search','nutri'].forEach(t => {
+  ['week','recipes','search','nutri'].forEach(t => {
     const btn = document.getElementById('mtab-'+t);
     // Panel ID: capitalize first letter
     const panelId = 'menuPanel' + t.charAt(0).toUpperCase() + t.slice(1);
@@ -3251,7 +3379,6 @@ function switchMenuTab(tab) {
   if(tab==='week')      { try { renderWeek(); } catch(e){} }
   if(tab==='nutri')     { try { renderNutriTab(); } catch(e){} }
   if(tab==='recipes')   { try { renderRecipesGrid(); } catch(e){} }
-  if(tab==='favorites') { try { renderFavoritesPanel(); } catch(e){} }
   if(tab==='mealdb')    { try { renderMealDBFridgeStatus(); } catch(e){} }
   if(tab==='search') {
     const inp = document.getElementById('spoonSearchInp');
@@ -3413,7 +3540,7 @@ Exactement 7 jours. Valeurs nutritionnelles réalistes et cohérentes.`;
   try {
     const resp=await fetch('/api/claude',{
       method:'POST',
-      headers:{'Content-Type':'application/json','anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+      headers:{'Content-Type':'application/json'},
       body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:4000,messages:[{role:'user',content:prompt}]})
     });
     if(!resp.ok) {
@@ -3494,7 +3621,7 @@ async function searchWithClaudeFallback(q) {
 Réponds UNIQUEMENT en JSON: {"recipes":[{"name":"Nom recette","emoji":"🍽️","time":30,"kcal":450,"prot":25,"carb":40,"fat":15,"diet":"${diet}","ingredients":[{"name":"Ingrédient","qty":100,"unit":"g"}],"instructions":["Étape 1","Étape 2"]}]}`;
     const resp = await fetch('/api/claude',{
       method:'POST',
-      headers:{'Content-Type':'application/json','anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+      headers:{'Content-Type':'application/json'},
       body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:2000,messages:[{role:'user',content:prompt}]})
     });
     const data = await resp.json();
@@ -4861,7 +4988,7 @@ function renderMacroRings(macros) {
 // CRÉER UNE RECETTE
 // ════════════════════════════════════════════════════════════
 
-function openCreateRecipeModal() {
+function openCreateRecipeModal(editRecipe) {
   const existing = document.getElementById('createRecipeModal');
   if(existing) existing.remove();
   
@@ -4931,7 +5058,35 @@ function openCreateRecipeModal() {
   
   window._crIngredients = [];
   document.body.appendChild(modal);
-  setTimeout(() => crRenderIngrList(), 50);
+  setTimeout(() => {
+    crRenderIngrList();
+    // Pré-remplir si modification
+    if(editRecipe) {
+      const inp = document.getElementById('crName');
+      if(inp) inp.value = editRecipe.name||'';
+      const em = document.getElementById('crEmoji');
+      if(em) em.value = editRecipe.emoji||'🍽️';
+      const t = document.getElementById('crTime');
+      if(t) t.value = editRecipe.time||30;
+      const p = document.getElementById('crPortions');
+      if(p) p.value = editRecipe.portions||4;
+      const d = document.getElementById('crDiet');
+      if(d) d.value = editRecipe.diet||'omnivore';
+      const ins = document.getElementById('crInstructions');
+      if(ins) ins.value = (editRecipe.instructions||[]).join('\n');
+      // Photo preview
+      if(editRecipe.photo) {
+        const prev = document.getElementById('crPhotoPreview');
+        if(prev) { prev.style.border='none'; prev.innerHTML=`<img src="${editRecipe.photo}" style="width:100%;height:100%;object-fit:cover;">`; }
+      }
+      // Meal types
+      const mts = editRecipe.mealTypes||['l','d'];
+      ['l','d','snack','b'].forEach(mt=>{
+        const btn=document.getElementById('crMt-'+mt);
+        if(btn) btn.classList.toggle('on', mts.includes(mt));
+      });
+    }
+  }, 50);
 }
 
 // Autocomplete for recipe ingredient creation
@@ -5035,15 +5190,21 @@ async function saveCustomRecipeFull() {
     source: 'custom', createdAt: Date.now()
   };
   
-  state.customRecipes.unshift(recipe);
+  // Modifier ou créer
+  if(window._crEditId) {
+    const idx = state.customRecipes.findIndex(r=>r.id===window._crEditId);
+    if(idx>=0) { recipe.id = window._crEditId; state.customRecipes[idx] = recipe; }
+    else state.customRecipes.unshift(recipe);
+  } else {
+    state.customRecipes.unshift(recipe);
+  }
   await saveState();
   document.getElementById('createRecipeModal')?.remove();
-  window._crIngredients = []; window._crPhotoData = null;
-  showToast('✅', emoji+' '+name, kcal ? kcal+' kcal/portion · Recette créée !' : 'Recette créée !');
-  // Rafraîchir immédiatement
+  window._crIngredients = []; window._crPhotoData = null; window._crEditId = null;
+  showToast('✅', emoji+' '+name, (window._crEditId?'Recette modifiée !': (kcal?kcal+' kcal/portion · Recette créée !':'Recette créée !')));
   renderRecipesGrid();
   switchMenuTab('recipes');
-  window._mdbCache = null;
+  window._mdbCache = null; _mdbFridgeCache = null;
   try { _spoonCache = null; } catch(e) {}
 }
 
@@ -5616,7 +5777,7 @@ async function regenDayAI(day) {
   const prompt=`Génère un menu pour ${dayName}: régime ${diet}${cals?', '+cals+' kcal/jour':''}.
 JSON: {"breakfast":{"name":"...","emoji":"...","kcal":0},"lunch":{"name":"...","emoji":"...","kcal":0},"dinner":{"name":"...","emoji":"...","kcal":0},"snack":{"name":"...","emoji":"...","kcal":0},"total_kcal":0,"prot":0,"carb":0,"fat":0,"quality":"good","tip":"..."}`;
   try {
-    const resp=await fetch('/api/claude',{method:'POST',headers:{'Content-Type':'application/json','anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:600,messages:[{role:'user',content:prompt}]})});
+    const resp=await fetch('/api/claude',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:600,messages:[{role:'user',content:prompt}]})});
     const data=await resp.json();
     const text=(data.content||[]).find(c=>c.type==='text')?.text||'';
     const r=JSON.parse(text.replace(/```json|```/g,'').trim());
@@ -5787,55 +5948,217 @@ function filterRecipesDiet(el, val) {
 }
 
 function renderRecipesGrid() {
-  const grid=document.getElementById('recipesGrid');
-  if(!grid) return;
-  const all=getAllRecipes();
-  const fridgeNames=state.fridge.map(f=>f.name.toLowerCase());
+  const grid  = document.getElementById('recipesGrid2') || document.getElementById('menuRecipesGrid');
+  const grid2 = grid;
+  // Utiliser le bon conteneur selon la vue
+  const menuGrid = document.getElementById('menuRecipesGrid') || document.getElementById('recipesGridMenu');
+  const targetGrid = menuGrid || document.querySelector('#menuPanelRecipes .rc-grid') || document.querySelector('#menuPanelRecipes [id*="Grid"]');
+  const container = targetGrid;
+  if(!container) {
+    // Chercher le conteneur dans le panel recettes du menu
+    const panel = document.getElementById('menuPanelRecipes');
+    if(!panel) return;
+  }
 
-  const filtered=all.filter(r=>{
-    const nameOk=!_recipeSearch||r.name.toLowerCase().includes(_recipeSearch);
-    const dietOk=_recipeDietFilter==='all'||!r.diet||r.diet===_recipeDietFilter;
-    return nameOk&&dietOk;
+  const all = getAllRecipes ? getAllRecipes() : [...(RECIPES_DB||[]), ...(state.customRecipes||[])];
+  const customOnly = state.customRecipes || [];
+  const bookmarks  = state.recipeBookmarks || [];
+
+  // Rendu dans le panel recettes du menu
+  const panel = document.getElementById('menuPanelRecipes');
+  if(!panel) return;
+
+  // Construire le HTML complet du panel
+  const hasFavs = bookmarks.length > 0;
+  const hasCustom = customOnly.length > 0;
+
+  let html = '';
+
+  // ── Bouton + Favoris en haut ──
+  html += '<div style="display:flex;gap:8px;margin-bottom:14px;">'
+    + '<button class="btn acc" style="flex:1;padding:11px;font-size:.82rem;" onclick="openCreateRecipeModal()">✏️ Créer une recette</button>'
+    + (hasFavs ? '<button class="btn" style="padding:11px 14px;" onclick="toggleFavoritesView()" id="favToggleBtn" title="Voir mes favoris">⭐ '+bookmarks.length+'</button>' : '')
+    + '</div>';
+
+  // ── Section Favoris (masquée par défaut) ──
+  if(hasFavs) {
+    html += '<div id="favoritesSection" style="display:none;margin-bottom:16px;">'
+      + '<div style="font-weight:800;font-size:.82rem;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;">'
+      + '<span>⭐ Mes favoris ('+bookmarks.length+')</span>'
+      + '<button onclick="toggleFavoritesView()" style="background:none;border:none;font-size:.75rem;color:var(--tx2);cursor:pointer;">Masquer</button>'
+      + '</div>'
+      + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">'
+      + bookmarks.map(r => `<div onclick="openFavRecipe('${r.id}')" style="background:var(--bg);border-radius:var(--rs);box-shadow:var(--so);overflow:hidden;cursor:pointer;">
+          ${r.photo?`<img src="${r.photo}" style="width:100%;height:72px;object-fit:cover;" onerror="this.style.display='none'" loading="lazy">`
+                   :`<div style="height:56px;background:var(--bg2);display:flex;align-items:center;justify-content:center;font-size:1.5rem;">${r.emoji||'🍽️'}</div>`}
+          <div style="padding:8px;">
+            <div style="font-size:.75rem;font-weight:800;line-height:1.3;">${r.name}</div>
+            <button onclick="event.stopPropagation();toggleBookmark('${r.id}')" style="font-size:.7rem;background:none;border:none;cursor:pointer;color:var(--yl);padding:2px;">⭐ Retirer</button>
+          </div>
+        </div>`).join('')
+      + '</div></div>';
+  }
+
+  // ── Recettes perso (custom) ──
+  if(hasCustom) {
+    html += '<div style="font-size:.68rem;font-weight:800;color:var(--tx3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px;">Mes recettes ('+customOnly.length+')</div>'
+      + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px;">'
+      + customOnly.map((r,i) => `<div style="background:var(--bg);border-radius:var(--rs);box-shadow:var(--so);overflow:hidden;position:relative;">
+          <div onclick="openCustomRecipeDetail('${r.id}')" style="cursor:pointer;">
+            ${r.photo?`<img src="${r.photo}" style="width:100%;height:80px;object-fit:cover;" onerror="this.style.display='none'">`
+                     :`<div style="height:64px;background:var(--bg2);display:flex;align-items:center;justify-content:center;font-size:1.8rem;">${r.emoji||'🍳'}</div>`}
+            <div style="padding:8px 8px 4px;">
+              <div style="font-size:.76rem;font-weight:800;line-height:1.3;">${r.name}</div>
+              <div style="font-size:.6rem;color:var(--tx2);margin-top:2px;">${r.time?r.time+'min · ':''}${r.kcal?r.kcal+'kcal':''}</div>
+            </div>
+          </div>
+          <div style="display:flex;gap:4px;padding:4px 8px 8px;">
+            <button onclick="editCustomRecipe('${r.id}')" style="flex:1;font-size:.6rem;padding:4px;background:var(--bg2);border:none;border-radius:var(--rx);cursor:pointer;font-weight:700;color:var(--tx2);">✏️ Modifier</button>
+            <button onclick="deleteCustomRecipe('${r.id}')" style="flex:1;font-size:.6rem;padding:4px;background:rgba(231,76,60,.1);border:none;border-radius:var(--rx);cursor:pointer;font-weight:700;color:var(--rd);">🗑 Suppr.</button>
+            <button onclick="toggleBookmark('${r.id}')" style="padding:4px 6px;background:none;border:none;cursor:pointer;font-size:.75rem;" title="Favori">${(state.recipeBookmarks||[]).some(b=>b.id===r.id)?'⭐':'☆'}</button>
+          </div>
+        </div>`).join('')
+      + '</div>';
+  }
+
+  // ── Toutes les recettes (DB + custom) ──
+  html += '<div style="font-size:.68rem;font-weight:800;color:var(--tx3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px;">Toutes les recettes ('+all.length+')</div>';
+
+  const filtered = all.filter(r => {
+    if(!window._recipeSearch) return true;
+    const q = window._recipeSearch.toLowerCase();
+    return r.name.toLowerCase().includes(q) || (r.ingredients||[]).some(i=>(typeof i==='string'?i:i.name||'').toLowerCase().includes(q));
   });
 
   if(!filtered.length) {
-    grid.innerHTML=`<div style="text-align:center;padding:32px;color:var(--tx2);">
-      <div style="font-size:2rem;margin-bottom:8px;">🍽️</div>
-      <div style="font-weight:700;margin-bottom:4px;">Aucune recette trouvée</div>
-      <div style="font-size:.78rem;">Créez votre première recette !</div>
-    </div>`;
-    return;
+    html += '<div style="text-align:center;padding:24px;color:var(--tx2);font-size:.8rem;">Aucune recette trouvée.</div>';
+  } else {
+    html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">'
+      + filtered.slice(0,20).map(r => {
+        const isBm = (state.recipeBookmarks||[]).some(b=>b.id===r.id);
+        return `<div style="background:var(--bg);border-radius:var(--rs);box-shadow:var(--so);overflow:hidden;cursor:pointer;position:relative;">
+          <div onclick="openRecipeDetail('${r.id||r.name}')">
+            ${r.photo?`<img src="${r.photo}" style="width:100%;height:80px;object-fit:cover;" onerror="this.style.display='none'" loading="lazy">`
+                     :`<div style="height:64px;background:var(--bg2);display:flex;align-items:center;justify-content:center;font-size:1.8rem;">${r.emoji||'🍳'}</div>`}
+            <div style="padding:8px 8px 4px;">
+              <div style="font-size:.76rem;font-weight:800;line-height:1.3;">${r.name}</div>
+              <div style="font-size:.6rem;color:var(--tx2);margin-top:2px;">${r.time?r.time+'min · ':''}${r.kcal?r.kcal+'kcal':''}</div>
+            </div>
+          </div>
+          <button onclick="toggleBookmark('${r.id||r.name}')" style="position:absolute;top:4px;right:4px;background:rgba(0,0,0,.35);border:none;border-radius:50%;width:24px;height:24px;cursor:pointer;font-size:.75rem;display:flex;align-items:center;justify-content:center;">${isBm?'⭐':'☆'}</button>
+        </div>`;
+      }).join('')
+      + '</div>';
   }
 
-  grid.innerHTML=filtered.map(r=>{
-    const isCustom=state.customRecipes.some(cr=>cr.name===r.name);
-    const ingrList=(r.ingredients||[]).map(i=>typeof i==='string'?i:i.name);
-    const have=ingrList.filter(i=>fridgeNames.some(fn=>fn.includes(i.toLowerCase().split(' ')[0]))).length;
-    const pct=ingrList.length?Math.round(have/ingrList.length*100):0;
-    const availClass=pct>=80?'h':pct>=50?'m':'l';
-    const availTxt=pct>=80?'✅ Prêt':'🔶 '+have+'/'+ingrList.length;
-    return `<div class="rc-card" onclick="openRecipeDetail('${r.id||r.name}')">
-      ${isCustom?'<div class="rc-custom-badge">Perso</div>':''}
-      ${r.photo?`<img src="${r.photo}" style="width:52px;height:52px;border-radius:var(--rs);object-fit:cover;flex-shrink:0;">`:'<div class="rc-card-em">'+(r.emoji||'🍽️')+'</div>'}
-      <div class="rc-card-info">
-        <div class="rc-card-name">${r.name}</div>
-        <div class="rc-card-meta">
-          ${r.time?`<span class="rc-card-pill">⏱️ ${r.time}min</span>`:''}
-          ${r.portions?`<span class="rc-card-pill">👥 ${r.portions}</span>`:''}
-          ${r.kcal?`<span class="rc-card-pill">🔥 ${r.kcal}kcal</span>`:''}
-          ${r.diet&&r.diet!=='omnivore'?`<span class="rc-card-pill">${{veg:'🥬',vegan:'🌱',pesc:'🐟',gluten:'🌾',keto:'🥑'}[r.diet]||r.diet}</span>`:''}
-          ${ingrList.length?`<span class="rc-avail ${availClass}">${availTxt}</span>`:''}
-        </div>
-      </div>
-      <div style="display:flex;flex-direction:column;gap:5px;flex-shrink:0;">
-        <button class="btn sm acc" onclick="event.stopPropagation();addRecipeToDay('${r.id||r.name}')" style="padding:5px 8px;font-size:.65rem;">📅</button>
-        <button class="btn sm" onclick="event.stopPropagation();addRecipeIngredients('${r.id||r.name}')" style="padding:5px 8px;font-size:.65rem;color:var(--gn);">🛒</button>
-      </div>
-    </div>`;
-  }).join('');
+  panel.innerHTML = '<div style="padding:0;">' + html + '</div>';
 }
 
-// ── Détail recette ───────────────────────────────────────────
+function toggleFavoritesView() {
+  const sec = document.getElementById('favoritesSection');
+  if(!sec) return;
+  const isHidden = sec.style.display === 'none';
+  sec.style.display = isHidden ? 'block' : 'none';
+  const btn = document.getElementById('favToggleBtn');
+  if(btn) btn.style.background = isHidden ? 'rgba(246,211,101,.2)' : '';
+}
+
+function openCustomRecipeDetail(id) {
+  const r = (state.customRecipes||[]).find(x=>x.id===id);
+  if(!r) return;
+  window._currentRecipe = r;
+  const overlay = document.createElement('div');
+  overlay.className = 'overlay on';
+  overlay.id = 'customDetailOverlay';
+  overlay.onclick = e => { if(e.target===overlay) overlay.remove(); };
+  const fridgeNames = state.fridge.map(f=>f.name.toLowerCase());
+  const ingredients = (r.ingredients||[]).map(i => typeof i==='string' ? {name:i,qty:'',unit:''} : i);
+  const isBm = (state.recipeBookmarks||[]).some(b=>b.id===r.id);
+  overlay.innerHTML = `<div class="modal" style="max-height:90vh;overflow-y:auto;" id="customDetailModal">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+      <div class="mhdl" style="margin:0;flex:1;"></div>
+      <button onclick="document.getElementById('customDetailOverlay').remove()" style="width:28px;height:28px;border-radius:50%;background:var(--bg2);border:none;cursor:pointer;font-size:.8rem;">✕</button>
+    </div>
+    ${r.photo?`<img src="${r.photo}" style="width:calc(100%+40px);margin:-20px -20px 14px;height:180px;object-fit:cover;display:block;" alt="${r.name}">`:''}
+    <div style="font-weight:900;font-size:1rem;margin-bottom:6px;">${r.name}</div>
+    <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:12px;">
+      ${r.time?`<span class="off-badge off-badge-blue">⏱ ${r.time}min</span>`:''}
+      ${r.portions?`<span class="off-badge off-badge-blue">🍽️ ${r.portions}pers.</span>`:''}
+      ${r.kcal?`<span class="off-badge off-badge-orange">🔥 ${r.kcal}kcal</span>`:''}
+      ${r.diet&&r.diet!=='omnivore'?`<span class="off-badge off-badge-green">${r.diet}</span>`:''}
+    </div>
+    <div style="font-size:.68rem;font-weight:800;color:var(--tx3);text-transform:uppercase;margin-bottom:8px;">Ingrédients</div>
+    <div style="margin-bottom:14px;">
+      ${ingredients.map(i=>{const have=fridgeNames.some(fn=>fn.includes((i.name||'').split(' ')[0].toLowerCase()));
+      return '<div style="display:flex;align-items:center;gap:6px;padding:5px 0;border-bottom:1px solid var(--bg2);">'
+        +'<div style="width:6px;height:6px;border-radius:50%;background:'+(have?'var(--gn)':'var(--tx3)')+';flex-shrink:0;"></div>'
+        +'<div style="flex:1;font-size:.8rem;">'+(i.qty?'<span style="color:var(--tx2);font-size:.72rem;">'+i.qty+' '+i.unit+'</span> ':'')+i.name+'</div>'
+        +'<span style="font-size:.62rem;font-weight:700;color:'+(have?'var(--gn)':'var(--tx3)')+';">'+(have?'✓':'')+'</span>'
+        +'</div>';}).join('')}
+    </div>
+    ${r.instructions&&r.instructions.length?`<div style="font-size:.68rem;font-weight:800;color:var(--tx3);text-transform:uppercase;margin-bottom:8px;">Préparation</div>
+    <div style="margin-bottom:14px;">
+      ${r.instructions.map((s,i)=>'<div style="display:flex;gap:8px;padding:8px 0;border-bottom:1px solid var(--bg2);">'
+        +'<div style="width:22px;height:22px;border-radius:50%;background:var(--grad);color:#fff;font-size:.68rem;font-weight:900;display:flex;align-items:center;justify-content:center;flex-shrink:0;">'+(i+1)+'</div>'
+        +'<div style="font-size:.78rem;line-height:1.6;">'+s+'</div></div>').join('')}
+    </div>`:''}
+    <div style="display:flex;flex-direction:column;gap:8px;padding-top:12px;border-top:1px solid var(--bg2);">
+      <div style="display:flex;gap:8px;">
+        <button class="btn acc" style="flex:1;padding:12px;" onclick="editCustomRecipe('${r.id}');document.getElementById('customDetailOverlay').remove()">✏️ Modifier</button>
+        <button onclick="toggleBookmark('${r.id}')" style="padding:12px 14px;border-radius:var(--rs);background:${isBm?'rgba(246,211,101,.2)':'var(--bg2)'};border:none;font-size:1rem;cursor:pointer;">${isBm?'⭐':'☆'}</button>
+      </div>
+      <button class="btn" style="width:100%;padding:11px;color:var(--rd);" onclick="deleteCustomRecipe('${r.id}');document.getElementById('customDetailOverlay').remove()">🗑️ Supprimer cette recette</button>
+      <button class="btn" style="width:100%;padding:11px;" onclick="document.getElementById('customDetailOverlay').remove()">Fermer</button>
+    </div>
+  </div>`;
+  document.body.appendChild(overlay);
+  // Swipe down to close
+  _attachSwipeClose('customDetailModal', () => overlay.remove());
+}
+
+function openFavRecipe(id) {
+  // Chercher la recette dans toutes les sources
+  const all = [...(getAllRecipes?getAllRecipes():[]), ...(state.recipeBookmarks||[])];
+  const r = all.find(x => x.id===id);
+  if(r && r.source==='custom') { openCustomRecipeDetail(id); return; }
+  if(r && r.mdbId) { openMealDBRecipe(r.mdbId); return; }
+  if(r) openRecipeDetail(id);
+}
+
+function editCustomRecipe(id) {
+  const r = (state.customRecipes||[]).find(x=>x.id===id);
+  if(!r) return;
+  openCreateRecipeModal(r); // passer la recette pour pré-remplir
+}
+
+function deleteCustomRecipe(id) {
+  state.customRecipes = (state.customRecipes||[]).filter(x=>x.id!==id);
+  state.recipeBookmarks = (state.recipeBookmarks||[]).filter(x=>x.id!==id);
+  saveState();
+  renderRecipesGrid();
+  showToast('🗑️','Recette supprimée','');
+}
+
+// Helper: swipe down to close modal
+function _attachSwipeClose(modalId, onClose) {
+  const modal = document.getElementById(modalId);
+  if(!modal) return;
+  let startY=0, dragging=false;
+  modal.addEventListener('touchstart', e=>{startY=e.touches[0].clientY;dragging=false;},{passive:true});
+  modal.addEventListener('touchmove', e=>{
+    if(modal.scrollTop>4) return;
+    const dy=e.touches[0].clientY-startY;
+    if(dy>12){dragging=true;modal.style.transition='none';modal.style.transform=`translateY(${Math.min(dy,220)}px)`;modal.style.opacity=String(Math.max(0,1-dy/240));}
+  },{passive:true});
+  modal.addEventListener('touchend', e=>{
+    if(dragging){const dy=e.changedTouches[0].clientY-startY;modal.style.transition='transform .22s ease,opacity .22s ease';
+      if(dy>80){modal.style.transform='translateY(100%)';modal.style.opacity='0';setTimeout(onClose,210);}
+      else{modal.style.transform='';modal.style.opacity='';}
+    }dragging=false;
+  },{passive:true});
+}
+
+
 function openRecipeDetail(idOrName) {
   const all = [...getAllRecipes(), ...(state._mdbCache||[])];
   const r = all.find(x => x.id===idOrName || x.name===idOrName);
@@ -6022,11 +6345,6 @@ function saveNewRecipe() {
 }
 function saveCustomRecipe() { saveNewRecipe(); } // compat alias
 
-function deleteCustomRecipe(name) {
-  state.customRecipes=state.customRecipes.filter(r=>r.name!==name);
-  saveState(); renderRecipesGrid();
-  showToast('🗑','Recette supprimée','');
-}
 
 // ── Nutrition ────────────────────────────────────────────────
 function renderNutriTab() {
@@ -6118,7 +6436,7 @@ Donne 4 conseils nutritionnels personnalisés et précis en JSON:
 [{"type":"tip|warn|bad|info","title":"Titre court","body":"Conseil de 2 phrases précises et actionnables"}]
 Pas de généralités. Adapte à ce profil spécifique.`;
   try {
-    const resp=await fetch('/api/claude',{method:'POST',headers:{'Content-Type':'application/json','anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:800,messages:[{role:'user',content:prompt}]})});
+    const resp=await fetch('/api/claude',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:800,messages:[{role:'user',content:prompt}]})});
     const data=await resp.json();
     const text=(data.content||[]).find(c=>c.type==='text')?.text||'';
     const items=JSON.parse(text.replace(/```json|```/g,'').trim());

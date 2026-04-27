@@ -2958,68 +2958,94 @@ async function translateRecipeFull(recipe) {
 }
 
 // ══ Traduction automatique via Claude — sans bouton, directement dans la modale ══
+// ══ Traduction automatique via Claude Haiku (économique) ══
+// claude-haiku = ~10x moins cher que Sonnet, parfait pour la traduction
 async function autoTranslateRecipeInto(containerEl, recipe) {
   if(!recipe) return;
   if(!recipe.name && recipe.title) recipe.name = recipe.title;
 
-  const toTranslate = {
-    title: recipe.name || recipe.title || '',
-    ingredients: (recipe.extendedIngredients||recipe.ingredients||[]).slice(0,20).map(i=>{
-      if(typeof i==='string') return i;
-      const qty = i.amount ? (Number(i.amount).toFixed(0)+' '+(i.unit||'')) : (i.qty||'');
-      return (qty+' '+( i.originalName||i.name||i.original||'')).trim();
-    }).filter(Boolean),
-    steps: ((recipe.analyzedInstructions||[])[0]?.steps||[]).map(s=>s.step).filter(Boolean)
-           .concat( Array.isArray(recipe.instructions)
-             ? recipe.instructions.map(s=>typeof s==='string'?s:s.step||'').filter(Boolean)
-             : [] ).filter((v,i,a)=>a.indexOf(v)===i) // dedup
-  };
+  // Construire le contenu à traduire
+  const ingredients = (recipe.extendedIngredients || recipe.ingredients || []).slice(0, 20).map(i => {
+    if(typeof i === 'string') return i;
+    const qty = i.amount ? (Number(i.amount).toFixed(0) + ' ' + (i.unit||'')).trim() : (i.qty||'');
+    return (qty + ' ' + (i.originalName||i.name||i.original||'')).trim();
+  }).filter(Boolean);
 
-  if(!toTranslate.title && !toTranslate.ingredients.length) return;
+  const steps = [
+    ...((recipe.analyzedInstructions||[])[0]?.steps||[]).map(s=>s.step),
+    ...(Array.isArray(recipe.instructions) ? recipe.instructions.map(s=>typeof s==='string'?s:s.step||'') : [])
+  ].filter((v,i,a)=>v && a.indexOf(v)===i).slice(0, 15);
 
-  // Loader discret en bas du modal
+  const title = recipe.name || recipe.title || '';
+  if(!title && !ingredients.length) return;
+
+  // Loader discret
   const loader = document.createElement('div');
   loader.id = 'autoTranslateLoader';
-  loader.innerHTML = '<div style="font-size:.65rem;color:var(--tx3);text-align:center;padding:8px;display:flex;align-items:center;gap:5px;justify-content:center;border-top:1px solid var(--bg2);">'
-    + '<div style="width:10px;height:10px;border-radius:50%;border:2px solid var(--bg2);border-top-color:var(--ac);animation:spin .7s linear infinite;flex-shrink:0;"></div>'
-    + '<span>Traduction automatique…</span></div>';
+  loader.innerHTML = '<div style="font-size:.62rem;color:var(--tx3);text-align:center;padding:7px 10px;display:flex;align-items:center;gap:5px;justify-content:center;border-top:1px solid var(--bg2);">'
+    + '<div style="width:9px;height:9px;border-radius:50%;border:2px solid var(--bg2);border-top-color:var(--ac);animation:spin .7s linear infinite;flex-shrink:0;"></div>'
+    + '<span>Traduction 🇫🇷 en cours…</span></div>';
   containerEl.appendChild(loader);
 
   try {
+    // Utiliser Claude Haiku — très économique (~10x moins cher que Sonnet)
+    const payload = {
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 1800,
+      system: 'Expert culinaire. Traduis ce JSON de recette anglaise en français naturel. Règles strictes: mesures→métriques (1 cup=240ml, 1oz=28g, 1tbsp=15ml, °F-32÷1.8=°C), ingrédients exotiques→nom français + original entre parenthèses si inconnu (ex: Casabe→Galette de manioc (Casabe)), étapes→style chef français. JSON uniquement, zéro markdown.',
+      messages: [{
+        role: 'user',
+        content: 'Traduis:\n' + JSON.stringify({title, ingredients, steps}) + '\n\nJSON: {"title":"...","ingredients":["..."],"steps":["..."]}'
+      }]
+    };
+
     const resp = await fetch('/api/claude', {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 2000,
-        system: 'Tu es un traducteur culinaire expert francophone. Traduis ce JSON de recette vers le français. Règles: adapte les mesures (cups→ml, oz→g, tablespoon→cuillère à soupe, °F→°C), traduis tous les ingrédients y compris les plus exotiques (ex: "Casabe"→"Cassave / galette de manioc"), pour les étapes traduis naturellement comme un chef. Réponds UNIQUEMENT en JSON, sans markdown ni texte autour.',
-        messages:[{role:'user', content:'Traduis:\n'+JSON.stringify(toTranslate)+'\n\nRéponds: {"title":"...","ingredients":["..."],"steps":["..."]}'}]
-      })
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
     });
+
+    if(!resp.ok) throw new Error('API ' + resp.status);
     const data = await resp.json();
-    const raw = (data.content||[]).find(x=>x.type==='text')?.text||'';
-    const j = raw.slice(raw.indexOf('{'), raw.lastIndexOf('}')+1);
-    const t = JSON.parse(j);
+    const raw = (data.content||[]).find(x=>x.type==='text')?.text || '';
+    const jsonStr = raw.slice(raw.indexOf('{'), raw.lastIndexOf('}')+1);
+    const t = JSON.parse(jsonStr);
+    if(!t.title && !t.ingredients) throw new Error('empty');
 
     loader.remove();
 
-    // Mettre à jour le titre
-    containerEl.querySelectorAll('[data-recipe-title]').forEach(el=>{if(t.title)el.textContent=t.title;});
-    // Mettre à jour les ingrédients
-    containerEl.querySelectorAll('[data-ingr-idx]').forEach(el=>{
-      const i=parseInt(el.dataset.ingrIdx);
-      if(t.ingredients&&t.ingredients[i])el.textContent=t.ingredients[i];
+    // ── Mettre à jour le titre ──
+    containerEl.querySelectorAll('[data-recipe-title]').forEach(el => { if(t.title) el.textContent = t.title; });
+
+    // ── Mettre à jour les ingrédients ──
+    containerEl.querySelectorAll('[data-ingr-idx]').forEach(el => {
+      const i = parseInt(el.dataset.ingrIdx);
+      if(t.ingredients && t.ingredients[i]) {
+        // Conserver la quantité (span) + remplacer le texte du nom
+        const span = el.querySelector('span');
+        if(span) {
+          el.textContent = '';
+          el.appendChild(span);
+          el.appendChild(document.createTextNode(' ' + t.ingredients[i]));
+        } else {
+          el.textContent = t.ingredients[i];
+        }
+      }
     });
-    // Mettre à jour les étapes
-    containerEl.querySelectorAll('[data-step-idx]').forEach(el=>{
-      const i=parseInt(el.dataset.stepIdx);
-      if(t.steps&&t.steps[i])el.textContent=t.steps[i];
+
+    // ── Mettre à jour les étapes ──
+    containerEl.querySelectorAll('[data-step-idx]').forEach(el => {
+      const i = parseInt(el.dataset.stepIdx);
+      if(t.steps && t.steps[i]) el.textContent = t.steps[i];
     });
+
     // Badge 🇫🇷
-    containerEl.querySelectorAll('.fr-badge').forEach(el=>el.style.display='inline-flex');
+    containerEl.querySelectorAll('.fr-badge').forEach(el => { el.style.display = 'inline-flex'; });
 
   } catch(e) {
     loader?.remove();
-    console.warn('Auto-translate:', e.message);
+    console.warn('Auto-translate failed:', e.message);
+    // Silencieux — la recette reste en anglais si la traduction échoue
   }
 }
 
@@ -3208,13 +3234,14 @@ function _showMealDBDetail(meal) {
   const missing = ingredients.filter(i => !fridgeNames.some(fn=>fn.includes(i.name.toLowerCase().split(' ')[0])));
   const isBookmarked = (state.recipeBookmarks||[]).some(b=>b.id===recipe.id);
 
-  overlay.innerHTML = `<div class="modal" style="max-height:90vh;overflow-y:auto;padding:0;">
+  overlay.innerHTML = `<div class="modal" id="mdbDetailModal" style="max-height:90vh;overflow-y:auto;padding:0;">
     <div style="position:sticky;top:0;z-index:10;background:var(--bg);padding:14px 16px 10px;border-bottom:1px solid var(--bg2);display:flex;align-items:center;justify-content:space-between;">
       <div class="mhdl" style="margin:0 auto;"></div>
+      <button onclick="document.getElementById('mdbDetailOverlay').remove()" style="width:28px;height:28px;border-radius:50%;background:var(--bg2);border:none;cursor:pointer;font-size:.8rem;flex-shrink:0;">✕</button>
     </div>
     ${meal.strMealThumb?`<img src="${meal.strMealThumb}" style="width:100%;height:200px;object-fit:cover;display:block;" alt="${meal.strMeal}">`:''}
     <div style="padding:16px;">
-      <div style="font-weight:900;font-size:1rem;margin-bottom:6px;">${meal.strMeal}</div>
+      <div style="font-weight:900;font-size:1rem;margin-bottom:6px;" data-recipe-title>${meal.strMeal}</div>
       <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:12px;">
         ${meal.strCategory?`<span class="off-badge off-badge-blue">🍽️ ${meal.strCategory}</span>`:''}
         ${meal.strArea?`<span class="off-badge off-badge-blue">🌍 ${meal.strArea}</span>`:''}

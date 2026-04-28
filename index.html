@@ -1767,12 +1767,12 @@ async function translateMealDBRecipe(meal) {
   }
 
   // Extraire étapes brutes
-  const rawSteps = (meal.strInstructions || '')
-    .replace(/
-/g, '').split('
-')
-    .filter(s => s.trim().length > 5)
-    .map(s => s.trim()).slice(0, 14);
+const rawSteps = (meal.strInstructions || '')
+  .replace(/\r/g, '')
+  .split('\n')
+  .filter(s => s.trim().length > 5)
+  .map(s => s.trim())
+  .slice(0, 14);
 
   const prompt = `Tu es un chef culinaire français. Traduis cette recette anglaise en français gastronomique naturel.
 

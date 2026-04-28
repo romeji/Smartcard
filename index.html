@@ -4524,14 +4524,21 @@ function _showMealDBDetailWithAssign(meal, day, slot) {
     }
   }
 
-  const steps = isTranslated && meal._frSteps && meal._frSteps.length
-    ? meal._frSteps
-    : (meal.strInstructions||'').replace(/
-/g,'').split('
-').filter(s=>s.trim().length>5).map(s=>s.trim()).slice(0,12);
+const steps = isTranslated && meal._frSteps && meal._frSteps.length
+  ? meal._frSteps
+  : (meal.strInstructions || '')
+      .replace(/\r/g, '')
+      .split('\n')
+      .filter(s => s.trim().length > 5)
+      .map(s => s.trim())
+      .slice(0, 12);
 
-  const fridgeNames = (state.fridge||[]).map(f => f.name.toLowerCase());
-  const missing = ingredients.filter(i => !fridgeNames.some(fn => fn.includes(i.name.toLowerCase().split(' ')[0])));
+const fridgeNames = (state.fridge || []).map(f => f.name.toLowerCase());
+const missing = ingredients.filter(i =>
+  !fridgeNames.some(fn =>
+    fn.includes(i.name.toLowerCase().split(' ')[0])
+  )
+);
 
   const existing = document.getElementById('mdbDetailOverlay');
   if (existing) existing.remove();

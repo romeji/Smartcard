@@ -4604,12 +4604,12 @@ function _showMealDBDetailWithAssign(meal, day, slot) {
       <div style="display:flex;flex-direction:column;gap:8px;border-top:1px solid var(--bg2);padding-top:12px;">
         <!-- ★ CTA principal : Ajouter au menu -->
         <button class="btn acc" style="width:100%;padding:14px;font-size:.88rem;font-weight:900;"
-          onclick="confirmMealDBForSlot(${JSON.stringify(displayTitle)}, ${day}, '${slot}', '${meal.strMealThumb||''}')">
+          onclick="confirmMealDBAssign()" data-day="${day}" data-slot="${slot}">
           ✅ Ajouter au ${SLOT_LABELS[slot]||slot} · ${DAYS_FR[day]||'J'+day}
         </button>
         ${missing.length ? `
         <button class="btn" style="width:100%;padding:12px;color:var(--or);"
-          onclick="addMDBIngredients(${JSON.stringify(missing.map(m=>m.name)).replace(/"/g,'&quot;')})">
+          onclick="addMDBIngredientsFromModal()">
           🛒 Ajouter ${missing.length} manquant${missing.length>1?'s':''} à ma liste
         </button>` : `<div style="text-align:center;font-size:.8rem;color:var(--gn);font-weight:800;padding:8px;">✅ Vous avez tous les ingrédients !</div>`}
         <button class="btn ghost" style="width:100%;padding:10px;color:var(--tx2);" onclick="document.getElementById('mdbDetailOverlay').remove()">Fermer</button>
@@ -4617,10 +4617,32 @@ function _showMealDBDetailWithAssign(meal, day, slot) {
     </div>
   </div>`;
 
+  // Store data for safe onclick access
+  window._mdbCurrentTitle   = displayTitle;
+  window._mdbCurrentPhoto   = meal.strMealThumb || '';
+  window._mdbCurrentMissing = missing.map(m => m.name);
+
   document.body.appendChild(overlay);
   if (typeof _attachSwipeClose === 'function') {
     _attachSwipeClose(overlay.querySelector('.modal'), () => overlay.remove());
   }
+}
+
+// Called from onclick in modal — reads data safely from window vars
+function confirmMealDBAssign() {
+  const modal = document.getElementById('mdbDetailOverlay');
+  if (!modal) return;
+  const btn = modal.querySelector('[onclick="confirmMealDBAssign()"]');
+  if (!btn) return;
+  const day  = parseInt(btn.dataset.day);
+  const slot = btn.dataset.slot;
+  const frName = window._mdbCurrentTitle || '';
+  const photo  = window._mdbCurrentPhoto || '';
+  confirmMealDBForSlot(frName, day, slot, photo);
+}
+
+function addMDBIngredientsFromModal() {
+  addMDBIngredients(window._mdbCurrentMissing || []);
 }
 
 function confirmMealDBForSlot(frName, day, slot, photo) {

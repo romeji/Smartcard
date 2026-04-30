@@ -2807,7 +2807,7 @@ async function loadRecipes() {
       const titlesResp = await fetch('/api/claude', {
         method:'POST', headers:{'Content-Type':'application/json'},
         body: JSON.stringify({
-          model: 'claude-haiku-4-5-20251001',
+          model: 'claude-3-5-haiku-20241022',
           max_tokens: 400,
           system: 'Traduis ces noms de recettes anglaises en français. JSON uniquement.',
           messages:[{role:'user', content: JSON.stringify(mealsList.map(m=>m.strMeal)) + '\n\nJSON: ["titre fr 1","titre fr 2",...]'}]
@@ -3014,7 +3014,7 @@ async function autoTranslateRecipeInto(containerEl, recipe) {
   try {
     // Utiliser Claude Haiku — très économique (~10x moins cher que Sonnet)
     const payload = {
-      model: 'claude-haiku-4-5-20251001',
+      model: 'claude-3-5-haiku-20241022',
       max_tokens: 1800,
       system: 'Expert culinaire. Traduis ce JSON de recette anglaise en français naturel. Règles strictes: mesures→métriques (1 cup=240ml, 1oz=28g, 1tbsp=15ml, °F-32÷1.8=°C), ingrédients exotiques→nom français + original entre parenthèses si inconnu (ex: Casabe→Galette de manioc (Casabe)), étapes→style chef français. JSON uniquement, zéro markdown.',
       messages: [{
@@ -3268,7 +3268,7 @@ async function _translateMealDB(meal) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
+        model: 'claude-3-5-haiku-20241022',
         max_tokens: 2000,
         system: 'Traducteur culinaire expert. Traduis ce JSON de recette anglaise vers le français. Règles: mesures métriques (1 cup=240ml, 1 tbsp=15ml, 1 tsp=5ml, 1 oz=28g, °F→°C via (F-32)/1.8), ingrédients exotiques→nom français courant + (original) si besoin, style chef. JSON uniquement sans markdown.',
         messages: [{ role: 'user', content: JSON.stringify(payload) + '\n\nJSON: {"title":"...","ingredients":["mesure nom traduit"],"steps":["..."]}' }]
@@ -3293,9 +3293,11 @@ async function _translateMealDB(meal) {
     };
 
   } catch(e) {
-    console.warn('Translation failed, using original:', e.message);
-    // Fallback : retourner le meal original sans traduction
-    return { ...meal, _translated: false };
+    console.error('_translateMealDB failed:', e.message);
+    // Afficher l'erreur brièvement, puis montrer la recette en anglais
+    loadingOverlay && loadingOverlay.remove();
+    // Retourner le meal original — la recette s'affiche en anglais
+    return { ...meal, _translated: false, _translateError: e.message };
   }
 }
 

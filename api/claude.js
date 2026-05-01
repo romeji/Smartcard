@@ -1,11 +1,8 @@
-// api/claude.js — Proxy avec fallback GPT-4o-mini si Claude échoue
-// Variables d'environnement Vercel : CLAUDE_API et OPENAI_API
-
+// api/claude.js — Claude + fallback GPT-4o-mini
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-
   if(req.method === 'OPTIONS') { res.status(200).end(); return; }
   if(req.method !== 'POST')    { res.status(405).json({error:'Method not allowed'}); return; }
 
@@ -13,8 +10,13 @@ export default async function handler(req, res) {
   if(!body.model)      body.model      = 'claude-3-5-haiku-20241022';
   if(!body.max_tokens) body.max_tokens = 1024;
 
-  // ── 1. Essayer Claude ──────────────────────────────────────
   const claudeKey = process.env.CLAUDE_API;
+  const openaiKey = process.env.OPENAI_API;
+
+  // Log keys presence (not values) for debugging
+  console.log('Keys present — Claude:', !!claudeKey, '| OpenAI:', !!openaiKey);
+
+  // ── 1. Essayer Claude ──────────────────────────────────
   if(claudeKey) {
     try {
       const r = await fetch('https://api.anthropic.com/v1/messages', {
@@ -27,24 +29,31 @@ export default async function handler(req, res) {
         body: JSON.stringify(body),
       });
       const data = await r.json();
-      // Succès OU erreur non liée au crédit → retourner tel quel
-      if(r.ok || (data?.error?.type !== 'authentication_error' && !data?.error?.message?.includes('credit'))) {
+      if(r.ok) {
+        console.log('Claude OK');
+        return res.status(200).json(data);
+      }
+      const errMsg = data?.error?.message || '';
+      console.warn('Claude error:', r.status, errMsg);
+      // Ne tomber sur OpenAI que si c'est un problème de crédit/auth
+      const isCreditError = errMsg.includes('credit') || errMsg.includes('balance') || r.status === 400 || r.status === 402;
+      if(!isCreditError) {
         return res.status(r.status).json(data);
       }
-      console.warn('Claude credit exhausted, falling back to OpenAI');
+      console.log('Credit exhausted, trying OpenAI...');
     } catch(e) {
-      console.warn('Claude failed:', e.message, '— trying OpenAI');
+      console.warn('Claude fetch failed:', e.message);
     }
   }
 
-  // ── 2. Fallback GPT-4o-mini ────────────────────────────────
-  const openaiKey = process.env.OPENAI_API;
+  // ── 2. Fallback GPT-4o-mini ──────────────────────────────
   if(!openaiKey) {
-    return res.status(500).json({ error: 'No API key available. Set CLAUDE_API or OPENAI_API in Vercel env vars.' });
+    console.error('No OPENAI_API key set in Vercel env vars');
+    return res.status(500).json({ error: 'Crédit Claude épuisé et aucune clé OpenAI configurée. Ajoutez OPENAI_API dans Vercel → Settings → Environment Variables.' });
   }
 
   try {
-    // Convertir le format Anthropic → OpenAI
+    console.log('Calling OpenAI gpt-4o-mini...');
     const messages = [];
     if(body.system) messages.push({ role: 'system', content: body.system });
     (body.messages || []).forEach(m => messages.push({ role: m.role, content: m.content }));
@@ -53,7 +62,7 @@ export default async function handler(req, res) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${openaiKey}`,
+        'Authorization': 'Bearer ' + openaiKey,
       },
       body: JSON.stringify({
         model: 'gpt-4o-mini',
@@ -69,8 +78,10 @@ export default async function handler(req, res) {
       return res.status(r.status).json({ error: data?.error?.message || 'OpenAI error' });
     }
 
-    // Convertir la réponse OpenAI → format Anthropic (pour que le frontend marche sans changement)
     const text = data.choices?.[0]?.message?.content || '';
+    console.log('OpenAI OK, text length:', text.length);
+
+    // Réponse au format Anthropic pour compatibilité frontend
     return res.status(200).json({
       content: [{ type: 'text', text }],
       model: 'gpt-4o-mini',
@@ -79,6 +90,6 @@ export default async function handler(req, res) {
 
   } catch(e) {
     console.error('OpenAI fallback error:', e.message);
-    return res.status(500).json({ error: e.message });
+    return res.status(500).json({ error: 'OpenAI: ' + e.message });
   }
 }

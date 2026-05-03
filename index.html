@@ -465,6 +465,7 @@ svg{display:block;flex-shrink:0;}
 [data-theme=dark] .modal{background:var(--bg2);}
 [data-theme=dark] .profile-modal{background:var(--bg2);}
 [data-theme=dark] .tabbar{background:var(--bg2);}
+[data-theme=dark] #tab-liste svg{color:#ff8e53 !important;}
 [data-theme=dark] .tb-inner{background:var(--bg3);}
 [data-theme=dark] .topbar{background:var(--bg);border-bottom:1px solid var(--bg2);}
 [data-theme=dark] .bb-track{background:var(--bg2);}
@@ -677,6 +678,20 @@ svg{display:block;flex-shrink:0;}
 .meal-pick-em{font-size:1.2rem;flex-shrink:0;}
 .meal-pick-name{font-size:.82rem;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .meal-pick-kcal{font-size:.65rem;color:var(--or);font-weight:700;flex-shrink:0;}
+
+
+/* ══ FRIDGE BEAUTIFUL GRID ══ */
+.fgrid-beautiful{display:grid;grid-template-columns:repeat(auto-fill,minmax(80px,1fr));gap:10px;margin-bottom:14px;}
+.fi-card{background:var(--bg);border-radius:var(--rs);box-shadow:var(--so);padding:12px 8px 8px;text-align:center;position:relative;cursor:pointer;transition:all .15s;border:1.5px solid transparent;}
+.fi-card:active{box-shadow:var(--sp);transform:scale(.96);}
+.fi-card-em{font-size:1.6rem;display:block;margin-bottom:5px;}
+.fi-card-nm{font-size:.58rem;font-weight:800;color:var(--tx);line-height:1.2;word-break:break-word;}
+.fi-card-qty{font-size:.52rem;color:var(--tx3);margin-top:2px;}
+.fi-card-del{position:absolute;top:4px;right:4px;background:rgba(231,76,60,.15);border:none;border-radius:50%;width:18px;height:18px;font-size:.55rem;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--rd);opacity:0;transition:opacity .2s;}
+.fi-card:hover .fi-card-del{opacity:1;}
+.fi-card.expiring{border-color:var(--yl);}
+.fi-card.expired{border-color:var(--rd);}
+[data-theme=dark] .fi-card{background:var(--bg2);}
 
 </style>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
@@ -1055,36 +1070,69 @@ svg{display:block;flex-shrink:0;}
     <!-- VIEW: FRIGO -->
     <div class="view" id="vFrigo">
       <div class="vb">
-        <div class="lg-title">Mon Frigo 🧊</div>
-        <div class="lg-sub" style="margin-bottom:18px;">Stocks + recettes avec vos ingrédients</div>
 
-        <div class="card mb14">
-          <div style="font-weight:800;font-size:.88rem;margin-bottom:10px;">Ajouter un aliment</div>
+        <!-- HEADER HERO -->
+        <div style="background:var(--grad3);border-radius:var(--r);padding:18px 18px 14px;margin-bottom:14px;color:#fff;position:relative;overflow:hidden;">
+          <div style="position:absolute;top:-20px;right:-20px;width:100px;height:100px;border-radius:50%;background:rgba(255,255,255,.08);"></div>
+          <div style="position:absolute;bottom:-30px;right:30px;width:70px;height:70px;border-radius:50%;background:rgba(255,255,255,.06);"></div>
+          <div style="font-size:1.15rem;font-weight:900;margin-bottom:2px;">Mon Frigo 🧊</div>
+          <div style="font-size:.75rem;opacity:.85;" id="fridgeHeroSub">Gérez vos stocks et découvrez des recettes</div>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:10px;">
+            <div style="background:rgba(255,255,255,.18);border-radius:var(--rp);padding:4px 12px;font-size:.72rem;font-weight:800;" id="fridgeCountBadge">0 aliments</div>
+            <div style="background:rgba(255,255,255,.12);border-radius:var(--rp);padding:4px 12px;font-size:.72rem;font-weight:700;" id="fridgeRecipeBadge">— recettes possibles</div>
+          </div>
+        </div>
+
+        <!-- AJOUTER UN ALIMENT -->
+        <div class="card mb14" style="border-left:3px solid var(--tl);">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+            <div style="width:30px;height:30px;border-radius:10px;background:var(--grad3);display:flex;align-items:center;justify-content:center;font-size:.9rem;color:#fff;flex-shrink:0;">+</div>
+            <div style="font-weight:900;font-size:.88rem;">Ajouter un aliment</div>
+          </div>
           <div class="add-row" style="margin-bottom:0;">
             <div class="ac-wrap">
               <input class="inp" id="fridgeInput" placeholder="Ex: lait, œufs, tomates..." autocomplete="off"
                 oninput="onFridgeSearchInput(this.value)" onkeydown="if(event.key==='Enter')addFridgeItem()">
               <div class="ac-list" id="acFridgeList" style="display:none;"></div>
             </div>
-            <button class="btn acc" onclick="addFridgeItem()">+</button>
+            <button class="btn acc3" onclick="addFridgeItem()" style="padding:11px 16px;font-weight:900;">＋</button>
           </div>
         </div>
 
+        <!-- STOCKS DU FRIGO -->
         <div class="sechd">
-          <span class="sec-ti">Dans mon frigo</span>
+          <span class="sec-ti">🥑 Mes stocks</span>
           <span class="sec-cnt" id="fridgeCount">0 articles</span>
         </div>
-        <div class="fgrid" id="fridgeGrid"></div>
+        <div id="fridgeGrid" class="fgrid-beautiful"></div>
         <div class="empty" id="emptyFridge" style="display:none;">
           <div class="empty-ic">🧊</div>
           <div class="empty-ti">Frigo vide</div>
           <div class="empty-su">Ajoutez des aliments manuellement ou terminez une course.</div>
         </div>
 
+        <!-- IA RECETTES DEPUIS FRIGO -->
+        <div id="fridgeAISection" style="display:none;margin-bottom:14px;margin-top:14px;">
+          <div style="background:linear-gradient(135deg,rgba(108,92,231,.12),rgba(0,181,184,.08));border:1.5px solid rgba(108,92,231,.2);border-radius:var(--r);padding:14px 16px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+              <div style="display:flex;align-items:center;gap:8px;">
+                <div style="width:32px;height:32px;background:var(--grad);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:.9rem;flex-shrink:0;">🤖</div>
+                <div>
+                  <div style="font-weight:900;font-size:.85rem;">Recettes IA avec mon frigo</div>
+                  <div style="font-size:.68rem;color:var(--tx2);" id="fridgeAIStatus">Cliquez pour générer des idées</div>
+                </div>
+              </div>
+              <button class="btn acc sm" id="fridgeAIBtn" onclick="generateFridgeAIRecipes()" style="flex-shrink:0;padding:9px 14px;font-size:.78rem;">✨ Générer</button>
+            </div>
+            <div id="fridgeAIResults" style="display:none;"></div>
+          </div>
+        </div>
+
+        <!-- RECETTES CLASSIQUES POSSIBLES -->
         <div id="recipesSection">
-          <div class="sechd" style="margin-top:18px;margin-bottom:12px;">
-            <span class="sec-ti">Recettes possibles</span>
-            <button class="btn sm" onclick="loadRecipes()">🔄</button>
+          <div class="sechd" style="margin-top:4px;margin-bottom:12px;">
+            <span class="sec-ti">👨‍🍳 Recettes possibles</span>
+            <button class="btn sm" onclick="loadRecipes()" style="font-size:.7rem;padding:6px 10px;">🔄</button>
           </div>
           <div class="rc-grid" id="recipesGrid"></div>
           <div class="empty" id="emptyRecipes" style="display:none;">
@@ -1278,42 +1326,48 @@ svg{display:block;flex-shrink:0;}
 
       <!-- ═══ TAB: NUTRITION ═══ -->
       <div id="menuPanelNutri" style="display:none;">
-        <!-- HEADER STATS -->
-        <div id="nutriStatsGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;"></div>
-        
-        <!-- SEMAINE CHART -->
-        <div class="card mb14">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-            <div style="font-weight:900;font-size:.88rem;">📈 Calories / semaine</div>
-            <button class="btn ghost sm" onclick="openMenuProfile()" style="font-size:.7rem;">⚙️ Profil</button>
-          </div>
-          <div class="nutri-week-chart" id="nutriWeekChart" style="height:90px;"></div>
-          <div style="display:flex;gap:12px;justify-content:center;margin-top:6px;">
-            <div style="display:flex;align-items:center;gap:4px;font-size:.62rem;color:var(--tx2);">
-              <div style="width:8px;height:8px;border-radius:2px;background:var(--ac);"></div>Planifié
-            </div>
-            <div style="display:flex;align-items:center;gap:4px;font-size:.62rem;color:var(--tx2);">
-              <div style="width:8px;height:8px;border-radius:2px;border:1.5px dashed var(--tx3);"></div>Objectif
-            </div>
-          </div>
+
+        <!-- HERO CALORIES PERSONNALISÉ -->
+        <div class="nutri-hero mb14" id="nutriHeroCard">
+          <div style="font-size:.72rem;opacity:.8;margin-bottom:4px;">🎯 Votre objectif calorique journalier</div>
+          <div class="nutri-hero-val" id="nutriHeroKcal">— kcal</div>
+          <div class="nutri-hero-sub" id="nutriHeroSub">Complétez votre profil pour personnaliser</div>
+          <button onclick="openMenuProfile()" style="margin-top:10px;background:rgba(255,255,255,.2);border:none;border-radius:var(--rp);padding:6px 16px;font-size:.72rem;font-weight:800;color:#fff;cursor:pointer;">⚙️ Modifier le profil</button>
         </div>
 
-        <!-- MACROS -->
-        <div class="card mb14">
-          <div style="font-weight:900;font-size:.88rem;margin-bottom:12px;">🎯 Macronutriments (moy/jour)</div>
-          <div id="macroRings"></div>
-        </div>
-        <!-- AI Nutritional analysis -->
+        <!-- STATS PROFIL GRID -->
+        <div id="nutriProfileGrid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px;"></div>
+
+        <!-- BILAN SEMAINE CALORIES -->
         <div class="card mb14">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-            <div style="font-weight:900;font-size:.88rem;">🤖 Analyse IA de votre semaine</div>
+            <div style="font-weight:900;font-size:.88rem;">📊 Bilan calorique semaine</div>
+            <div id="nutriWeekScore" style="font-size:.72rem;font-weight:800;color:var(--gn);"></div>
           </div>
-          <div id="aiNutriAnalysis" style="font-size:.78rem;color:var(--tx2);">Générez un menu pour obtenir une analyse.</div>
-          <button class="btn acc" onclick="analyzeWeekWithAI()" style="width:100%;margin-top:10px;padding:12px;border-radius:var(--rs);font-weight:800;">✨ Analyser ma semaine</button>
+          <div id="nutriWeekCard"></div>
         </div>
-        <!-- Seasonal suggestions -->
+
+        <!-- MACROS MOYENNES SEMAINE -->
         <div class="card mb14">
-          <div style="font-weight:900;font-size:.88rem;margin-bottom:10px;" id="seasonNutriHeader">🌱 Produits de saison ce mois</div>
+          <div style="font-weight:900;font-size:.88rem;margin-bottom:12px;">🎯 Macronutriments · moyenne semaine</div>
+          <div class="nutri-macros-grid" id="macroRings"></div>
+          <div id="nutriMacros" class="nutri-macros-grid" style="display:none;"></div>
+        </div>
+
+        <!-- ANALYSE IA -->
+        <div class="card mb14">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+            <div style="width:30px;height:30px;background:var(--grad);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:.9rem;flex-shrink:0;">🤖</div>
+            <div style="font-weight:900;font-size:.88rem;">Analyse IA personnalisée</div>
+          </div>
+          <div id="aiNutriAnalysis" style="font-size:.78rem;color:var(--tx2);margin-bottom:10px;">Analysez votre semaine pour des conseils personnalisés.</div>
+          <button class="btn acc" onclick="generateNutriAdvice()" style="width:100%;padding:12px;border-radius:var(--rs);font-weight:800;" id="nutriAdviceBtn">✨ Analyser ma semaine</button>
+          <div id="nutriAdviceZone" style="margin-top:10px;"></div>
+        </div>
+
+        <!-- Produits de saison -->
+        <div class="card mb14">
+          <div style="font-weight:900;font-size:.88rem;margin-bottom:10px;"><span id="seasonNutriHeader">🌱 Produits de saison</span></div>
           <div id="seasonNutriGrid" style="display:flex;flex-wrap:wrap;gap:8px;"></div>
         </div>
       </div>
@@ -2707,18 +2761,32 @@ function renderFridge() {
   const grid = document.getElementById('fridgeGrid');
   const empty = document.getElementById('emptyFridge');
   const cnt = document.getElementById('fridgeCount');
+  const countBadge = document.getElementById('fridgeCountBadge');
   if(cnt) cnt.textContent = state.fridge.length + ' article(s)';
+  if(countBadge) countBadge.textContent = state.fridge.length + ' aliment' + (state.fridge.length>1?'s':'');
+
+  // Afficher/cacher section IA (si ≥3 ingrédients)
+  const aiSection = document.getElementById('fridgeAISection');
+  if(aiSection) aiSection.style.display = state.fridge.length >= 3 ? 'block' : 'none';
+  const aiStatus = document.getElementById('fridgeAIStatus');
+  if(aiStatus && state.fridge.length >= 3) {
+    aiStatus.textContent = state.fridge.length + ' ingrédients disponibles · Générez des idées de recettes IA';
+  }
+
   if(!state.fridge.length) {
     if(grid) grid.innerHTML = '';
     if(empty) empty.style.display = 'block';
   } else {
     if(empty) empty.style.display = 'none';
-    if(grid) grid.innerHTML = state.fridge.map(f => `
-      <div class="fi" title="${f.name}" onclick="showFridgeMenu('${f.id}')">
-        <span class="fi-em">${f.emoji}</span>
-        <div class="fi-nm">${f.name.length>10?f.name.slice(0,9)+'…':f.name}</div>
-        <div class="fi-qt">×${f.qty||1}</div>
-      </div>`).join('');
+    if(grid) grid.innerHTML = state.fridge.map(f => {
+      const nm = f.name.length > 12 ? f.name.slice(0,11) + '…' : f.name;
+      return '<div class="fi-card" onclick="showFridgeMenu('' + f.id + '')">'
+        + '<button class="fi-card-del" onclick="event.stopPropagation();doDeleteFridge('' + f.id + '')" title="Supprimer">✕</button>'
+        + '<span class="fi-card-em">' + f.emoji + '</span>'
+        + '<div class="fi-card-nm">' + nm + '</div>'
+        + '<div class="fi-card-qty">×' + (f.qty||1) + '</div>'
+        + '</div>';
+    }).join('');
   }
   loadRecipes();
 }
@@ -2749,12 +2817,121 @@ function doDeleteFridge(id) {
 // RECETTES
 // ═══════════════════════════════════════════════
 // ── Frigo → Recettes MealDB (≥3 ingrédients) + fallback Claude ──
+// ═══════════════════════════════════════════════════════════
+// 🤖 GÉNÉRATION IA DEPUIS FRIGO (≥3 ingrédients)
+// ═══════════════════════════════════════════════════════════
+
+// CACHE LOCAL pour éviter retokens inutiles
+function _getRecipeCache(type) {
+  try { return JSON.parse(localStorage.getItem('sc_recipe_cache_' + type) || '{}'); } catch(e) { return {}; }
+}
+function _setRecipeCache(type, key, data) {
+  try {
+    const cache = _getRecipeCache(type);
+    cache[key] = { data, ts: Date.now() };
+    // Garder max 30 entrées
+    const keys = Object.keys(cache);
+    if(keys.length > 30) delete cache[keys[0]];
+    localStorage.setItem('sc_recipe_cache_' + type, JSON.stringify(cache));
+  } catch(e) {}
+}
+function _getCachedRecipe(type, key) {
+  const cache = _getRecipeCache(type);
+  const entry = cache[key];
+  if(!entry) return null;
+  // Expiration 30 jours
+  if(Date.now() - entry.ts > 30 * 24 * 3600 * 1000) return null;
+  return entry.data;
+}
+
+async function generateFridgeAIRecipes() {
+  const btn = document.getElementById('fridgeAIBtn');
+  const status = document.getElementById('fridgeAIStatus');
+  const results = document.getElementById('fridgeAIResults');
+  if(!results) return;
+  if(state.fridge.length < 3) { showToast('⚠️','Frigo','Ajoutez au moins 3 ingrédients'); return; }
+
+  // Clé de cache basée sur les ingrédients du frigo
+  const fridgeKey = state.fridge.map(f=>f.name).sort().slice(0,8).join(',');
+  const cached = _getCachedRecipe('ai_fridge', fridgeKey);
+  if(cached && cached.recipes) {
+    _renderFridgeAIResults(cached.recipes, results, status);
+    return;
+  }
+
+  if(btn) { btn.disabled = true; btn.textContent = '⏳'; }
+  if(status) status.textContent = 'Claude génère des recettes…';
+  results.style.display = 'block';
+  results.innerHTML = '<div style="text-align:center;padding:16px;"><div style="width:24px;height:24px;border-radius:50%;border:3px solid var(--bg2);border-top-color:var(--ac);animation:spin .8s linear infinite;margin:0 auto 8px;"></div><div style="font-size:.75rem;color:var(--tx2);">IA en cours…</div></div>';
+
+  const p = state.profile || {};
+  const diet = p.diet || state.selectedDiet?.[0] || 'omnivore';
+  const ingredients = state.fridge.slice(0,12).map(f=>f.name).join(', ');
+  const prompt = 'Tu es chef cuisinier. Génère 3 recettes délicieuses UNIQUEMENT avec ces ingrédients du frigo (utiliser au moins 3): ' + ingredients + '. Régime: ' + diet + '.
+Réponds UNIQUEMENT en JSON:
+{"recipes":[{"name":"string","emoji":"string","time":25,"kcal":400,"prot":20,"carb":35,"fat":12,"description":"string","ingredients_used":["ingrédient1","ingrédient2","ingrédient3"],"instructions":["Étape 1","Étape 2","Étape 3"]}]}';
+
+  try {
+    const resp = await fetch('/api/claude', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({model:'claude-sonnet-4-20250514', max_tokens:2000, messages:[{role:'user',content:prompt}]})
+    });
+    if(!resp.ok) throw new Error('API ' + resp.status);
+    const data = await resp.json();
+    const text = (data.content||[]).find(c=>c.type==='text')?.text||'';
+    const s = text.indexOf('{'); const e = text.lastIndexOf('}');
+    const parsed = JSON.parse(text.slice(s, e+1));
+    const recipes = (parsed.recipes||[]).map((r,i) => ({...r, id:'fridgeai_'+Date.now()+'_'+i, source:'claude', mealTypes:['l','d']}));
+    if(!recipes.length) throw new Error('empty');
+
+    // Auto-save to cache
+    _setRecipeCache('ai_fridge', fridgeKey, {recipes});
+    _renderFridgeAIResults(recipes, results, status);
+    // Also save to customRecipes cache (deduplicated)
+    recipes.forEach(r => {
+      if(!(state.customRecipes||[]).some(c=>c.name===r.name)) {
+        if(!state.customRecipes) state.customRecipes = [];
+        state.customRecipes.unshift({...r, id:'cr_'+Date.now()+'_'+Math.random().toString(36).slice(2,6), createdAt:Date.now(), fromFridge:true});
+      }
+    });
+    saveState();
+  } catch(err) {
+    results.innerHTML = '<div style="padding:10px;font-size:.75rem;color:var(--rd);">❌ Erreur: ' + err.message + '</div>';
+    if(status) status.textContent = 'Erreur — réessayez';
+  } finally {
+    if(btn) { btn.disabled = false; btn.textContent = '✨ Générer'; }
+  }
+}
+
+function _renderFridgeAIResults(recipes, results, status) {
+  if(status) status.textContent = recipes.length + ' recettes générées · sauvegardées automatiquement 💾';
+  results.style.display = 'block';
+  results.innerHTML = '<div style="border-top:1px solid rgba(108,92,231,.15);padding-top:12px;margin-top:4px;">'
+    + recipes.map(r => '<div style="background:var(--bg);border-radius:var(--rs);box-shadow:var(--so);padding:12px 14px;margin-bottom:8px;cursor:pointer;" onclick="openRecipeDetail('' + (r.id||r.name) + '')">'
+        + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">'
+        + '<span style="font-size:1.5rem;">' + (r.emoji||'🍽️') + '</span>'
+        + '<div style="flex:1;"><div style="font-weight:900;font-size:.85rem;">' + r.name + '</div>'
+        + '<div style="font-size:.65rem;color:var(--tx2);">'
+        + (r.time?'⏱ '+r.time+'min · ':'')
+        + (r.kcal?'🔥 '+r.kcal+' kcal · ':'')
+        + '</div></div>'
+        + '<span style="font-size:.55rem;background:var(--grad);color:#fff;padding:2px 7px;border-radius:var(--rp);font-weight:800;">IA</span>'
+        + '</div>'
+        + (r.description?'<div style="font-size:.72rem;color:var(--tx2);margin-bottom:6px;line-height:1.4;">'+r.description+'</div>':'')
+        + '<div style="display:flex;flex-wrap:wrap;gap:4px;">'
+        + (r.ingredients_used||[]).map(i=>'<span style="background:rgba(0,210,198,.12);color:var(--tl);font-size:.6rem;font-weight:800;padding:2px 7px;border-radius:var(--rp);">'+i+'</span>').join('')
+        + '</div></div>').join('')
+    + '</div>';
+}
+
 let _mdbFridgeCache = null;
 
 async function loadRecipes() {
   const grid  = document.getElementById('recipesGrid');
   const empty = document.getElementById('emptyRecipes');
   if(!grid) return;
+  // Update hero badge
+  const recBadge = document.getElementById('fridgeRecipeBadge');
 
   // Toujours afficher d'abord les recettes locales/custom correspondantes
   const fridgeNames = state.fridge.map(f => f.name.toLowerCase());
@@ -2764,6 +2941,8 @@ async function loadRecipes() {
     return hits.length >= Math.min(2, Math.ceil(ings.length * 0.3));
   }).map(r => ({...r, _matchCount: (Array.isArray(r.ingredients)?r.ingredients.map(i=>typeof i==='string'?i:i.name||''):[]).filter(ing=>fridgeNames.some(fn=>fn.includes(ing.split(' ')[0].toLowerCase()))).length}))
   .sort((a,b)=>b._matchCount-a._matchCount);
+
+  if(recBadge) recBadge.textContent = localMatches.length + ' recette' + (localMatches.length !== 1 ? 's' : '') + ' possibles';
 
   if(state.fridge.length < 3) {
     if(!localMatches.length) { grid.innerHTML=''; if(empty) empty.style.display='block'; return; }
@@ -3826,10 +4005,20 @@ function switchExplTab(t) {
   if(aiBtn) { aiBtn.style.background = t==='ai'?'var(--ac)':'transparent'; aiBtn.style.color = t==='ai'?'#fff':'var(--tx2)'; aiBtn.style.fontWeight = t==='ai'?'800':'700'; }
   if(mdbBtn) { mdbBtn.style.background = t==='mdb'?'var(--ac)':'transparent'; mdbBtn.style.color = t==='mdb'?'#fff':'var(--tx2)'; mdbBtn.style.fontWeight = t==='mdb'?'800':'700'; }
   window._explTab = t;
+  // Clear results when switching tabs to avoid mixing Claude/MealDB results
+  const grid = document.getElementById('spoonResults');
+  if(grid) {
+    grid.innerHTML = '<div style="text-align:center;padding:30px;color:var(--tx3);">'
+      + '<div style="font-size:2rem;margin-bottom:8px;">' + (t==='ai'?'🤖':'🌐') + '</div>'
+      + '<div style="font-size:.82rem;">' + (t==='ai'?'Recherchez et Claude générera des recettes en français':'Recherchez parmi les recettes du monde entier') + '</div></div>';
+  }
+  // Clear search input for fresh start
+  const inp = document.getElementById('spoonSearchInp');
+  if(inp) inp.value = '';
   const info = document.getElementById('explinfo');
   if(info) info.innerHTML = t==='ai'
     ? '🤖 <strong>Claude</strong> génère des recettes 100% françaises adaptées à votre profil'
-    : '🌐 <strong>TheMealDB</strong> — milliers de recettes avec photos, noms traduits';
+    : '🌐 <strong>TheMealDB</strong> — milliers de recettes du monde entier, <strong>traduites en français</strong> par IA';
 }
 
 async function searchSpoonacularQuery(q) {
@@ -3851,6 +4040,38 @@ async function searchSpoonacular(query) {
 async function searchWithClaude(query) {
   const grid = document.getElementById("spoonResults");
   if(!grid) return;
+
+  // Check localStorage cache first (avoid retokens)
+  const claudeCacheKey = 'claude_' + (query||'').toLowerCase().replace(/[^a-z0-9]/g,'_');
+  const cached = _getCachedRecipe('ai_explorer', claudeCacheKey);
+  if(cached && cached.recipes && cached.recipes.length) {
+    // Use cached recipes
+    state.spoonCache[(query||"").toLowerCase()] = cached.recipes;
+    grid.innerHTML = "";
+    const header = document.createElement("div");
+    header.style.cssText = "padding:8px 12px;margin-bottom:10px;background:rgba(108,92,231,.1);border-radius:var(--rs);font-size:.74rem;font-weight:700;color:var(--ac);display:flex;align-items:center;gap:6px;";
+    header.innerHTML = "🤖 " + cached.recipes.length + " recettes Claude · 💾 depuis le cache";
+    grid.appendChild(header);
+    const gridDiv = document.createElement("div");
+    gridDiv.className = "spoon-grid";
+    cached.recipes.forEach(r => {
+      const card = document.createElement("div");
+      card.className = "spoon-recipe";
+      card.style.position = "relative";
+      card.innerHTML = '<div class="spoon-recipe-img" style="display:flex;align-items:center;justify-content:center;font-size:2.5rem;background:linear-gradient(135deg,var(--bg2),var(--bg));">' + (r.emoji||"🍽️") + '</div>'
+        + '<div class="spoon-recipe-body"><div class="spoon-recipe-name">' + r.name + '</div>'
+        + '<div class="spoon-recipe-meta">' + (r.time ? '<span>⏱ ' + r.time + 'min</span>' : '') + (r.kcal ? '<span>🔥 ' + r.kcal + ' kcal</span>' : '') + '</div></div>';
+      card.onclick = () => openClaudeRecipe(r.id);
+      const addBtn = document.createElement("button"); addBtn.className = "spoon-add-btn"; addBtn.title = "Ajouter au menu"; addBtn.textContent = "+";
+      addBtn.onclick = e => { e.stopPropagation(); addSpoonRecipeToDay(r.id); };
+      const bmBtn = document.createElement("button"); bmBtn.className = "spoon-bookmark-btn";
+      bmBtn.textContent = state.recipeBookmarks.some(b => b.id === r.id) ? "⭐" : "☆";
+      bmBtn.onclick = e => { e.stopPropagation(); toggleBookmark(r.id); };
+      card.appendChild(addBtn); card.appendChild(bmBtn); gridDiv.appendChild(card);
+    });
+    grid.appendChild(gridDiv);
+    return;
+  }
 
   // Show loading skeleton
   grid.innerHTML = '<div style="text-align:center;padding:24px;color:var(--tx2);">' +
@@ -3924,6 +4145,10 @@ async function searchWithClaude(query) {
     // Cache the results
     state.spoonCache[(query||"").toLowerCase()] = recipes;
 
+    // Auto-save AI recipes to localStorage cache to avoid retokens
+    const claudeCacheKey = 'claude_' + (query||'').toLowerCase().replace(/[^a-z0-9]/g,'_');
+    _setRecipeCache('ai_explorer', claudeCacheKey, {recipes, query, ts: Date.now()});
+
     // Render
     grid.innerHTML = "";
     const header = document.createElement("div");
@@ -3970,6 +4195,111 @@ async function searchWithClaude(query) {
   }
 }
 
+// ══ HELPERS TRADUCTION MEALDB ══
+const AREA_TRANSLATIONS = {
+  'American':'Américaine','British':'Britannique','Canadian':'Canadienne','Chinese':'Chinoise',
+  'Croatian':'Croate','Dutch':'Néerlandaise','Egyptian':'Égyptienne','Filipino':'Philippin',
+  'French':'Française','Greek':'Grecque','Indian':'Indienne','Irish':'Irlandaise',
+  'Italian':'Italienne','Jamaican':'Jamaïcaine','Japanese':'Japonaise','Kenyan':'Kényane',
+  'Malaysian':'Malaisienne','Mexican':'Mexicaine','Moroccan':'Marocaine','Polish':'Polonaise',
+  'Portuguese':'Portugaise','Russian':'Russe','Spanish':'Espagnole','Thai':'Thaïlandaise',
+  'Tunisian':'Tunisienne','Turkish':'Turque','Ukrainian':'Ukrainienne','Unknown':'Inconnue',
+  'Vietnamese':'Vietnamienne','Lebanese':'Libanaise','Peruvian':'Péruvienne',
+};
+function _translateAreaToFr(area) {
+  if(!area) return '';
+  return AREA_TRANSLATIONS[area] || area;
+}
+
+async function _autoTranslateMealDBBatch(recipes) {
+  // Translate recipes that need it (those not in cache)
+  const toTranslate = recipes.filter(r => r._needsAITranslation && r._rawMeal);
+  if(!toTranslate.length) return;
+
+  // Translate one by one with cache check
+  for(const r of toTranslate) {
+    const cacheKey = 'mdb_' + r._rawMeal.idMeal;
+    const cached = _getCachedRecipe('mealdb', cacheKey);
+    if(cached) {
+      // Update UI with cached data
+      _applyMDBTranslation(r.id, cached);
+      // Update in spoon cache too
+      Object.keys(state.spoonCache).forEach(k => {
+        const arr = state.spoonCache[k];
+        const idx = arr.findIndex(x => x.id === r.id);
+        if(idx >= 0) state.spoonCache[k][idx] = {...arr[idx], ...cached, _needsAITranslation: false};
+      });
+      continue;
+    }
+
+    // Call Claude Haiku (cheapest) for translation
+    const m = r._rawMeal;
+    const ingrs = [];
+    for(let i=1;i<=20;i++){const n=m['strIngredient'+i];const q=m['strMeasure'+i];if(n&&n.trim())ingrs.push((q||'').trim()+' '+n.trim());}
+    const steps = (m.strInstructions||'').replace(/\r/g,'').split('\n').filter(s=>s.trim().length>8).slice(0,10);
+    const payload = {title:m.strMeal, category:m.strCategory||'', area:m.strArea||'', ingredients:ingrs, steps};
+
+    try {
+      const resp = await fetch('/api/claude', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({
+          model: 'claude-haiku-4-5-20251001', max_tokens: 1500,
+          system: 'Traducteur culinaire. Traduis JSON recette anglaise→français. Règles: mesures métriques (cup=240ml, tbsp=15ml, oz=28g, °F→°C=(F-32)/1.8), style chef français, ingrédients naturels. JSON pur sans markdown.',
+          messages: [{role:'user',content:JSON.stringify(payload)+'
+
+Réponds: {"title":"...","category_fr":"...","area_fr":"...","ingredients":["qté nom"],"steps":["..."]}'
+          }]
+        })
+      });
+      if(!resp.ok) continue;
+      const data = await resp.json();
+      const raw = (data.content||[]).find(x=>x.type==='text')?.text||'';
+      const s=raw.indexOf('{');const e=raw.lastIndexOf('}');
+      if(s<0||e<0) continue;
+      const t = JSON.parse(raw.slice(s,e+1));
+      if(!t.title || !t.ingredients) continue;
+
+      // Build translated ingredients list
+      const transIngrs = (t.ingredients||[]).map(i=>({name:i,qty:'',unit:'',emoji:'🛍️'}));
+      const transSteps = t.steps||[];
+      const translated = {
+        name: t.title,
+        category: t.category_fr || r.category,
+        area: t.area_fr || _translateAreaToFr(r.area),
+        ingredients: transIngrs,
+        instructions: transSteps,
+        _translated: true,
+      };
+
+      // Save to cache
+      _setRecipeCache('mealdb', cacheKey, {...r, ...translated, _needsAITranslation:false, _rawMeal:undefined});
+
+      // Update in spoon cache
+      Object.keys(state.spoonCache).forEach(k => {
+        const arr = state.spoonCache[k];
+        const idx = arr.findIndex(x => x.id === r.id);
+        if(idx >= 0) state.spoonCache[k][idx] = {...arr[idx], ...translated, _needsAITranslation:false};
+      });
+
+      // Update UI cards
+      _applyMDBTranslation(r.id, translated);
+
+    } catch(e) { /* silent fail, keep english */ }
+  }
+}
+
+function _applyMDBTranslation(recipeId, translated) {
+  const nameEl = document.getElementById('mdbname_' + recipeId);
+  if(nameEl && translated.name) nameEl.textContent = translated.name;
+  const bodyEl = document.getElementById('mdbbody_' + recipeId);
+  if(bodyEl && (translated.category || translated.area)) {
+    const meta = bodyEl.querySelector('.spoon-recipe-meta');
+    if(meta) meta.innerHTML = (translated.category?'<span>🍽️ '+translated.category+'</span>':'')
+      + (translated.area?'<span>🌍 '+translated.area+'</span>':'')
+      + '<span>⏱ ~30min</span><span style="color:var(--gn);font-size:.6rem;">🇫🇷</span>';
+  }
+}
+
 // ══ TheMealDB Explorer — fallback si Claude indisponible ══
 async function searchMealDBExplorer(query) {
   const grid = document.getElementById("spoonResults");
@@ -4011,8 +4341,12 @@ async function searchMealDBExplorer(query) {
 
     // Build recipe objects from TheMealDB format
     const recipes = meals.slice(0, 10).map(m => {
+      // Check local translation cache first
+      const cacheKey = 'mdb_' + m.idMeal;
+      const cached = _getCachedRecipe('mealdb', cacheKey);
+      if(cached) return cached;
+
       const frName = typeof translateRecipeName === "function" ? translateRecipeName(m.strMeal) : m.strMeal;
-      // Extract ingredients
       const ingredients = [];
       for(let i = 1; i <= 20; i++) {
         const name = m["strIngredient" + i];
@@ -4022,39 +4356,35 @@ async function searchMealDBExplorer(query) {
           ingredients.push({ name: frIngr, qty: (qty||"").trim(), unit: "" });
         }
       }
-      // Split instructions into steps
       const instrRaw = m.strInstructions || "";
       const instructions = instrRaw.split('\n').join('\r\n').split('\r\n').map(s => s.trim()).filter(s => s.length > 10).slice(0, 8);
-
-
-      return {
+      const recipe = {
         id: "mdb_" + m.idMeal,
         name: frName,
         emoji: "🌐",
         photo: m.strMealThumb,
         diet: "omnivore",
         mealTypes: ["l","d"],
-        time: 30,
-        portions: 4,
-        kcal: 0,
-        ingredients,
-        instructions,
+        time: 30, portions: 4, kcal: 0,
+        ingredients, instructions,
         source: "mealdb",
         category: m.strCategory || "",
         area: m.strArea || "",
+        _needsAITranslation: true,
+        _rawMeal: m,
       };
+      return recipe;
     });
 
-    // Cache
+    // Cache in spoon cache
     state.spoonCache[(query||"").toLowerCase()] = recipes;
 
     // Render
     grid.innerHTML = "";
 
-    // Banner indicating source
     const banner = document.createElement("div");
     banner.style.cssText = "padding:8px 14px;margin-bottom:10px;background:rgba(0,181,184,.1);border-radius:var(--rs);font-size:.73rem;font-weight:700;color:var(--tl);display:flex;align-items:center;gap:6px;";
-    banner.innerHTML = "🌐 " + recipes.length + " recettes via TheMealDB · noms traduits en français";
+    banner.innerHTML = "🌐 " + recipes.length + " recettes TheMealDB · <span id='mdbTranslateStatus' style='color:var(--ac);'>Traduction IA en cours…</span>";
     grid.appendChild(banner);
 
     const gridDiv = document.createElement("div");
@@ -4065,17 +4395,15 @@ async function searchMealDBExplorer(query) {
       card.className = "spoon-recipe";
       card.style.position = "relative";
       card.style.cursor = "pointer";
+      card.id = "mdbcard_" + r.id;
 
-      // Image or emoji
       const imgDiv = document.createElement("div");
       imgDiv.className = "spoon-recipe-img";
       if(r.photo) {
         const img = document.createElement("img");
-        img.src = r.photo;
-        img.alt = r.name;
-        img.loading = "lazy";
+        img.src = r.photo; img.alt = r.name; img.loading = "lazy";
         img.style.cssText = "width:100%;height:100%;object-fit:cover;";
-        img.onerror = () => { imgDiv.style.fontSize = "2.5rem"; imgDiv.style.display = "flex"; imgDiv.style.alignItems = "center"; imgDiv.style.justifyContent = "center"; imgDiv.textContent = "🍽️"; };
+        img.onerror = () => { imgDiv.style.cssText="display:flex;align-items:center;justify-content:center;font-size:2.5rem;background:var(--bg2);"; imgDiv.textContent = "🍽️"; };
         imgDiv.appendChild(img);
       } else {
         imgDiv.style.cssText = "display:flex;align-items:center;justify-content:center;font-size:2.5rem;background:var(--bg2);";
@@ -4084,36 +4412,38 @@ async function searchMealDBExplorer(query) {
 
       const body = document.createElement("div");
       body.className = "spoon-recipe-body";
-      body.innerHTML = '<div class="spoon-recipe-name">' + r.name + '</div>'
+      body.id = "mdbbody_" + r.id;
+      const areaFr = _translateAreaToFr(r.area);
+      body.innerHTML = '<div class="spoon-recipe-name" id="mdbname_' + r.id + '">' + r.name + '</div>'
         + '<div class="spoon-recipe-meta">'
-        + (r.category ? '<span>' + r.category + '</span>' : '')
-        + (r.area ? '<span>🌍 ' + r.area + '</span>' : '')
+        + (r.category ? '<span>🍽️ ' + r.category + '</span>' : '')
+        + (areaFr ? '<span>🌍 ' + areaFr + '</span>' : '')
         + '<span>⏱ ~30min</span>'
         + '</div>';
 
-      card.appendChild(imgDiv);
-      card.appendChild(body);
+      card.appendChild(imgDiv); card.appendChild(body);
       card.onclick = () => openMealDBRecipeDetail(r.id);
 
-      // Add to menu button
       const addBtn = document.createElement("button");
-      addBtn.className = "spoon-add-btn";
-      addBtn.title = "Ajouter au menu";
-      addBtn.textContent = "+";
+      addBtn.className = "spoon-add-btn"; addBtn.title = "Ajouter au menu"; addBtn.textContent = "+";
       addBtn.onclick = e => { e.stopPropagation(); addSpoonRecipeToDay(r.id); };
 
-      // Bookmark
       const bmBtn = document.createElement("button");
       bmBtn.className = "spoon-bookmark-btn";
       bmBtn.textContent = state.recipeBookmarks.some(b => b.id === r.id) ? "⭐" : "☆";
       bmBtn.onclick = e => { e.stopPropagation(); toggleBookmark(r.id); };
 
-      card.appendChild(addBtn);
-      card.appendChild(bmBtn);
+      card.appendChild(addBtn); card.appendChild(bmBtn);
       gridDiv.appendChild(card);
     });
 
     grid.appendChild(gridDiv);
+
+    // Async AI translation of all MealDB recipes (batched, with cache)
+    _autoTranslateMealDBBatch(recipes).then(() => {
+      const statusEl = document.getElementById('mdbTranslateStatus');
+      if(statusEl) statusEl.innerHTML = '🇫🇷 Tout traduit · <span style="color:var(--gn);">sauvegardé 💾</span>';
+    });
 
   } catch(err) {
     console.error("TheMealDB error:", err);
@@ -6493,56 +6823,116 @@ function saveCustomRecipe() { saveNewRecipe(); } // compat alias
 
 // ── Nutrition ────────────────────────────────────────────────
 function renderNutriTab() {
-  const p=state.profile||{};
-  const cals=calculateDailyCalories(p);
-  const macros=getMacroTargets(p,cals);
+  const p = state.profile || {};
+  const cals = calculateDailyCalories(p);
+  const macros = getMacroTargets(p, cals);
 
   // Hero
-  const heroKcal=document.getElementById('nutriHeroKcal');
-  const heroSub=document.getElementById('nutriHeroSub');
-  if(heroKcal) heroKcal.textContent=cals?cals+' kcal':'— kcal';
+  const heroKcal = document.getElementById('nutriHeroKcal');
+  const heroSub = document.getElementById('nutriHeroSub');
+  if(heroKcal) heroKcal.textContent = cals ? cals + ' kcal' : '— kcal';
   if(heroSub) {
-    if(!cals) { heroSub.textContent='Complétez votre profil pour voir vos besoins'; }
+    if(!cals) { heroSub.textContent = 'Complétez votre profil pour voir vos besoins caloriques'; }
     else {
-      const goalLabels={equilibre:'Alimentation équilibrée',perte:'Déficit calorique (perte de poids)',prise:'Surplus calorique (prise de masse)',maintien:'Maintien du poids',perf:'Performance sportive'};
-      const goal=p.goal||'equilibre';
-      heroSub.textContent=(goalLabels[goal]||'')+' · Profil: '+p.poids+'kg, '+p.age+'ans, '+p.taille+'cm';
+      const goalLabels = {equilibre:'Alimentation équilibrée',perte:'Déficit calorique · perte de poids',prise:'Surplus calorique · prise de masse',maintien:'Maintien du poids',perf:'Performance sportive'};
+      const acts = ['Sédentaire','Légèrement actif','Modérément actif','Très actif','Extrêmement actif'];
+      const goal = p.goal || 'equilibre';
+      const act = acts[+p.sportFreq||2] || '';
+      const parts = [];
+      if(p.poids) parts.push(p.poids + 'kg');
+      if(p.taille) parts.push(p.taille + 'cm');
+      if(p.age) parts.push(p.age + ' ans');
+      if(act) parts.push(act);
+      heroSub.textContent = (goalLabels[goal] || '') + (parts.length ? ' · ' + parts.join(', ') : '');
     }
   }
 
-  // Macros du jour sélectionné
-  const macroGrid=document.getElementById('nutriMacros');
-  if(macroGrid) {
-    const dayMenu=state.weekMenu[selectedDay];
-    const nutri=dayMenu?.nutri||{};
-    if(!macros) {
-      macroGrid.innerHTML=`<div style="grid-column:1/-1;text-align:center;padding:20px;color:var(--tx2);font-size:.82rem;">Configurez votre profil pour voir vos macros</div>`;
+  // Profile stats grid
+  const profGrid = document.getElementById('nutriProfileGrid');
+  if(profGrid) {
+    if(!p.age && !p.poids) {
+      profGrid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:14px;color:var(--tx2);font-size:.78rem;">👤 <button onclick="openMenuProfile()" style="color:var(--ac);background:none;border:none;cursor:pointer;font-weight:800;">Configurez votre profil</button> pour des données personnalisées</div>';
     } else {
-      const items=[
-        {label:'Protéines',val:nutri.prot,target:macros.prot,unit:'g',color:'var(--bl)'},
-        {label:'Glucides',val:nutri.carb,target:macros.carb,unit:'g',color:'var(--or)'},
-        {label:'Lipides',val:nutri.fat,target:macros.fat,unit:'g',color:'var(--lv)'},
-        {label:'Calories',val:nutri.kcal,target:cals,unit:'kcal',color:'var(--ac)'},
+      const bmi = p.poids && p.taille ? (p.poids / ((p.taille/100)**2)).toFixed(1) : null;
+      const bmiLabel = bmi ? (bmi < 18.5 ? 'Insuffisant' : bmi < 25 ? 'Normal' : bmi < 30 ? 'Surpoids' : 'Obésité') : null;
+      const bmiColor = bmi ? (bmi < 18.5 ? 'var(--bl)' : bmi < 25 ? 'var(--gn)' : bmi < 30 ? 'var(--yl)' : 'var(--rd)') : 'var(--tx)';
+      const diets = {omnivore:'🍖 Omni',veg:'🥬 Végé',vegan:'🌱 Vegan',pesc:'🐟 Pesc',gluten:'🌾 SG',keto:'🥑 Keto',halal:'☪️ Halal'};
+      const goalShort = {equilibre:'⚖️ Équilibre',perte:'📉 Perte',prise:'💪 Masse',maintien:'🔄 Maintien',perf:'🏃 Perf'};
+      profGrid.innerHTML = [
+        {label:'IMC', val: bmi ? bmi + '<br><small>' + bmiLabel + '</small>' : '—', color: bmiColor},
+        {label:'Régime', val: diets[p.diet||'omnivore'] || p.diet || '—', color: 'var(--tx)'},
+        {label:'Objectif', val: goalShort[p.goal||'equilibre'] || '—', color: 'var(--ac)'},
+      ].map(s => '<div class="nutri-macro-card" style="padding:10px 8px;text-align:center;">'
+        + '<div style="font-size:.78rem;font-weight:900;color:' + s.color + ';margin-bottom:2px;line-height:1.3;">' + s.val + '</div>'
+        + '<div class="nutri-macro-label">' + s.label + '</div>'
+        + '</div>').join('');
+    }
+  }
+
+  // Compute weekly averages from weekMenu
+  const weekDays = Object.values(state.weekMenu).filter(m => m && m.nutri && m.nutri.kcal);
+  const weekCount = weekDays.length;
+  const avgKcal = weekCount ? Math.round(weekDays.reduce((s,m)=>s+(m.nutri.kcal||0),0)/weekCount) : 0;
+  const avgProt = weekCount ? Math.round(weekDays.reduce((s,m)=>s+(m.nutri.prot||0),0)/weekCount) : 0;
+  const avgCarb = weekCount ? Math.round(weekDays.reduce((s,m)=>s+(m.nutri.carb||0),0)/weekCount) : 0;
+  const avgFat  = weekCount ? Math.round(weekDays.reduce((s,m)=>s+(m.nutri.fat||0),0)/weekCount) : 0;
+
+  // Week score badge
+  const weekScore = document.getElementById('nutriWeekScore');
+  if(weekScore) {
+    if(!weekCount) { weekScore.textContent = weekCount + ' jour(s) planifié(s)'; weekScore.style.color='var(--tx3)'; }
+    else if(cals) {
+      const pct = Math.round(avgKcal / cals * 100);
+      weekScore.textContent = weekCount + ' j · ' + (pct >= 85 && pct <= 110 ? '✅ ' + pct + '%' : pct > 110 ? '⚠️ +' + (pct-100) + '%' : '🔵 ' + pct + '%');
+      weekScore.style.color = pct >= 85 && pct <= 110 ? 'var(--gn)' : pct > 110 ? 'var(--rd)' : 'var(--bl)';
+    } else {
+      weekScore.textContent = weekCount + ' j planifié(s)';
+    }
+  }
+
+  // Macros grid (weekly averages vs targets)
+  const macroGrid = document.getElementById('macroRings');
+  if(macroGrid) {
+    if(!macros && !weekCount) {
+      macroGrid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:20px;color:var(--tx2);font-size:.82rem;">Configurez votre profil et générez un menu pour voir vos macros</div>';
+    } else {
+      const items = [
+        {label:'Calories', val:weekCount?avgKcal:null, target:cals, unit:'kcal', color:'var(--ac)'},
+        {label:'Protéines', val:weekCount?avgProt:null, target:macros?macros.prot:null, unit:'g', color:'var(--bl)'},
+        {label:'Glucides', val:weekCount?avgCarb:null, target:macros?macros.carb:null, unit:'g', color:'var(--or)'},
+        {label:'Lipides', val:weekCount?avgFat:null, target:macros?macros.fat:null, unit:'g', color:'var(--lv)'},
       ];
-      macroGrid.innerHTML=items.map(m=>{
-        const pct=m.target&&m.val?Math.min(100,Math.round(m.val/m.target*100)):0;
-        const status=pct>=85&&pct<=105?'ok':pct>110?'bad':m.val?'warn':'';
-        return `<div class="nutri-macro-card">
-          <div class="nutri-macro-val" style="color:${m.color};">${m.val||'—'}<small style="font-size:.45em;"> ${m.unit}</small></div>
-          <div class="nutri-macro-label">${m.label}</div>
-          <div class="nutri-macro-pct" style="color:${m.color};">${pct?pct+'% de l\'objectif ('+m.target+m.unit+')':'Objectif: '+m.target+m.unit}</div>
-          <div class="nutri-macro-bar"><div class="nutri-macro-fill" style="width:${pct}%;background:${m.color};"></div></div>
-          ${status?`<div class="nutri-pill ${status}" style="display:inline-flex;margin-top:6px;">${status==='ok'?'✅ Optimal':status==='bad'?'⚠️ Dépassé':'🔶 À compléter'}</div>`:''}
-        </div>`;
+      macroGrid.innerHTML = items.map(m => {
+        const pct = m.target && m.val ? Math.min(115, Math.round(m.val/m.target*100)) : 0;
+        const status = pct >= 85 && pct <= 105 ? 'ok' : pct > 110 ? 'bad' : m.val ? 'warn' : '';
+        return '<div class="nutri-macro-card">'
+          + '<div class="nutri-macro-val" style="color:' + m.color + ';">' + (m.val !== null ? m.val : '—') + '<small style="font-size:.45em;"> ' + m.unit + '</small></div>'
+          + '<div class="nutri-macro-label">' + m.label + '</div>'
+          + '<div class="nutri-macro-pct" style="color:' + m.color + ';">' + (m.target ? (pct ? pct+'% · obj '+m.target+m.unit : 'Obj: '+m.target+m.unit) : (m.val !== null ? m.val+' '+m.unit+' moy' : 'Aucune donnée')) + '</div>'
+          + '<div class="nutri-macro-bar"><div class="nutri-macro-fill" style="width:'+pct+'%;background:'+m.color+';"></div></div>'
+          + (status ? '<div class="nutri-pill '+status+'" style="display:inline-flex;margin-top:6px;font-size:.58rem;">'+(status==='ok'?'✅ Optimal':status==='bad'?'⚠️ Dépassé':'🔶 À compléter')+'</div>' : '')
+          + '</div>';
       }).join('');
     }
   }
 
   // Bilan semaine
   renderNutriWeek(cals);
-  // Advice placeholder
-  const adviceZone=document.getElementById('nutriAdviceZone');
-  if(adviceZone&&adviceZone.innerHTML.includes('Analyser')) {} // keep button
+
+  // Season suggestions
+  const snGrid = document.getElementById('seasonNutriGrid');
+  const snHeader = document.getElementById('seasonNutriHeader');
+  if(snGrid) {
+    const month = new Date().getMonth() + 1;
+    const monthNames = ['','Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
+    if(snHeader) snHeader.textContent = '🌱 Produits de saison · ' + monthNames[month];
+    const items = (typeof SEASONAL !== 'undefined' ? SEASONAL : {})[month] || [];
+    snGrid.innerHTML = items.map(v => '<div class="season-item" onclick="addItemByName('' + v.n + '')" style="min-width:60px;">'
+      + '<span class="season-item-em">' + v.em + '</span>'
+      + '<div class="season-item-nm">' + v.n + '</div>'
+      + (v.t ? '<div class="season-item-type">' + v.t + '</div>' : '')
+      + '</div>').join('');
+  }
 }
 
 function renderNutriWeek(calTarget) {

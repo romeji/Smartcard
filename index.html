@@ -2780,8 +2780,9 @@ function renderFridge() {
     if(empty) empty.style.display = 'none';
     if(grid) grid.innerHTML = state.fridge.map(f => {
       const nm = f.name.length > 12 ? f.name.slice(0,11) + '…' : f.name;
-      return '<div class="fi-card" onclick="showFridgeMenu('' + f.id + '')">'
-        + '<button class="fi-card-del" onclick="event.stopPropagation();doDeleteFridge('' + f.id + '')" title="Supprimer">✕</button>'
+      const safeId = String(f.id).replace(/'/g,'');
+      return '<div class="fi-card" onclick="showFridgeMenu(\'' + safeId + '\')">'
+        + '<button class="fi-card-del" onclick="event.stopPropagation();doDeleteFridge(\'' + safeId + '\')" title="Supprimer">✕</button>'
         + '<span class="fi-card-em">' + f.emoji + '</span>'
         + '<div class="fi-card-nm">' + nm + '</div>'
         + '<div class="fi-card-qty">×' + (f.qty||1) + '</div>'
@@ -2867,9 +2868,7 @@ async function generateFridgeAIRecipes() {
   const p = state.profile || {};
   const diet = p.diet || state.selectedDiet?.[0] || 'omnivore';
   const ingredients = state.fridge.slice(0,12).map(f=>f.name).join(', ');
-  const prompt = 'Tu es chef cuisinier. Génère 3 recettes délicieuses UNIQUEMENT avec ces ingrédients du frigo (utiliser au moins 3): ' + ingredients + '. Régime: ' + diet + '.
-Réponds UNIQUEMENT en JSON:
-{"recipes":[{"name":"string","emoji":"string","time":25,"kcal":400,"prot":20,"carb":35,"fat":12,"description":"string","ingredients_used":["ingrédient1","ingrédient2","ingrédient3"],"instructions":["Étape 1","Étape 2","Étape 3"]}]}';
+  const prompt = 'Tu es chef cuisinier. Génère 3 recettes délicieuses UNIQUEMENT avec ces ingrédients du frigo (utiliser au moins 3): ' + ingredients + '. Régime: ' + diet + '.\nRéponds UNIQUEMENT en JSON:\n{"recipes":[{"name":"string","emoji":"string","time":25,"kcal":400,"prot":20,"carb":35,"fat":12,"description":"string","ingredients_used":["ingrédient1","ingrédient2","ingrédient3"],"instructions":["Étape 1","Étape 2","Étape 3"]}]}';
 
   try {
     const resp = await fetch('/api/claude', {
@@ -2907,7 +2906,7 @@ function _renderFridgeAIResults(recipes, results, status) {
   if(status) status.textContent = recipes.length + ' recettes générées · sauvegardées automatiquement 💾';
   results.style.display = 'block';
   results.innerHTML = '<div style="border-top:1px solid rgba(108,92,231,.15);padding-top:12px;margin-top:4px;">'
-    + recipes.map(r => '<div style="background:var(--bg);border-radius:var(--rs);box-shadow:var(--so);padding:12px 14px;margin-bottom:8px;cursor:pointer;" onclick="openRecipeDetail('' + (r.id||r.name) + '')">'
+    + recipes.map(r => '<div style="background:var(--bg);border-radius:var(--rs);box-shadow:var(--so);padding:12px 14px;margin-bottom:8px;cursor:pointer;" onclick="openRecipeDetail(\'' + String(r.id||r.name).replace(/'/g,'') + '\')">'
         + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">'
         + '<span style="font-size:1.5rem;">' + (r.emoji||'🍽️') + '</span>'
         + '<div style="flex:1;"><div style="font-weight:900;font-size:.85rem;">' + r.name + '</div>'
@@ -4245,10 +4244,7 @@ async function _autoTranslateMealDBBatch(recipes) {
         body: JSON.stringify({
           model: 'claude-haiku-4-5-20251001', max_tokens: 1500,
           system: 'Traducteur culinaire. Traduis JSON recette anglaise→français. Règles: mesures métriques (cup=240ml, tbsp=15ml, oz=28g, °F→°C=(F-32)/1.8), style chef français, ingrédients naturels. JSON pur sans markdown.',
-          messages: [{role:'user',content:JSON.stringify(payload)+'
-
-Réponds: {"title":"...","category_fr":"...","area_fr":"...","ingredients":["qté nom"],"steps":["..."]}'
-          }]
+          messages: [{role:'user',content:JSON.stringify(payload)+'\n\nRéponds: {"title":"...","category_fr":"...","area_fr":"...","ingredients":["qté nom"],"steps":["..."]}'}]
         })
       });
       if(!resp.ok) continue;
@@ -6927,7 +6923,7 @@ function renderNutriTab() {
     const monthNames = ['','Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
     if(snHeader) snHeader.textContent = '🌱 Produits de saison · ' + monthNames[month];
     const items = (typeof SEASONAL !== 'undefined' ? SEASONAL : {})[month] || [];
-    snGrid.innerHTML = items.map(v => '<div class="season-item" onclick="addItemByName('' + v.n + '')" style="min-width:60px;">'
+    snGrid.innerHTML = items.map(v => '<div class="season-item" onclick="addItemByName(\'' + v.n.replace(/\'/g,"") + '\')" style="min-width:60px;">'
       + '<span class="season-item-em">' + v.em + '</span>'
       + '<div class="season-item-nm">' + v.n + '</div>'
       + (v.t ? '<div class="season-item-type">' + v.t + '</div>' : '')

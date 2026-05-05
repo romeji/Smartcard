@@ -19,7 +19,7 @@
     if(savedTheme && savedTheme !== 'light') document.documentElement.dataset.theme = savedTheme;
     const darkThemes = ['dark','anthracite'];
     const isDark = darkThemes.includes(savedTheme) || (!savedTheme && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
-    const accentMap = {dark:'#ff8e53',anthracite:'#6c8ebf',rouge:'#e74c3c',violet:'#8e44ad',ocean:'#2980b9',green:'#27ae60',paques:'#e67e22'};
+    const accentMap = {dark:'#ff8e53',anthracite:'#6c8ebf',rouge:'#e74c3c',violet:'#8e44ad',ocean:'#2980b9',green:'#27ae60',};
     const iconColor = accentMap[savedTheme] || '#ff6b6b';
     const themeColor = isDark ? '#14161a' : iconColor;
     const icon = buildIcon(iconColor);
@@ -63,6 +63,51 @@
 --grad2:linear-gradient(135deg,#ff6b9d,#ff6b6b);
 --grad3:linear-gradient(135deg,#00d2c6,#3498db);
 }
+/* ── Anthracite: glassmorphism panels ── */
+[data-theme=anthracite] .card,[data-theme=anthracite] .rc,[data-theme=anthracite] .fi-card{
+  background:rgba(255,255,255,.04);
+  border:1px solid rgba(255,255,255,.08);
+  backdrop-filter:blur(12px);
+}
+[data-theme=anthracite] .tabbar{background:rgba(20,22,26,.95);border-top:1px solid rgba(255,255,255,.06);}
+[data-theme=anthracite] .vb{background:var(--bg);}
+
+/* ── Rouge: warm paper texture feel ── */
+[data-theme=rouge] .card,[data-theme=rouge] .rc,[data-theme=rouge] .fi-card{
+  background:linear-gradient(145deg,#fff8f8,#fff0f0);
+}
+[data-theme=rouge] .tabbar{background:linear-gradient(135deg,#ff6b6b,#c0392b);border:none;}
+[data-theme=rouge] .tab svg,[data-theme=rouge] .tab span{color:rgba(255,255,255,.7) !important;}
+[data-theme=rouge] .tab.active svg,[data-theme=rouge] .tab.active span{color:#fff !important;}
+
+/* ── Violet: dark purple night ── */
+[data-theme=violet]{
+  --bg:#f8f0ff;--bg2:#edd8ff;--bg3:#f2e5ff;
+}
+[data-theme=violet] .card,[data-theme=violet] .rc,[data-theme=violet] .fi-card{
+  background:linear-gradient(145deg,#fdf8ff,#f5e8ff);
+  border:1px solid rgba(142,68,173,.1);
+}
+[data-theme=violet] .tabbar{background:linear-gradient(135deg,#8e44ad,#6c3483);border:none;}
+[data-theme=violet] .tab svg,[data-theme=violet] .tab span{color:rgba(255,255,255,.65) !important;}
+[data-theme=violet] .tab.active svg,[data-theme=violet] .tab.active span{color:#fff !important;}
+[data-theme=violet] .btn.acc{background:linear-gradient(135deg,#8e44ad,#9b59b6);}
+
+/* ── Ocean: frosted sea glass ── */
+[data-theme=ocean] .card,[data-theme=ocean] .rc,[data-theme=ocean] .fi-card{
+  background:linear-gradient(145deg,#f5fbff,#e8f4ff);
+  border:1px solid rgba(41,128,185,.12);
+}
+[data-theme=ocean] .tabbar{background:linear-gradient(135deg,#0e6fa5,#2980b9);border:none;}
+[data-theme=ocean] .tab svg,[data-theme=ocean] .tab span{color:rgba(255,255,255,.65) !important;}
+[data-theme=ocean] .tab.active svg,[data-theme=ocean] .tab.active span{color:#fff !important;}
+[data-theme=ocean] .btn.acc{background:linear-gradient(135deg,#2980b9,#3498db);}
+
+/* ── Green: natural forest ── */
+[data-theme=green] .tabbar{background:linear-gradient(135deg,#1a6b3c,#27ae60);border:none;}
+[data-theme=green] .tab svg,[data-theme=green] .tab span{color:rgba(255,255,255,.65) !important;}
+[data-theme=green] .tab.active svg,[data-theme=green] .tab.active span{color:#fff !important;}
+
 [data-theme=dark]{
 --bg:#22243a;--bg2:#2c2f4a;--bg3:#1a1c30;
 --so:6px 6px 14px rgba(0,0,0,.55),-4px -4px 10px rgba(255,255,255,.05);
@@ -1210,9 +1255,16 @@ body.offline-mode .offline-banner{display:block;}
           <div class="empty-su">Ajoutez des aliments manuellement ou terminez une course.</div>
         </div>
 
-        <!-- IA RECETTES DEPUIS FRIGO -->
+        <!-- IA RECETTES DEPUIS FRIGO — PREMIUM -->
         <div id="fridgeAISection" style="display:none;margin-bottom:14px;margin-top:14px;">
-          <div style="background:linear-gradient(135deg,rgba(108,92,231,.12),rgba(0,181,184,.08));border:1.5px solid rgba(108,92,231,.2);border-radius:var(--r);padding:14px 16px;">
+          <div id="fridgeAIWrapper" style="background:linear-gradient(135deg,rgba(108,92,231,.12),rgba(0,181,184,.08));border:1.5px solid rgba(108,92,231,.2);border-radius:var(--r);padding:14px 16px;position:relative;overflow:hidden;">
+            <!-- PREMIUM LOCK OVERLAY (shown when not premium) -->
+            <div id="fridgeAIPremLock" style="display:none;position:absolute;inset:0;background:rgba(0,0,0,.55);backdrop-filter:blur(6px);border-radius:var(--r);z-index:10;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:20px;text-align:center;">
+              <div style="font-size:2rem;">🔒</div>
+              <div style="font-weight:900;font-size:.9rem;color:#fff;">Recettes IA depuis le frigo</div>
+              <div style="font-size:.72rem;color:rgba(255,255,255,.8);line-height:1.4;">Générez des recettes personnalisées avec vos ingrédients · Fonctionnalité Premium</div>
+              <button onclick="openPremiumModal('Recettes IA depuis le frigo')" style="background:linear-gradient(135deg,#f6d365,#fda085);color:#fff;border:none;border-radius:12px;padding:10px 20px;font-weight:900;font-size:.82rem;cursor:pointer;margin-top:4px;">✨ Débloquer Premium</button>
+            </div>
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
               <div style="display:flex;align-items:center;gap:8px;">
                 <div style="width:32px;height:32px;background:var(--grad);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:.9rem;flex-shrink:0;">🤖</div>
@@ -2408,6 +2460,8 @@ function renderAll() {
 // TABS
 // ═══════════════════════════════════════════════
 function switchTab(tab) {
+  // Menu tab is premium-gated
+  if(tab === 'menu' && !isPremium()) { openPremiumModal('Menu & Planification'); return; }
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('on'));
   document.querySelectorAll('.view').forEach(v => v.classList.remove('on'));
   document.getElementById('tab-' + tab).classList.add('on');
@@ -2874,8 +2928,11 @@ function renderFridge() {
   if(aiSection) aiSection.style.display = state.fridge.length >= 3 ? 'block' : 'none';
   const aiStatus = document.getElementById('fridgeAIStatus');
   if(aiStatus && state.fridge.length >= 3) {
-    aiStatus.textContent = state.fridge.length + ' ingrédients disponibles · Générez des idées de recettes IA';
+    aiStatus.textContent = state.fridge.length + ' ingrédients · ' + (isPremium() ? 'Cliquez pour générer' : '🔒 Premium requis');
   }
+  // Show/hide premium lock overlay
+  const fridgeLock = document.getElementById('fridgeAIPremLock');
+  if(fridgeLock) fridgeLock.style.display = isPremium() ? 'none' : 'flex';
 
   if(!state.fridge.length) {
     if(grid) grid.innerHTML = '';
@@ -3025,23 +3082,43 @@ async function generateFridgeAIRecipes() {
 }
 
 function _renderFridgeAIResults(recipes, results, status) {
-  if(status) status.textContent = recipes.length + ' recettes générées · sauvegardées automatiquement 💾';
+  if(status) status.textContent = recipes.length + ' recettes générées · sauvegardées 💾';
   results.style.display = 'block';
   results.innerHTML = '<div style="border-top:1px solid rgba(108,92,231,.15);padding-top:12px;margin-top:4px;">'
-    + recipes.map(r => '<div style="background:var(--bg);border-radius:var(--rs);box-shadow:var(--so);padding:12px 14px;margin-bottom:8px;cursor:pointer;" data-rid="' + (r.id||'') + '" data-rname="' + (r.name||'').replace(/"/g,"&quot;") + '" onclick="openRecipeDetail(this.dataset.rid||this.dataset.rname)">'
-        + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">'
-        + '<span style="font-size:1.5rem;">' + (r.emoji||'🍽️') + '</span>'
-        + '<div style="flex:1;"><div style="font-weight:900;font-size:.85rem;">' + r.name + '</div>'
-        + '<div style="font-size:.65rem;color:var(--tx2);">'
-        + (r.time?'⏱ '+r.time+'min · ':'')
-        + (r.kcal?'🔥 '+r.kcal+' kcal · ':'')
+    + recipes.map(r => {
+      const ings = Array.isArray(r.ingredients) ? r.ingredients : (r.ingredients_used||[]).map(i=>({name:i}));
+      const photo = r.photo || null;
+      return '<div style="background:var(--bg);border-radius:var(--rs);box-shadow:var(--so);margin-bottom:10px;overflow:hidden;cursor:pointer;" data-rid="' + (r.id||'') + '" data-rname="' + (r.name||'').replace(/"/g,'&quot;') + '" onclick="openRecipeDetail(this.dataset.rid||this.dataset.rname)">'
+        // Photo band
+        + (photo ? '<img src="'+photo+'" style="width:100%;height:120px;object-fit:cover;" loading="lazy" onerror="this.remove()">' : '')
+        // Body
+        + '<div style="padding:12px 14px;">'
+        + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">'
+        + '<div style="width:38px;height:38px;background:var(--grad);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:1.3rem;flex-shrink:0;">' + (r.emoji||'🍽️') + '</div>'
+        + '<div style="flex:1;">'
+        + '<div style="font-weight:900;font-size:.88rem;">' + r.name + '</div>'
+        + '<div style="font-size:.65rem;color:var(--tx2);margin-top:2px;">'
+        + (r.time ? '⏱ '+r.time+'min · ' : '')
+        + (r.kcal ? '🔥 '+r.kcal+' kcal' : '')
         + '</div></div>'
-        + '<span style="font-size:.55rem;background:var(--grad);color:#fff;padding:2px 7px;border-radius:var(--rp);font-weight:800;">IA</span>'
+        + '<span style="font-size:.55rem;background:var(--grad);color:#fff;padding:3px 8px;border-radius:var(--rp);font-weight:900;flex-shrink:0;">IA</span>'
         + '</div>'
-        + (r.description?'<div style="font-size:.72rem;color:var(--tx2);margin-bottom:6px;line-height:1.4;">'+r.description+'</div>':'')
-        + '<div style="display:flex;flex-wrap:wrap;gap:4px;">'
-        + (r.ingredients_used||[]).map(i=>'<span style="background:rgba(0,210,198,.12);color:var(--tl);font-size:.6rem;font-weight:800;padding:2px 7px;border-radius:var(--rp);">'+i+'</span>').join('')
-        + '</div></div>').join('')
+        // Description
+        + (r.description ? '<div style="font-size:.75rem;color:var(--tx2);margin-bottom:8px;line-height:1.45;">'+r.description+'</div>' : '')
+        // Ingredients chips
+        + (ings.length ? '<div style="margin-bottom:6px;"><div style="font-size:.62rem;font-weight:800;color:var(--tx3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;">Ingrédients</div>'
+          + '<div style="display:flex;flex-wrap:wrap;gap:4px;">'
+          + ings.map(i => {
+              const nm = typeof i==='string' ? i : (i.name||'');
+              const qty = typeof i==='object' && i.qty ? i.qty+' ' : '';
+              return '<span style="background:var(--bg2);border-radius:var(--rp);padding:3px 9px;font-size:.65rem;font-weight:700;">'+qty+nm+'</span>';
+            }).join('')
+          + '</div></div>' : '')
+        // Instructions preview
+        + (Array.isArray(r.instructions) && r.instructions.length ? '<div style="font-size:.68rem;color:var(--tx2);border-top:1px solid var(--bg2);padding-top:6px;margin-top:6px;"><strong>Étape 1:</strong> '+r.instructions[0].slice(0,80)+(r.instructions[0].length>80?'…':'')+'</div>' : '')
+        + '</div>'
+        + '</div>';
+    }).join('')
     + '</div>';
 }
 
@@ -3872,13 +3949,12 @@ function renderThemePicker() {
     violet:     ['#fdf5ff','#8e44ad'],
     ocean:      ['#f0faff','#2980b9'],
     green:      ['#f0fff4','#27ae60'],
-    paques:     ['#fff8f0','#e67e22'],
   };
 
   const labels = {
     light:'☀️ Clair', dark:'🌑 Sombre', anthracite:'⬛ Anthracite',
     rouge:'🔴 Rouge', violet:'🟣 Violet', ocean:'🔵 Océan',
-    green:'🌿 Vert', paques:'🐣 Pâques',
+    green:'🌿 Vert',
   };
 
   grid.innerHTML = Object.entries(labels).map(([id, label]) => {
@@ -6105,16 +6181,24 @@ function openCreateRecipeModal(editRecipe) {
 function crHandlePhoto(input) {
   const file = input.files[0];
   if(!file) return;
+  // Validate: max 5MB
+  if(file.size > 5 * 1024 * 1024) { showToast('⚠️', 'Image trop lourde', 'Maximum 5 Mo'); return; }
   const reader = new FileReader();
   reader.onload = e => {
     window._crPhotoData = e.target.result;
+    // Update preview (works for both id variants)
     const prev = document.getElementById('crPhotoPreview');
     if(prev) {
       prev.style.border = 'none';
-      prev.innerHTML = '<img src="'+e.target.result+'" style="width:100%;height:100%;object-fit:cover;border-radius:var(--rs);">';
+      prev.style.fontSize = '0';
+      prev.innerHTML = '<img src="'+e.target.result+'" style="width:100%;height:100%;object-fit:cover;border-radius:calc(var(--rs) - 2px);">';
     }
+    // Show delete button
     const delBtn = document.getElementById('crPhotoDelBtn');
     if(delBtn) delBtn.style.display = '';
+    // Also update old-style preview if present
+    const oldPrev = document.getElementById('crPhotoPreviewImg');
+    if(oldPrev) { oldPrev.src = e.target.result; oldPrev.style.display = 'block'; }
   };
   reader.readAsDataURL(file);
 }
@@ -6190,15 +6274,19 @@ function crAddIngrFromInput() {
   // Prevent duplicate
   if(window._crIngredients.some(i => i.name.toLowerCase() === name.toLowerCase())) {
     showToast('ℹ️', name, 'Déjà dans la liste');
-    return;
+    inp.value = ''; inp.focus(); return;
   }
   window._crIngredients.push({name, qty, emoji});
   inp.value = '';
   if(qtyNum) qtyNum.value = '';
+  if(unit) unit.value = 'g';
   const ac = document.getElementById('crIngrAC');
   if(ac) ac.style.display = 'none';
   crRenderIngrList();
   crCalcAutoKcal();
+  // Visual feedback
+  const list = document.getElementById('crIngrList');
+  if(list) { list.style.background='rgba(0,210,198,.08)'; setTimeout(()=>list.style.background='',400); }
   inp.focus();
 }
 
@@ -6901,6 +6989,9 @@ function closeMealEdit() { document.getElementById('mealEditOverlay')?.classList
 
 // ── Génération IA d'un jour ─────────────────────────────────
 async function regenDayAI(day) {
+  if(!isPremium()){openPremiumModal('Régénération IA du menu');return;}
+  const btn = document.querySelector('[onclick*="regenDayAI"]');
+  if(btn) { const old=btn.textContent; btn.textContent='⏳'; btn.disabled=true; setTimeout(()=>{btn.textContent=old;btn.disabled=false;},8000); }
   const p=state.profile||{};
   const diet=state.selectedDiet[0]||p.diet||'omnivore';
   const dayName=DAYS[day-1];
@@ -7152,9 +7243,21 @@ const RECIPES_FR = [
 
 // Merged recipe getter - includes all sources
 function getAllRecipes() {
-  const db = typeof RECIPES_DB !== 'undefined' ? RECIPES_DB : [];
-  const fr = typeof RECIPES_FR !== 'undefined' ? RECIPES_FR : [];
-  return [...db, ...fr, ...state.customRecipes, ...(state.recipeBookmarks||[])].map((r,i)=>({...r,id:r.id||'r_'+i}));
+  // Include global DB (AI-generated + MealDB translated) + custom + bookmarks
+  // Exclude static RECIPES_FR/DB in favour of global DB only
+  const globalDB = typeof getGlobalRecipeDB === 'function' ? getGlobalRecipeDB() : [];
+  const custom = state.customRecipes || [];
+  const bookmarks = state.recipeBookmarks || [];
+  // Merge: custom first (user-created), then globalDB, then bookmarks
+  const all = [...custom, ...globalDB, ...bookmarks];
+  const seen = new Set();
+  return all.filter(r => {
+    if(!r || !r.name) return false;
+    const key = r.id || r.name;
+    if(seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).map((r,i) => ({...r, id: r.id || 'r_'+i}));
 }
 
 function filterRecipesView(q) {
@@ -7593,16 +7696,23 @@ function renderNutriTab() {
   if(heroSub) {
     if(!cals) { heroSub.textContent = 'Complétez votre profil pour voir vos besoins caloriques'; }
     else {
-      const goalLabels = {equilibre:'Alimentation équilibrée',perte:'Déficit calorique · perte de poids',prise:'Surplus calorique · prise de masse',maintien:'Maintien du poids',perf:'Performance sportive'};
-      const acts = ['Sédentaire','Légèrement actif','Modérément actif','Très actif','Extrêmement actif'];
+      const goalLabels = {equilibre:'⚖️ Équilibre',perte:'📉 Perte de poids',prise:'💪 Prise de masse',maintien:'🔄 Maintien',perf:'🏃 Performance'};
+      const acts = [
+        {label:'Sédentaire', desc:"Peu ou pas d'activité"},
+        {label:'Légèrement actif', desc:'1-3 séances/semaine'},
+        {label:'Modérément actif', desc:'3-5 séances/semaine'},
+        {label:'Très actif', desc:'6-7 séances/semaine'},
+        {label:'Extrêmement actif', desc:'Effort intense quotidien'},
+      ];
       const goal = p.goal || 'equilibre';
-      const act = acts[+p.sportFreq||2] || '';
-      const parts = [];
-      if(p.poids) parts.push(p.poids + 'kg');
-      if(p.taille) parts.push(p.taille + 'cm');
-      if(p.age) parts.push(p.age + ' ans');
-      if(act) parts.push(act);
-      heroSub.textContent = (goalLabels[goal] || '') + (parts.length ? ' · ' + parts.join(', ') : '');
+      const actIdx = Math.min(Math.max(+(p.sportFreq)||2, 0), 4);
+      const act = acts[actIdx];
+      // BMR calculation display
+      const sex = p.sex === 'F' ? 'Femme' : 'Homme';
+      const bmrVal = p.sex==='F' ? Math.round(10*(+p.poids)+6.25*(+p.taille)-5*(+p.age)-161) : Math.round(10*(+p.poids)+6.25*(+p.taille)-5*(+p.age)+5);
+      const factors=[1.2,1.375,1.55,1.725,1.9];
+      const tdeeBase = Math.round(bmrVal*(factors[actIdx]||1.55));
+      heroSub.textContent = (goalLabels[goal]||goal) + ' · ' + (p.poids?p.poids+'kg ':'') + (p.taille?p.taille+'cm ':'') + (p.age?p.age+'ans':'') + ' · ' + act.label + ' (' + act.desc + ')';
     }
   }
 
@@ -8566,7 +8676,6 @@ const THEMES = [
   {id:'violet',     label:'🟣 Violet',       accent:'#8e44ad', dark:false},
   {id:'ocean',      label:'🔵 Océan',        accent:'#2980b9', dark:false},
   {id:'green',      label:'🌿 Vert',         accent:'#27ae60', dark:false},
-  {id:'paques',     label:'🐣 Pâques',       accent:'#e67e22', dark:false},
 ];
 
 function toggleTheme() {

@@ -17,9 +17,11 @@
   try{
     const savedTheme = localStorage.getItem('sc_theme');
     if(savedTheme && savedTheme !== 'light') document.documentElement.dataset.theme = savedTheme;
-    const isDark = savedTheme === 'dark' || (!savedTheme && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
-    const iconColor = isDark ? '#ff8e53' : '#ff6b6b';
-    const themeColor = isDark ? '#1a1225' : '#ff6b6b';
+    const darkThemes = ['dark','anthracite'];
+    const isDark = darkThemes.includes(savedTheme) || (!savedTheme && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    const accentMap = {dark:'#ff8e53',anthracite:'#6c8ebf',rouge:'#e74c3c',violet:'#8e44ad',ocean:'#2980b9',green:'#27ae60',paques:'#e67e22'};
+    const iconColor = accentMap[savedTheme] || '#ff6b6b';
+    const themeColor = isDark ? '#14161a' : iconColor;
     const icon = buildIcon(iconColor);
     // Update existing favicon
     const existing = document.querySelector('link[rel="icon"]');
@@ -96,6 +98,71 @@
 --grad2:linear-gradient(135deg,#e91e8c,#e67e22);
 --grad3:linear-gradient(135deg,#9b59b6,#e91e8c);
 }
+/* ══ THÈME ANTHRACITE (dark gris) ══ */
+[data-theme=anthracite]{
+--bg:#1c1e22;--bg2:#252830;--bg3:#14161a;
+--so:6px 6px 14px rgba(0,0,0,.7),-3px -3px 8px rgba(255,255,255,.04);
+--si:inset 4px 4px 9px rgba(0,0,0,.6),inset -4px -4px 9px rgba(255,255,255,.04);
+--ss:inset 2px 2px 5px rgba(0,0,0,.55),inset -2px -2px 5px rgba(255,255,255,.03);
+--sf:8px 8px 20px rgba(0,0,0,.65),-4px -4px 12px rgba(255,255,255,.03);
+--sp:inset 3px 3px 8px rgba(0,0,0,.65),inset -3px -3px 8px rgba(255,255,255,.03);
+--tx:#e8eaed;--tx2:#9aa0b0;--tx3:#4a5060;
+--ac:#6c8ebf;--ac2:#7aa3e0;--tl:#5cb8b2;--gn:#4caf7d;--or:#e8934a;--rd:#c0392b;--yl:#f0c040;--pk:#b06090;--lv:#8060a0;--bl:#5080c0;
+--r:20px;--rs:14px;--rx:10px;--rp:999px;--f:'Nunito',sans-serif;
+--grad:linear-gradient(135deg,#4a6fa5,#6c8ebf);
+--grad2:linear-gradient(135deg,#7a5090,#b06090);
+--grad3:linear-gradient(135deg,#3a8a86,#5cb8b2);
+}
+
+/* ══ THÈME ROUGE (dot 1) ══ */
+[data-theme=rouge]{
+--bg:#fff5f5;--bg2:#ffe0e0;--bg3:#fff0f0;
+--so:6px 6px 16px rgba(231,76,60,.14),-5px -5px 14px rgba(255,255,255,.92);
+--si:inset 4px 4px 10px rgba(231,76,60,.1),inset -4px -4px 10px rgba(255,255,255,.88);
+--ss:inset 2px 2px 6px rgba(231,76,60,.08),inset -2px -2px 6px rgba(255,255,255,.78);
+--sf:10px 10px 24px rgba(231,76,60,.16),-8px -8px 20px rgba(255,255,255,.92);
+--sp:inset 3px 3px 8px rgba(231,76,60,.16),inset -3px -3px 8px rgba(255,255,255,.82);
+--tx:#2a0a08;--tx2:#8b3030;--tx3:#e8a8a8;
+--ac:#e74c3c;--ac2:#c0392b;--tl:#e91e63;--gn:#27ae60;--or:#e67e22;--rd:#c0392b;--yl:#f39c12;--pk:#e91e63;--lv:#9b59b6;--bl:#2980b9;
+--grad:linear-gradient(135deg,#e74c3c,#c0392b);
+--grad2:linear-gradient(135deg,#e91e63,#e74c3c);
+--grad3:linear-gradient(135deg,#9b59b6,#e91e63);
+}
+
+/* ══ THÈME ROSE/VIOLET (dot 2) ══ */
+[data-theme=violet]{
+--bg:#fdf5ff;--bg2:#f0e0ff;--bg3:#f8f0ff;
+--so:6px 6px 16px rgba(155,89,182,.14),-5px -5px 14px rgba(255,255,255,.92);
+--si:inset 4px 4px 10px rgba(155,89,182,.1),inset -4px -4px 10px rgba(255,255,255,.88);
+--ss:inset 2px 2px 6px rgba(155,89,182,.08),inset -2px -2px 6px rgba(255,255,255,.78);
+--sf:10px 10px 24px rgba(155,89,182,.16),-8px -8px 20px rgba(255,255,255,.92);
+--sp:inset 3px 3px 8px rgba(155,89,182,.16),inset -3px -3px 8px rgba(255,255,255,.82);
+--tx:#1a0830;--tx2:#7040a0;--tx3:#c8a8e0;
+--ac:#8e44ad;--ac2:#9b59b6;--tl:#e91e8c;--gn:#27ae60;--or:#e67e22;--rd:#e74c3c;--yl:#f39c12;--pk:#e91e8c;--lv:#8e44ad;--bl:#3498db;
+--grad:linear-gradient(135deg,#8e44ad,#9b59b6);
+--grad2:linear-gradient(135deg,#e91e8c,#8e44ad);
+--grad3:linear-gradient(135deg,#3498db,#e91e8c);
+}
+
+/* ══ THÈME CYAN/BLEU (dot 3) ══ */
+[data-theme=ocean]{
+--bg:#f0faff;--bg2:#d0eeff;--bg3:#e5f5ff;
+--so:6px 6px 16px rgba(52,152,219,.14),-5px -5px 14px rgba(255,255,255,.92);
+--si:inset 4px 4px 10px rgba(52,152,219,.1),inset -4px -4px 10px rgba(255,255,255,.88);
+--ss:inset 2px 2px 6px rgba(52,152,219,.08),inset -2px -2px 6px rgba(255,255,255,.78);
+--sf:10px 10px 24px rgba(52,152,219,.16),-8px -8px 20px rgba(255,255,255,.92);
+--sp:inset 3px 3px 8px rgba(52,152,219,.16),inset -3px -3px 8px rgba(255,255,255,.82);
+--tx:#0a1828;--tx2:#1a6090;--tx3:#88c8e8;
+--ac:#2980b9;--ac2:#3498db;--tl:#00d2c6;--gn:#27ae60;--or:#e67e22;--rd:#e74c3c;--yl:#f39c12;--pk:#e91e8c;--lv:#9b59b6;--bl:#2980b9;
+--grad:linear-gradient(135deg,#2980b9,#3498db);
+--grad2:linear-gradient(135deg,#00d2c6,#2980b9);
+--grad3:linear-gradient(135deg,#1abc9c,#00d2c6);
+}
+
+/* ══ ANTHRACITE DARK: overrides for dark UI components ══ */
+[data-theme=anthracite] .chk{border-color:#4a5060;background:#252830;}
+[data-theme=anthracite] #tab-liste svg{color:#e8934a !important;}
+
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
 html,body{height:100%;}
 body{font-family:var(--f);background:var(--bg);color:var(--tx);overflow:hidden;transition:background .3s,color .3s;}
@@ -899,7 +966,7 @@ body.offline-mode .offline-banner{display:block;}
     <div id="syncBadge" style="display:none;font-size:.62rem;color:var(--tl);font-weight:700;background:rgba(0,210,198,.1);padding:4px 8px;border-radius:99px;">🔄 Sync</div>
     <div id="foyerBadge" style="display:none;font-size:.62rem;color:var(--bl);font-weight:700;background:rgba(52,152,219,.1);padding:4px 8px;border-radius:99px;cursor:pointer;" onclick="showFoyerModal()">👨‍👩‍👧 Foyer</div>
     <div class="tb-r">
-      <button class="btn sm" onclick="toggleTheme()" style="padding:8px 10px;font-size:.85rem;">🌙</button>
+      <button class="btn sm" onclick="toggleTheme()" id="themeToggleBtn" style="padding:8px 10px;font-size:.85rem;" title="Changer de thème">🎨</button>
       <div class="av" id="avBtn" onclick="showProfile()">M</div>
     </div>
   </div>
@@ -1702,7 +1769,11 @@ body.offline-mode .offline-banner{display:block;}
     </div>
 
     <button class="btn acc" style="width:100%;margin-bottom:8px;" onclick="saveProfile()">💾 Sauvegarder le profil</button>
-    <button class="btn" style="width:100%;margin-bottom:8px;" onclick="toggleTheme()">🌙 Changer de thème</button>
+    <!-- THEME PICKER -->
+    <div style="margin-bottom:8px;">
+      <div style="font-size:.75rem;font-weight:800;color:var(--tx2);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">🎨 Thème</div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;" id="themePickerGrid"></div>
+    </div>
     <button class="btn" style="width:100%;margin-bottom:8px;" onclick="showFoyerModal();closeProfile()">👨‍👩‍👧 Mon Foyer</button>
     <button class="btn" style="width:100%;color:var(--rd);" onclick="logout()">👋 Déconnexion</button>
   </div>
@@ -3785,6 +3856,46 @@ function switchMenuTab(tab) {
 }
 
 // ── Profil nutritionnel ─────────────────────────────────────
+
+// ── Theme picker ────────────────────────────────────────────
+function renderThemePicker() {
+  const grid = document.getElementById('themePickerGrid');
+  if(!grid) return;
+  const cur = document.documentElement.dataset.theme || 'light';
+
+  // Swatch colours per theme [bg, accent]
+  const swatches = {
+    light:      ['#f5f0eb','#ff6b6b'],
+    dark:       ['#1a1225','#ff8e53'],
+    anthracite: ['#1c1e22','#6c8ebf'],
+    rouge:      ['#fff5f5','#e74c3c'],
+    violet:     ['#fdf5ff','#8e44ad'],
+    ocean:      ['#f0faff','#2980b9'],
+    green:      ['#f0fff4','#27ae60'],
+    paques:     ['#fff8f0','#e67e22'],
+  };
+
+  const labels = {
+    light:'☀️ Clair', dark:'🌑 Sombre', anthracite:'⬛ Anthracite',
+    rouge:'🔴 Rouge', violet:'🟣 Violet', ocean:'🔵 Océan',
+    green:'🌿 Vert', paques:'🐣 Pâques',
+  };
+
+  grid.innerHTML = Object.entries(labels).map(([id, label]) => {
+    const [bg, ac] = swatches[id] || ['#f5f0eb','#ff6b6b'];
+    const selected = id === cur;
+    return '<div onclick="applyTheme(' + JSON.stringify(id) + ');renderThemePicker();" '
+      + 'style="cursor:pointer;border-radius:10px;padding:6px 4px;text-align:center;border:2px solid '
+      + (selected ? 'var(--ac)' : 'transparent')
+      + ';background:' + bg + ';transition:all .15s;" title="' + label + '">'
+      + '<div style="width:100%;height:22px;border-radius:6px;background:' + ac + ';margin-bottom:4px;"></div>'
+      + '<div style="font-size:.55rem;font-weight:' + (selected ? '900' : '700') + ';color:' + (selected ? 'var(--ac)' : '#666') + ';line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'
+      + label.split(' ').slice(1).join(' ')
+      + (selected ? ' ✓' : '') + '</div>'
+      + '</div>';
+  }).join('');
+}
+
 function openMenuProfile() {
   const p = state.profile||{};
   const set = (id,v) => { const el=document.getElementById(id); if(el&&v!==undefined) el.value=v; };
@@ -3794,6 +3905,7 @@ function openMenuProfile() {
   if(p.sex) document.getElementById('mp_sex').value = p.sex;
   togglePoidsObjRow();
   document.getElementById('menuProfileOverlay').classList.add('on');
+  setTimeout(renderThemePicker, 30);
 }
 function closeMenuProfile() { document.getElementById('menuProfileOverlay').classList.remove('on'); }
 function togglePoidsObjRow() {
@@ -8445,25 +8557,44 @@ function saveBudget() {
 // ═══════════════════════════════════════════════
 // THEME
 // ═══════════════════════════════════════════════
+// Theme config: id, label, accent color, bg dark?
+const THEMES = [
+  {id:'light',      label:'☀️ Clair',       accent:'#ff6b6b', dark:false},
+  {id:'dark',       label:'🌑 Sombre',       accent:'#ff8e53', dark:true},
+  {id:'anthracite', label:'⬛ Anthracite',   accent:'#6c8ebf', dark:true},
+  {id:'rouge',      label:'🔴 Rouge',        accent:'#e74c3c', dark:false},
+  {id:'violet',     label:'🟣 Violet',       accent:'#8e44ad', dark:false},
+  {id:'ocean',      label:'🔵 Océan',        accent:'#2980b9', dark:false},
+  {id:'green',      label:'🌿 Vert',         accent:'#27ae60', dark:false},
+  {id:'paques',     label:'🐣 Pâques',       accent:'#e67e22', dark:false},
+];
+
 function toggleTheme() {
   const html = document.documentElement;
-  const themes = ['light','dark','green','paques'];
-  const labels = {'light':'🌙 Sombre','dark':'🌿 Vert','green':'🐣 Pâques','paques':'☀️ Clair'};
   const cur = html.dataset.theme || 'light';
-  const next = themes[(themes.indexOf(cur)+1)%themes.length];
-  html.dataset.theme = next;
-  try { localStorage.setItem('sc_theme', next); } catch(e) {}
-  // Update PWA icon color: orange in dark, red in light
+  const ids = THEMES.map(t=>t.id);
+  const next = ids[(ids.indexOf(cur)+1)%ids.length];
+  applyTheme(next);
+  const cfg = THEMES.find(t=>t.id===next)||THEMES[0];
+  showToast('🎨', cfg.label, 'Thème appliqué');
+}
+
+function applyTheme(themeId) {
+  const html = document.documentElement;
+  html.dataset.theme = themeId;
+  try { localStorage.setItem('sc_theme', themeId); } catch(e) {}
+  const cfg = THEMES.find(t=>t.id===themeId) || THEMES[0];
   try {
-    const isDark = next === 'dark';
-    const iconColor = isDark ? '%23ff8e53' : '%23ff6b6b';
-    const newIcon = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'%3E%3Crect width='180' height='180' rx='40' fill='" + iconColor + "'/%3E%3Cpath d='M24 44h24l28 70h48l20-50H48' stroke='white' stroke-width='12' stroke-linecap='round' stroke-linejoin='round' fill='none'/%3E%3Ccircle cx='71' cy='138' r='12' fill='white'/%3E%3Ccircle cx='118' cy='138' r='12' fill='white'/%3E%3C/svg%3E";
+    const col = encodeURIComponent(cfg.accent);
+    const newIcon = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'%3E%3Crect width='180' height='180' rx='40' fill='" + col + "'/%3E%3Cpath d='M24 44h24l28 70h48l20-50H48' stroke='white' stroke-width='12' stroke-linecap='round' stroke-linejoin='round' fill='none'/%3E%3Ccircle cx='71' cy='138' r='12' fill='white'/%3E%3Ccircle cx='118' cy='138' r='12' fill='white'/%3E%3C/svg%3E";
     const fi = document.querySelector('link[rel="icon"]'); if(fi) fi.href = newIcon;
     const ai = document.querySelector('link[rel="apple-touch-icon"]'); if(ai) ai.href = newIcon;
     const tc = document.querySelector('meta[name="theme-color"]');
-    if(tc) tc.content = isDark ? '#1a1225' : '#ff6b6b';
+    if(tc) tc.content = cfg.dark ? '#14161a' : cfg.accent;
+    // Update caddy icon for dark themes
+    const tabListe = document.querySelector('#tab-liste svg');
+    if(tabListe) tabListe.style.color = cfg.dark ? cfg.accent : '';
   } catch(e) {}
-  showToast('🎨','Thème: '+next,'');
 }
 
 // ═══════════════════════════════════════════════

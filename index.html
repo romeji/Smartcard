@@ -37,6 +37,8 @@
     const l = document.createElement('link'); l.rel='manifest'; l.href=URL.createObjectURL(b);
     document.head.appendChild(l);
   } catch(e) {}
+  // Register SW for offline mode
+  if('serviceWorker' in navigator){try{const swBlob=new Blob([`const CACHE='sc-v1';self.addEventListener('install',e=>self.skipWaiting());self.addEventListener('activate',e=>e.waitUntil(caches.keys().then(k=>Promise.all(k.filter(n=>n!==CACHE).map(n=>caches.delete(n)))).then(()=>self.clients.claim())));self.addEventListener('fetch',e=>{const u=new URL(e.request.url);if(u.hostname.includes('firebase')||u.hostname.includes('anthropic')||u.hostname.includes('googleapis')||u.hostname.includes('themealdb')||u.hostname.includes('openfoodfacts')||u.hostname.includes('gstatic'))return;if(e.request.mode==='navigate'){e.respondWith(fetch(e.request).then(r=>{const c=r.clone();caches.open(CACHE).then(cache=>cache.put(e.request,c));return r;}).catch(()=>caches.match(e.request)));return;}if(e.request.destination==='image'){e.respondWith(caches.match(e.request).then(c=>c||fetch(e.request).then(r=>{if(r.ok){const cl=r.clone();caches.open(CACHE).then(cache=>cache.put(e.request,cl));}return r;}).catch(()=>new Response('',{status:404}))));return;}e.respondWith(fetch(e.request).then(r=>{if(r.ok&&e.request.method==='GET'){const c=r.clone();caches.open(CACHE).then(cache=>cache.put(e.request,c));}return r;}).catch(()=>caches.match(e.request)));});`],{type:'application/javascript'});const swUrl=URL.createObjectURL(swBlob);navigator.serviceWorker.register(swUrl,{scope:'/'}).then(reg=>{window._swReg=reg;console.log('[SW] ok');}).catch(e=>console.warn('[SW]',e));window.addEventListener('online',()=>{document.body.classList.remove('offline-mode');if(typeof showToast==='function')showToast('✅','En ligne','Connexion rétablie');});window.addEventListener('offline',()=>{document.body.classList.add('offline-mode');if(typeof showToast==='function')showToast('📵','Hors ligne','Mode local activé');});if(!navigator.onLine)document.body.classList.add('offline-mode');}catch(e){console.warn('[SW]',e);}}
 })();
 </script>
 <title>SmartCard 🛒</title>
@@ -642,6 +644,9 @@ svg{display:block;flex-shrink:0;}
 
 /* Premium badge */
 .premium-badge{display:inline-flex;align-items:center;gap:4px;background:linear-gradient(135deg,#f6d365,#fda085);color:#fff;font-size:.58rem;font-weight:900;padding:2px 8px;border-radius:99px;text-transform:uppercase;letter-spacing:.8px;}
+.prem-plan-card{border:2px solid var(--bg2);border-radius:var(--r);padding:14px;cursor:pointer;transition:all .15s;}
+.prem-plan-card.selected{border-color:#f6d365;background:rgba(246,211,101,.08);}
+.prem-plan-card:active{transform:scale(.97);}
 
 /* AI Insight card */
 .ai-insight-card{background:linear-gradient(135deg,rgba(108,92,231,.12),rgba(0,181,184,.08));border:1.5px solid rgba(108,92,231,.25);border-radius:var(--r);padding:14px 16px;margin-bottom:14px;}
@@ -703,6 +708,10 @@ svg{display:block;flex-shrink:0;}
 .meal-pick-kcal{font-size:.65rem;color:var(--or);font-weight:700;flex-shrink:0;}
 
 
+
+/* OFFLINE */
+.offline-banner{display:none;position:fixed;top:0;left:0;right:0;z-index:9999;background:linear-gradient(135deg,#636e72,#2d3436);color:#fff;text-align:center;padding:8px 16px;font-size:.78rem;font-weight:800;}
+body.offline-mode .offline-banner{display:block;}
 /* ══ FRIDGE BEAUTIFUL GRID ══ */
 .fgrid-beautiful{display:grid;grid-template-columns:repeat(auto-fill,minmax(80px,1fr));gap:10px;margin-bottom:14px;}
 .fi-card{background:var(--bg);border-radius:var(--rs);box-shadow:var(--so);padding:12px 8px 8px;text-align:center;position:relative;cursor:pointer;transition:all .15s;border:1.5px solid transparent;}
@@ -710,8 +719,8 @@ svg{display:block;flex-shrink:0;}
 .fi-card-em{font-size:1.6rem;display:block;margin-bottom:5px;}
 .fi-card-nm{font-size:.58rem;font-weight:800;color:var(--tx);line-height:1.2;word-break:break-word;}
 .fi-card-qty{font-size:.52rem;color:var(--tx3);margin-top:2px;}
-.fi-card-del{position:absolute;top:4px;right:4px;background:rgba(231,76,60,.15);border:none;border-radius:50%;width:18px;height:18px;font-size:.55rem;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--rd);opacity:0;transition:opacity .2s;}
-.fi-card:hover .fi-card-del{opacity:1;}
+.fi-card-del{position:absolute;top:4px;right:4px;background:rgba(231,76,60,.18);border:none;border-radius:50%;width:20px;height:20px;font-size:.6rem;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--rd);opacity:1;transition:opacity .2s;font-weight:900;}
+.fi-card:hover .fi-card-del{opacity:1;background:rgba(231,76,60,.35);}
 .fi-card.expiring{border-color:var(--yl);}
 .fi-card.expired{border-color:var(--rd);}
 [data-theme=dark] .fi-card{background:var(--bg2);}
@@ -1764,7 +1773,8 @@ let state = {
   recipeBookmarks: [],
   spoonCache: {},       // Cache Spoonacular searches
   aiInsights: null,     // Last AI analysis
-  menuGoalSummary: null // AI goal summary
+  menuGoalSummary: null, // AI goal summary
+  premium: { active:false, plan:null, expiresAt:null, activatedAt:null, trial:false }
 };
 let confirmCallback = null;
 
@@ -2804,13 +2814,29 @@ function renderFridge() {
     if(grid) grid.innerHTML = state.fridge.map(f => {
       const nm = f.name.length > 12 ? f.name.slice(0,11) + '\u2026' : f.name;
       const sid = JSON.stringify(String(f.id||''));
-      return '<div class="fi-card" onclick="showFridgeMenu(' + sid + ')">'
-        + '<button class="fi-card-del" onclick="event.stopPropagation();doDeleteFridge(' + sid + ')" title="Supprimer">✕</button>'
+      // Use data-id attribute to avoid onclick escaping issues
+      const card = '<div class="fi-card" data-fid="' + f.id + '">'
+        + '<button class="fi-card-del" data-dfid="' + f.id + '" title="Supprimer">✕</button>'
         + '<span class="fi-card-em">' + f.emoji + '</span>'
         + '<div class="fi-card-nm">' + nm + '</div>'
         + '<div class="fi-card-qty">×' + (f.qty||1) + '</div>'
         + '</div>';
+      return card;
     }).join('');
+
+    // Wire up click events via event delegation (no onclick string escaping needed)
+    if(grid) {
+      grid.onclick = function(e) {
+        const delBtn = e.target.closest('[data-dfid]');
+        if(delBtn) {
+          e.stopPropagation();
+          doDeleteFridge(delBtn.dataset.dfid);
+          return;
+        }
+        const card = e.target.closest('[data-fid]');
+        if(card) showFridgeMenu(card.dataset.fid);
+      };
+    }
   }
   loadRecipes();
 }
@@ -2869,6 +2895,7 @@ function _getCachedRecipe(type, key) {
 }
 
 async function generateFridgeAIRecipes() {
+  if(!isPremium()){openPremiumModal('Recettes IA depuis le frigo');return;}
   const btn = document.getElementById('fridgeAIBtn');
   const status = document.getElementById('fridgeAIStatus');
   const results = document.getElementById('fridgeAIResults');
@@ -2930,7 +2957,7 @@ function _renderFridgeAIResults(recipes, results, status) {
   if(status) status.textContent = recipes.length + ' recettes générées · sauvegardées automatiquement 💾';
   results.style.display = 'block';
   results.innerHTML = '<div style="border-top:1px solid rgba(108,92,231,.15);padding-top:12px;margin-top:4px;">'
-    + recipes.map(r => '<div style="background:var(--bg);border-radius:var(--rs);box-shadow:var(--so);padding:12px 14px;margin-bottom:8px;cursor:pointer;" onclick="openRecipeDetail(\'' + String(r.id||r.name).replace(/'/g,'') + '\')">'
+    + recipes.map(r => '<div style="background:var(--bg);border-radius:var(--rs);box-shadow:var(--so);padding:12px 14px;margin-bottom:8px;cursor:pointer;" data-rid="' + (r.id||'') + '" data-rname="' + (r.name||'').replace(/"/g,"&quot;") + '" onclick="openRecipeDetail(this.dataset.rid||this.dataset.rname)">'
         + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">'
         + '<span style="font-size:1.5rem;">' + (r.emoji||'🍽️') + '</span>'
         + '<div style="flex:1;"><div style="font-weight:900;font-size:.85rem;">' + r.name + '</div>'
@@ -3844,6 +3871,7 @@ function toggleMenuOpts() {
 
 // ── Génération IA complète ─────────────────────────────────
 async function generateAIMenuFull() {
+  if(!isPremium()){openPremiumModal('Menu IA de la semaine');return;}
   const btn=document.getElementById('menuGenBtn');
   const txt=document.getElementById('menuGenBtnTxt');
   if(btn) btn.disabled=true;
@@ -4085,6 +4113,7 @@ async function searchSpoonacular(query) {
 }
 
 async function searchWithClaude(query) {
+  if(!isPremium()){openPremiumModal('Recherche de recettes par IA');return;}
   const grid = document.getElementById("spoonResults");
   if(!grid) return;
 
@@ -4351,14 +4380,87 @@ function _applyMDBTranslation(recipeId, translated) {
     const meta = bodyEl.querySelector('.spoon-recipe-meta');
     if(meta) meta.innerHTML = (translated.category?'<span>🍽️ '+translated.category+'</span>':'')
       + (translated.area?'<span>🌍 '+translated.area+'</span>':'')
-      + '<span>⏱ ~30min</span><span style="color:var(--gn);font-size:.6rem;">🇫🇷</span>';
+      + '<span>⏱ ~30min</span><span style="color:var(--gn);font-size:.6rem;">🇫🇷 ✓</span>';
   }
+  // Remove per-card translation badge
+  const badge = document.getElementById('mdgtrans_' + recipeId);
+  if(badge) badge.remove();
 }
 // ═══════════════════════════════════════════════════════════
 // 🗃️ BASE DE DONNÉES RECETTES GLOBALE (partagée entre utilisateurs)
 // Stockée dans localStorage avec clé partagée sc_global_recipes
 // Fusionnée automatiquement depuis IA + MealDB + frigo
 // ═══════════════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════════
+// 💎 SYSTÈME PREMIUM
+// ═══════════════════════════════════════════════════════════
+
+function isPremium() {
+  const p = state.premium;
+  if(!p || !p.active) return false;
+  if(p.expiresAt && Date.now() > p.expiresAt) {
+    state.premium.active = false;
+    saveState();
+    return false;
+  }
+  return true;
+}
+
+function requirePremium(featureName, callback) {
+  if(isPremium()) { callback(); return; }
+  openPremiumModal(featureName);
+}
+
+function openPremiumModal(featureName) {
+  const existing = document.getElementById('premiumModal');
+  if(existing) existing.remove();
+  const overlay = document.createElement('div');
+  overlay.id = 'premiumModal';
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:900;background:rgba(0,0,0,.55);backdrop-filter:blur(8px);display:flex;align-items:flex-end;justify-content:center;';
+  const fHtml = featureName ? '<strong>' + featureName + '</strong> est une fonctionnalité Premium' : 'Débloquez toutes les fonctionnalités IA';
+  const perksData = [['🤖','Recettes IA frigo','Génération illimitée personnalisée'],['📅','Menu IA semaine','Planification selon votre profil'],['🔍','Explorer IA illimité','Recherche sans limite'],['📊','Analyse nutritionnelle','Conseils personnalisés'],['💾','Sync cloud','Données disponibles partout']];
+  const perksHtml = perksData.map(function(p){ return '<div style="display:flex;gap:12px;align-items:center;padding:10px 14px;background:var(--bg2);border-radius:12px;"><div style="font-size:1.3rem;">'+p[0]+'</div><div><div style="font-weight:800;font-size:.82rem;">'+p[1]+'</div><div style="font-size:.7rem;color:var(--tx2);">'+p[2]+'</div></div></div>'; }).join('');
+  const plansData = [{id:'monthly',label:'Mensuel',price:'2,99 €',badge:'',desc:'Facturé chaque mois'},{id:'yearly',label:'Annuel',price:'19,99 €',badge:'🔥 -44%',desc:'Soit 1,67 €/mois'}];
+  const plansHtml = plansData.map(function(pl){ return '<div class="prem-plan-card'+(pl.id==='yearly'?' selected':'')+'" data-plan="'+pl.id+'" onclick="selectPremPlan(\''+pl.id+'\')" style="flex:1;text-align:center;"><div style="height:16px;font-size:.6rem;font-weight:900;color:#fda085;">'+pl.badge+'</div><div style="font-weight:900;">'+pl.label+'</div><div style="font-size:1.2rem;font-weight:900;color:#fda085;">'+pl.price+'</div><div style="font-size:.62rem;color:var(--tx2);">'+pl.desc+'</div></div>'; }).join('');
+  overlay.innerHTML = '<div style="background:var(--bg);border-radius:24px 24px 0 0;padding:24px 20px calc(28px + env(safe-area-inset-bottom));width:100%;max-width:480px;max-height:90vh;overflow-y:auto;"><div style="width:40px;height:4px;background:var(--bg2);border-radius:2px;margin:0 auto 18px;"></div><div style="text-align:center;margin-bottom:18px;"><div style="font-size:2.5rem;margin-bottom:6px;">⭐</div><div style="font-size:1.15rem;font-weight:900;background:linear-gradient(135deg,#f6d365,#fda085);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;">SmartCard Premium</div><div style="font-size:.8rem;color:var(--tx2);margin-top:5px;">'+fHtml+'</div></div><div style="display:flex;flex-direction:column;gap:7px;margin-bottom:18px;">'+perksHtml+'</div><div style="display:flex;gap:10px;margin-bottom:14px;">'+plansHtml+'</div><button onclick="activatePremium()" style="width:100%;padding:15px;border:none;border-radius:16px;background:linear-gradient(135deg,#f6d365,#fda085);color:#fff;font-weight:900;font-size:.9rem;cursor:pointer;margin-bottom:8px;">✨ Essai gratuit 7 jours</button><div style="font-size:.62rem;color:var(--tx3);text-align:center;margin-bottom:12px;">Annulez à tout moment · Sans engagement</div><div style="display:flex;gap:8px;margin-bottom:8px;"><input id="premPromoInput" class="inp" placeholder="Code promo…" style="flex:1;font-size:.78rem;"><button onclick="applyPromoCode()" class="btn sm">Appliquer</button></div><button onclick="restorePremium()" style="width:100%;padding:10px;border:none;background:none;color:var(--tx2);font-size:.73rem;cursor:pointer;text-decoration:underline;">Restaurer un achat</button><button onclick="document.getElementById(\'premiumModal\').remove()" style="width:100%;padding:9px;border:none;background:none;color:var(--tx3);font-size:.7rem;cursor:pointer;">Pas maintenant</button></div>';
+  overlay.onclick = function(e){ if(e.target===overlay) overlay.remove(); };
+  document.body.appendChild(overlay);
+}
+
+let _selectedPremPlan = 'yearly';
+function selectPremPlan(p) { _selectedPremPlan=p; document.querySelectorAll('.prem-plan-card').forEach(function(c){c.classList.toggle('selected',c.dataset.plan===p);}); }
+
+function activatePremium() {
+  state.premium = {active:true,plan:_selectedPremPlan||'yearly',expiresAt:Date.now()+7*24*3600*1000,activatedAt:Date.now(),trial:true};
+  saveState(); document.getElementById('premiumModal')?.remove();
+  showToast('⭐','Premium activé !','7 jours gratuits · Toutes fonctionnalités débloquées');
+  renderAll();
+}
+
+function applyPromoCode() {
+  const code = (document.getElementById('premPromoInput')?.value||'').trim().toUpperCase();
+  const codes = {'SMARTCARD2024':90,'BETA50':30,'PREMIUM':365,'FRIGO':30,'PROMO2025':14};
+  if(codes[code]) {
+    state.premium = {active:true,plan:'promo',expiresAt:Date.now()+codes[code]*24*3600*1000,activatedAt:Date.now()};
+    saveState(); document.getElementById('premiumModal')?.remove();
+    showToast('🎉','Code appliqué !',codes[code]+' jours de Premium offerts'); renderAll();
+  } else { showToast('❌','Code invalide','Vérifiez votre code promo'); }
+}
+
+function restorePremium() {
+  const p = state.premium;
+  if(p&&p.active&&p.expiresAt>Date.now()) { showToast('✅','Achat restauré','Premium actif'); document.getElementById('premiumModal')?.remove(); }
+  else { showToast('ℹ️','Aucun achat trouvé','Aucun abonnement pour ce compte'); }
+}
+
+function getPremiumBadge() {
+  if(!isPremium()) return '';
+  const p = state.premium;
+  const d = p.expiresAt ? Math.ceil((p.expiresAt-Date.now())/(24*3600*1000)) : null;
+  return '<span style="font-size:.6rem;background:linear-gradient(135deg,#f6d365,#fda085);color:#fff;padding:2px 8px;border-radius:99px;font-weight:900;margin-left:5px;">'+(p.trial?'⭐ ESSAI'+(d?' · '+d+'j':''):'⭐ PREMIUM')+'</span>';
+}
+
 
 function getGlobalRecipeDB() {
   try {
@@ -4407,21 +4509,46 @@ function searchGlobalDB(query, filters) {
 }
 
 function getRecipesMatchingFridge(fridgeNames) {
-  const db = [...getGlobalRecipeDB(), ...(window.RECIPES_DB||[]), ...(window.RECIPES_FR||[])];
+  // Combine all recipe sources (deduplicated)
+  const globalDB = getGlobalRecipeDB();
+  const allSources = [
+    ...(state.customRecipes||[]),
+    ...globalDB,
+    ...(window.RECIPES_DB||[]),
+    ...(window.RECIPES_FR||[]),
+  ];
+  const seen = new Set();
+  const db = allSources.filter(r => {
+    if(!r||!r.name||seen.has(r.id||r.name)) return false;
+    seen.add(r.id||r.name);
+    return true;
+  });
+
+  // A recipe matches if it has AT LEAST 3 of its ingredients in the fridge
   return db.filter(r => {
     const ings = Array.isArray(r.ingredients)
-      ? r.ingredients.map(i => (typeof i==='string'?i:i.name||'').toLowerCase())
+      ? r.ingredients.map(i => {
+          const raw = (typeof i==='string'?i:i.name||'').toLowerCase().trim();
+          // Remove quantities: "250g de farine" → "farine", "2 œufs" → "œufs"
+          return raw.replace(/^\d+[\d.,]*\s*(g|kg|ml|l|cl|dl|tsp|tbsp|cup|oz|lb|pcs?)?\s*(de\s|d')?/i, '').trim();
+        })
       : [];
-    const hits = ings.filter(ing => fridgeNames.some(fn =>
-      fn.includes(ing.split(' ')[0]) || ing.includes(fn.split(' ')[0])
-    ));
-    return hits.length >= Math.min(2, Math.ceil(ings.length * 0.3));
-  }).map(r => ({...r, _matchCount: (Array.isArray(r.ingredients)
-    ? r.ingredients.map(i=>(typeof i==='string'?i:i.name||'').toLowerCase())
-    : []).filter(ing=>fridgeNames.some(fn=>fn.includes(ing.split(' ')[0]))).length
-  })).sort((a,b)=>b._matchCount-a._matchCount);
-}
-
+    if(ings.length === 0) return false;
+    const hits = ings.filter(ing => {
+      if(ing.length < 3) return false;
+      const ingWord = ing.split(/[ ,()]+/)[0]; // first meaningful word
+      return fridgeNames.some(fn => {
+        if(fn.length < 3) return false;
+        const fnWord = fn.split(/[ ,]+/)[0];
+        return (
+          fn.includes(ingWord) || ing.includes(fnWord) ||
+          ingWord.includes(fnWord) || fnWord.includes(ingWord)
+        );
+      });
+    });
+    // RULE: need at least 3 matching ingredients
+    return hits.length >= 3;
+  }).map(r => {    const ings2 = Array.isArray(r.ingredients)      ? r.ingredients.map(i => {          const raw = (typeof i==='string'?i:i.name||'').toLowerCase().trim();          return raw.replace(/^\d+[\d.,]*\s*(g|kg|ml|l|cl|dl|tsp|tbsp|cup|oz|lb|pcs?)?\s*(de |d')?/i, '').trim();        })      : [];    const matchCount = ings2.filter(ing => {      if(ing.length < 3) return false;      const ingWord = ing.split(/[ ,()+]+/)[0];      return fridgeNames.some(fn => {        if(fn.length < 3) return false;        const fnWord = fn.split(/[ ,]+/)[0];        return fn.includes(ingWord) || ing.includes(fnWord) || ingWord.includes(fnWord) || fnWord.includes(ingWord);      });    }).length;    return {...r, _matchCount: matchCount};  }).sort((a,b) => b._matchCount - a._matchCount);}
 
 
 // ══ TheMealDB Explorer — fallback si Claude indisponible ══
@@ -4591,7 +4718,7 @@ async function searchMealDBExplorer(query) {
 
     const banner = document.createElement("div");
     banner.style.cssText = "padding:8px 14px;margin-bottom:10px;background:rgba(0,181,184,.1);border-radius:var(--rs);font-size:.73rem;font-weight:700;color:var(--tl);display:flex;align-items:center;gap:6px;";
-    banner.innerHTML = "🌐 " + recipes.length + " recettes TheMealDB · <span id='mdbTranslateStatus' style='color:var(--ac);'>Traduction IA en cours…</span>";
+    banner.innerHTML = "🌐 " + recipes.length + " recettes TheMealDB · <span id='mdbTranslateStatus' style='display:inline-flex;align-items:center;gap:5px;color:var(--ac);'><span style='width:12px;height:12px;border-radius:50%;border:2px solid rgba(108,92,231,.3);border-top-color:var(--ac);animation:spin .8s linear infinite;display:inline-block;'></span>Traduction en cours…</span>";
     grid.appendChild(banner);
 
     const gridDiv = document.createElement("div");
@@ -4615,6 +4742,15 @@ async function searchMealDBExplorer(query) {
       } else {
         imgDiv.style.cssText = "display:flex;align-items:center;justify-content:center;font-size:2.5rem;background:var(--bg2);";
         imgDiv.textContent = "🍽️";
+      }
+      // Translation loading badge (removed by _applyMDBTranslation)
+      if(r._needsAITranslation) {
+        const badge = document.createElement('div');
+        badge.id = 'mdgtrans_' + r.id;
+        badge.style.cssText = 'position:absolute;top:4px;left:4px;background:rgba(0,0,0,.6);border-radius:6px;padding:3px 7px;font-size:.58rem;color:#fff;display:flex;align-items:center;gap:4px;z-index:2;';
+        badge.innerHTML = '<span style="width:9px;height:9px;border-radius:50%;border:1.5px solid rgba(255,255,255,.3);border-top-color:#fff;animation:spin .8s linear infinite;display:inline-block;"></span>Traduction…';
+        card.style.position = 'relative';
+        card.appendChild(badge);
       }
 
       const body = document.createElement("div");
@@ -5697,62 +5833,119 @@ function openCreateRecipeModal(editRecipe) {
   modal.id = 'createRecipeModal';
   modal.onclick = e => { if(e.target===modal) modal.remove(); };
   
-  modal.innerHTML = `<div class="modal">
-    <div class="modal-hd">
-      <div class="modal-ti">✏️ Créer ma recette</div>
+  modal.innerHTML = `<div class="modal" style="max-height:92vh;overflow-y:auto;">
+    <div class="modal-hd" style="position:sticky;top:0;background:var(--bg);z-index:5;padding-bottom:8px;border-bottom:1px solid var(--bg2);">
+      <div class="modal-ti">✏️ ${editRecipe ? 'Modifier' : 'Créer'} une recette</div>
       <button class="btn ico" onclick="document.getElementById('createRecipeModal').remove()">✕</button>
     </div>
+
+    <!-- PHOTO -->
+    <div class="a-field">
+      <label class="a-lbl">📷 Photo</label>
+      <div style="display:flex;align-items:center;gap:10px;margin-top:6px;">
+        <div id="crPhotoPreview" onclick="document.getElementById('crPhotoFile').click()" style="width:80px;height:80px;border-radius:var(--rs);border:2px dashed var(--bg2);overflow:hidden;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:var(--bg2);font-size:1.8rem;" title="Cliquez pour choisir une photo">📷</div>
+        <div style="flex:1;">
+          <div style="font-size:.75rem;color:var(--tx2);margin-bottom:6px;">Ajoutez une photo depuis votre galerie</div>
+          <input type="file" id="crPhotoFile" accept="image/*" style="display:none" onchange="crHandlePhoto(this)">
+          <button class="btn sm" onclick="document.getElementById('crPhotoFile').click()" style="font-size:.72rem;padding:7px 12px;">📂 Choisir une image</button>
+          <button class="btn sm" id="crPhotoDelBtn" onclick="crDeletePhoto()" style="font-size:.72rem;padding:7px 12px;display:none;color:var(--rd);">🗑️ Supprimer</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- NOM + EMOJI -->
     <div style="display:flex;gap:8px;">
       <div class="a-field" style="flex:2;">
-        <label class="a-lbl">Nom *</label>
+        <label class="a-lbl">Nom de la recette *</label>
         <input class="inp" id="crName" placeholder="Ex: Gratin dauphinois">
       </div>
       <div class="a-field" style="flex:1;">
         <label class="a-lbl">Emoji</label>
-        <input class="inp" id="crEmoji" value="🍽️" style="font-size:1.2rem;">
+        <input class="inp" id="crEmoji" value="🍽️" style="font-size:1.2rem;text-align:center;">
       </div>
     </div>
+
+    <!-- TEMPS + PORTIONS + KCAL -->
     <div style="display:flex;gap:8px;">
       <div class="a-field" style="flex:1;">
         <label class="a-lbl">⏱ Temps (min)</label>
-        <input class="inp" id="crTime" type="number" value="30">
+        <input class="inp" id="crTime" type="number" value="30" min="1" max="300">
       </div>
       <div class="a-field" style="flex:1;">
         <label class="a-lbl">👥 Portions</label>
-        <input class="inp" id="crPortions" type="number" value="4">
-        <div id="crAutoKcal" style="font-size:.65rem;color:var(--ac);margin-top:3px;font-weight:700;"></div>
+        <input class="inp" id="crPortions" type="number" value="4" min="1" max="20" oninput="crCalcAutoKcal()">
+      </div>
+      <div class="a-field" style="flex:1;">
+        <label class="a-lbl">🔥 Kcal/portion</label>
+        <input class="inp" id="crKcal" type="number" placeholder="Auto" min="0">
+        <div id="crAutoKcal" style="font-size:.6rem;color:var(--ac);margin-top:2px;font-weight:700;"></div>
       </div>
     </div>
+
+    <!-- TYPE DE REPAS -->
     <div class="a-field">
       <label class="a-lbl">🍽️ Type de repas</label>
       <div style="display:flex;gap:6px;margin-top:4px;flex-wrap:wrap;">
+        <button class="meal-type-btn" id="crMt-b" onclick="this.classList.toggle('on')">🌅 Petit-déj</button>
         <button class="meal-type-btn on" id="crMt-l" onclick="this.classList.toggle('on')">☀️ Déjeuner</button>
         <button class="meal-type-btn on" id="crMt-d" onclick="this.classList.toggle('on')">🌙 Dîner</button>
         <button class="meal-type-btn" id="crMt-snack" onclick="this.classList.toggle('on')">🍎 Collation</button>
       </div>
     </div>
+
+    <!-- INGRÉDIENTS -->
     <div class="a-field">
-      <label class="a-lbl">📋 Ingrédients</label>
-      <div id="crIngrList" style="display:flex;flex-direction:column;gap:5px;margin-top:4px;max-height:160px;overflow-y:auto;"></div>
-      <div style="display:flex;gap:6px;margin-top:6px;position:relative;">
-        <input class="inp" id="crIngrInput" placeholder="🔍 Chercher un ingrédient..."
-          style="flex:1;" oninput="crSearchIngr(this.value)"
-          onkeydown="if(event.key==='Enter'){event.preventDefault();crAddIngrFromInput();}">
-        <select class="inp" id="crIngrQty" style="width:80px;padding:8px 4px;">
-          <option>50g</option><option>100g</option><option selected>150g</option><option>200g</option>
-          <option>250g</option><option>300g</option><option>1 u.</option><option>2 u.</option><option>1 cs</option><option>1 cc</option>
-        </select>
-        <button class="btn acc sm" onclick="crAddIngrFromInput()" style="flex-shrink:0;padding:9px 12px;">+</button>
-        <div id="crIngrAC" style="display:none;position:absolute;left:0;right:90px;top:44px;background:var(--bg);border:1px solid var(--bg2);border-radius:var(--rs);box-shadow:0 8px 24px rgba(0,0,0,.15);z-index:200;max-height:150px;overflow-y:auto;"></div>
+      <label class="a-lbl" style="display:flex;align-items:center;justify-content:space-between;">
+        <span>📋 Ingrédients</span>
+        <span id="crIngrCount" style="font-size:.65rem;color:var(--tx2);font-weight:600;">0 ajouté</span>
+      </label>
+
+      <!-- Liste des ingrédients ajoutés -->
+      <div id="crIngrList" style="display:flex;flex-direction:column;gap:5px;margin-top:6px;margin-bottom:8px;min-height:36px;"></div>
+
+      <!-- Zone d'ajout -->
+      <div style="background:var(--bg2);border-radius:var(--rs);padding:10px 12px;">
+        <div style="font-size:.7rem;font-weight:700;color:var(--tx2);margin-bottom:8px;">➕ Ajouter un ingrédient</div>
+        <div style="display:flex;gap:6px;margin-bottom:6px;position:relative;">
+          <input class="inp" id="crIngrInput" placeholder="Nom de l'ingrédient…"
+            style="flex:1;background:var(--bg);" oninput="crSearchIngr(this.value)"
+            onkeydown="if(event.key==='Enter'){event.preventDefault();crAddIngrFromInput();}">
+          <div id="crIngrAC" style="display:none;position:absolute;left:0;right:0;top:46px;background:var(--bg);border:1px solid var(--bg2);border-radius:var(--rs);box-shadow:0 8px 24px rgba(0,0,0,.15);z-index:200;max-height:140px;overflow-y:auto;"></div>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center;">
+          <input class="inp" id="crIngrQtyNum" type="number" placeholder="Qté" min="1" style="width:70px;background:var(--bg);text-align:center;">
+          <select class="inp" id="crIngrUnit" style="flex:1;background:var(--bg);padding:10px 8px;">
+            <option value="g">g</option>
+            <option value="kg">kg</option>
+            <option value="ml">ml</option>
+            <option value="cl">cl</option>
+            <option value="l">l</option>
+            <option value="u.">u. (unité)</option>
+            <option value="cs">c. à soupe</option>
+            <option value="cc">c. à café</option>
+            <option value="pincée">pincée</option>
+            <option value="au goût">au goût</option>
+          </select>
+          <button class="btn acc" onclick="crAddIngrFromInput()" style="padding:10px 16px;font-weight:900;font-size:.9rem;">+</button>
+        </div>
       </div>
     </div>
+
+    <!-- INSTRUCTIONS -->
     <div class="a-field">
-      <label class="a-lbl">👨‍🍳 Instructions (optionnel)</label>
-      <textarea class="inp" id="crInstructions" placeholder="1. Préchauffer le four...&#10;2. Mélanger les ingrédients..." style="min-height:70px;resize:vertical;"></textarea>
+      <label class="a-lbl">👨‍🍳 Instructions</label>
+      <div id="crStepsList" style="display:flex;flex-direction:column;gap:5px;margin-top:6px;margin-bottom:6px;"></div>
+      <div style="display:flex;gap:6px;">
+        <input class="inp" id="crStepInput" placeholder="Ex: Faire chauffer l'huile à feu moyen…" style="flex:1;"
+          onkeydown="if(event.key==='Enter'){event.preventDefault();crAddStep();}">
+        <button class="btn sm" onclick="crAddStep()" style="padding:10px 12px;font-weight:800;">+</button>
+      </div>
     </div>
-    <div style="display:flex;gap:8px;margin-top:8px;">
-      <button class="btn acc" onclick="saveCustomRecipeFull()" style="flex:1;padding:13px;font-weight:800;">💾 Enregistrer</button>
-      <button class="btn" onclick="document.getElementById('createRecipeModal').remove()" style="flex:1;padding:13px;">Annuler</button>
+
+    <!-- ACTIONS -->
+    <div style="display:flex;gap:8px;margin-top:12px;padding-top:12px;border-top:1px solid var(--bg2);">
+      <button class="btn acc" onclick="saveCustomRecipeFull()" style="flex:2;padding:13px;font-weight:800;border-radius:14px;">💾 Enregistrer</button>
+      <button class="btn" onclick="document.getElementById('createRecipeModal').remove()" style="flex:1;padding:13px;border-radius:14px;">Annuler</button>
     </div>
   </div>`;
   
@@ -5761,84 +5954,190 @@ function openCreateRecipeModal(editRecipe) {
   setTimeout(() => {
     crRenderIngrList();
     // Pré-remplir si modification
+    window._crSteps = [];
+    crRenderSteps();
     if(editRecipe) {
-      const inp = document.getElementById('crName');
-      if(inp) inp.value = editRecipe.name||'';
-      const em = document.getElementById('crEmoji');
-      if(em) em.value = editRecipe.emoji||'🍽️';
-      const t = document.getElementById('crTime');
-      if(t) t.value = editRecipe.time||30;
-      const p = document.getElementById('crPortions');
-      if(p) p.value = editRecipe.portions||4;
-      const d = document.getElementById('crDiet');
-      if(d) d.value = editRecipe.diet||'omnivore';
-      const ins = document.getElementById('crInstructions');
-      if(ins) ins.value = (editRecipe.instructions||[]).join('\n');
-      // Photo preview
+      const get = id => document.getElementById(id);
+      if(get('crName')) get('crName').value = editRecipe.name||'';
+      if(get('crEmoji')) get('crEmoji').value = editRecipe.emoji||'🍽️';
+      if(get('crTime')) get('crTime').value = editRecipe.time||30;
+      if(get('crPortions')) get('crPortions').value = editRecipe.portions||4;
+      if(get('crKcal') && editRecipe.kcal) get('crKcal').value = editRecipe.kcal;
+      // Photo
       if(editRecipe.photo) {
-        const prev = document.getElementById('crPhotoPreview');
-        if(prev) { prev.style.border='none'; prev.innerHTML=`<img src="${editRecipe.photo}" style="width:100%;height:100%;object-fit:cover;">`; }
+        const prev = get('crPhotoPreview');
+        if(prev) { prev.style.border='none'; prev.innerHTML='<img src="'+editRecipe.photo+'" style="width:100%;height:100%;object-fit:cover;border-radius:var(--rs);">'; }
+        window._crPhotoData = editRecipe.photo;
+        const delBtn = get('crPhotoDelBtn');
+        if(delBtn) delBtn.style.display='';
       }
+      // Instructions → steps
+      window._crSteps = Array.isArray(editRecipe.instructions) ? [...editRecipe.instructions] : [];
+      crRenderSteps();
+      // Ingredients
+      window._crIngredients = Array.isArray(editRecipe.ingredients)
+        ? editRecipe.ingredients.map(i => typeof i==='string' ? {name:i,qty:'',emoji:'🛍️'} : {...i})
+        : [];
       // Meal types
       const mts = editRecipe.mealTypes||['l','d'];
-      ['l','d','snack','b'].forEach(mt=>{
-        const btn=document.getElementById('crMt-'+mt);
+      ['b','l','d','snack'].forEach(mt=>{
+        const btn=get('crMt-'+mt);
         if(btn) btn.classList.toggle('on', mts.includes(mt));
       });
+      window._crEditId = editRecipe.id;
     }
   }, 50);
 }
 
-// Autocomplete for recipe ingredient creation
+// ── Création recette : helpers ──────────────────────────────
+function crHandlePhoto(input) {
+  const file = input.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    window._crPhotoData = e.target.result;
+    const prev = document.getElementById('crPhotoPreview');
+    if(prev) {
+      prev.style.border = 'none';
+      prev.innerHTML = '<img src="'+e.target.result+'" style="width:100%;height:100%;object-fit:cover;border-radius:var(--rs);">';
+    }
+    const delBtn = document.getElementById('crPhotoDelBtn');
+    if(delBtn) delBtn.style.display = '';
+  };
+  reader.readAsDataURL(file);
+}
+
+function crDeletePhoto() {
+  window._crPhotoData = null;
+  const prev = document.getElementById('crPhotoPreview');
+  if(prev) { prev.style.border = '2px dashed var(--bg2)'; prev.innerHTML = '📷'; }
+  const delBtn = document.getElementById('crPhotoDelBtn');
+  if(delBtn) delBtn.style.display = 'none';
+  const fileInp = document.getElementById('crPhotoFile');
+  if(fileInp) fileInp.value = '';
+}
+
 function crSearchIngr(q) {
   const ac = document.getElementById('crIngrAC');
   if(!ac) return;
   if(!q || q.length < 1) { ac.style.display='none'; return; }
-  const matches = (typeof PRODUCTS!=='undefined' ? PRODUCTS : []).filter(p => p.name.toLowerCase().includes(q.toLowerCase())).slice(0,8);
-  if(!matches.length) { ac.style.display='none'; return; }
+  // Search PRODUCTS + fridge items + common ingredients
+  const allItems = [
+    ...(typeof PRODUCTS!=='undefined' ? PRODUCTS : []),
+    ...state.fridge.map(f => ({name:f.name, emoji:f.emoji})),
+  ];
+  const seen = new Set();
+  const matches = allItems.filter(p => {
+    if(seen.has(p.name.toLowerCase())) return false;
+    seen.add(p.name.toLowerCase());
+    return p.name.toLowerCase().includes(q.toLowerCase());
+  }).slice(0,8);
+
+  if(!matches.length) {
+    // Allow free text
+    ac.style.display = 'block';
+    ac.innerHTML = '';
+    const freeDiv = document.createElement('div');
+    freeDiv.style.cssText = 'padding:9px 14px;cursor:pointer;font-size:.82rem;color:var(--tx2);';
+    freeDiv.innerHTML = '➕ Ajouter <strong>' + q + '</strong>';
+    freeDiv.onclick = () => crSelectIngr(q);
+    ac.appendChild(freeDiv);
+    return;
+  }
   ac.style.display = 'block';
   ac.innerHTML = '';
   matches.forEach(p => {
     const div = document.createElement('div');
     div.style.cssText = 'padding:9px 14px;cursor:pointer;border-bottom:1px solid var(--bg2);display:flex;align-items:center;gap:8px;font-size:.82rem;';
-    div.innerHTML = '<span style="font-size:1.1rem;">'+(p.emoji||'🛍️')+'</span><span style="font-weight:700;">'+p.name+'</span>';
-    div.onclick = () => { crSelectIngr(p.name); document.getElementById('crIngrAC').style.display='none'; };
+    div.innerHTML = '<span style="font-size:1.1rem;">'+(p.emoji||'🛍️')+'</span><span style="flex:1;font-weight:700;">'+p.name+'</span>';
+    div.onclick = () => { crSelectIngr(p.name); const a=document.getElementById('crIngrAC'); if(a) a.style.display='none'; };
     ac.appendChild(div);
   });
 }
 
 function crSelectIngr(name) {
   const inp = document.getElementById('crIngrInput');
-  if(inp) inp.value = name;
+  if(inp) { inp.value = name; inp.focus(); }
+  const ac = document.getElementById('crIngrAC');
+  if(ac) ac.style.display = 'none';
 }
 
 function crAddIngrFromInput() {
   const inp = document.getElementById('crIngrInput');
-  const qtyEl = document.getElementById('crIngrQty');
+  const qtyNum = document.getElementById('crIngrQtyNum');
+  const unit = document.getElementById('crIngrUnit');
   const name = inp?.value?.trim();
-  const qty = qtyEl?.value || '100g';
-  if(!name) return;
-  const product = (typeof PRODUCTS!=='undefined' ? PRODUCTS : []).find(p => p.name.toLowerCase()===name.toLowerCase());
+  if(!name) { inp?.focus(); return; }
+  const qty = (qtyNum?.value ? qtyNum.value + ' ' : '') + (unit?.value || 'g');
+  const product = [
+    ...(typeof PRODUCTS!=='undefined' ? PRODUCTS : []),
+    ...state.fridge.map(f => ({name:f.name, emoji:f.emoji})),
+  ].find(p => p.name.toLowerCase() === name.toLowerCase());
   const emoji = product?.emoji || '🛍️';
   if(!window._crIngredients) window._crIngredients = [];
+  // Prevent duplicate
+  if(window._crIngredients.some(i => i.name.toLowerCase() === name.toLowerCase())) {
+    showToast('ℹ️', name, 'Déjà dans la liste');
+    return;
+  }
   window._crIngredients.push({name, qty, emoji});
   inp.value = '';
-  document.getElementById('crIngrAC').style.display = 'none';
+  if(qtyNum) qtyNum.value = '';
+  const ac = document.getElementById('crIngrAC');
+  if(ac) ac.style.display = 'none';
   crRenderIngrList();
   crCalcAutoKcal();
+  inp.focus();
 }
 
 function crRenderIngrList() {
   const el = document.getElementById('crIngrList');
   if(!el) return;
   const ingrs = window._crIngredients || [];
-  if(!ingrs.length) { el.innerHTML = '<div style="font-size:.75rem;color:var(--tx3);text-align:center;padding:6px;">Ajoutez des ingrédients ci-dessous</div>'; return; }
+  const cnt = document.getElementById('crIngrCount');
+  if(cnt) cnt.textContent = ingrs.length + ' ajouté' + (ingrs.length !== 1 ? 's' : '');
+
+  if(!ingrs.length) {
+    el.innerHTML = '<div style="text-align:center;padding:12px;color:var(--tx3);font-size:.75rem;border:1.5px dashed var(--bg2);border-radius:var(--rs);">Aucun ingrédient — ajoutez-en ci-dessous ⬇️</div>';
+    return;
+  }
   el.innerHTML = ingrs.map((ing,i) =>
-    '<div style="display:flex;align-items:center;gap:6px;padding:7px 10px;background:var(--bg);border-radius:var(--rs);">'
-    + '<span>'+ing.emoji+'</span>'
-    + '<span style="flex:1;font-size:.82rem;font-weight:700;">'+ing.name+'</span>'
-    + '<span style="font-size:.72rem;color:var(--tx2);">'+ing.qty+'</span>'
-    + '<button onclick="window._crIngredients.splice('+i+',1);crRenderIngrList();crCalcAutoKcal();" style="background:none;border:none;cursor:pointer;color:var(--tx3);font-size:.9rem;">✕</button>'
+    '<div style="display:flex;align-items:center;gap:8px;padding:9px 12px;background:var(--bg2);border-radius:var(--rs);border-left:3px solid var(--ac);">'
+    + '<span style="font-size:1.1rem;">' + ing.emoji + '</span>'
+    + '<div style="flex:1;">'
+    + '<div style="font-size:.82rem;font-weight:800;">' + ing.name + '</div>'
+    + '<div style="font-size:.68rem;color:var(--tx2);">' + ing.qty + '</div>'
+    + '</div>'
+    + '<button onclick="window._crIngredients.splice('+i+',1);crRenderIngrList();crCalcAutoKcal();" '
+    + 'style="background:rgba(231,76,60,.1);border:none;border-radius:50%;width:24px;height:24px;cursor:pointer;color:var(--rd);font-size:.75rem;font-weight:900;display:flex;align-items:center;justify-content:center;">✕</button>'
+    + '</div>'
+  ).join('');
+}
+
+// Steps (instructions) management
+window._crSteps = [];
+function crAddStep() {
+  const inp = document.getElementById('crStepInput');
+  const text = inp?.value?.trim();
+  if(!text) { inp?.focus(); return; }
+  if(!window._crSteps) window._crSteps = [];
+  window._crSteps.push(text);
+  inp.value = '';
+  crRenderSteps();
+  inp.focus();
+}
+
+function crRenderSteps() {
+  const el = document.getElementById('crStepsList');
+  if(!el) return;
+  const steps = window._crSteps || [];
+  if(!steps.length) { el.innerHTML = ''; return; }
+  el.innerHTML = steps.map((step, i) =>
+    '<div style="display:flex;align-items:flex-start;gap:8px;padding:9px 12px;background:var(--bg2);border-radius:var(--rs);">'
+    + '<div style="width:22px;height:22px;border-radius:50%;background:var(--ac);color:#fff;font-size:.65rem;font-weight:900;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px;">' + (i+1) + '</div>'
+    + '<div style="flex:1;font-size:.8rem;line-height:1.4;">' + step + '</div>'
+    + '<button onclick="window._crSteps.splice('+i+',1);crRenderSteps();" '
+    + 'style="background:none;border:none;cursor:pointer;color:var(--tx3);font-size:.8rem;padding:2px;">✕</button>'
     + '</div>'
   ).join('');
 }
@@ -5866,46 +6165,66 @@ async function saveCustomRecipeFull() {
   const ingrs = window._crIngredients || [];
   if(!name) { showToast('⚠️','Incomplet','Entrez un nom de recette.'); return; }
   if(!ingrs.length) { showToast('⚠️','Incomplet','Ajoutez au moins un ingrédient.'); return; }
-  
+
   const emoji = document.getElementById('crEmoji')?.value?.trim() || '🍽️';
   const time = parseInt(document.getElementById('crTime')?.value)||30;
   const portions = parseInt(document.getElementById('crPortions')?.value)||4;
-  const instrRaw = document.getElementById('crInstructions')?.value?.trim()||'';
-  const mealTypes = ['l','d','snack'].filter(mt => document.getElementById('crMt-'+mt)?.classList.contains('on'));
-  
-  // Auto-calc kcal
+  const mealTypes = ['b','l','d','snack'].filter(mt => document.getElementById('crMt-'+mt)?.classList.contains('on'));
+
+  // Instructions: from step list OR textarea fallback
+  const steps = window._crSteps || [];
+  const instructions = steps.length ? steps : [];
+
+  // Photo
+  const photo = window._crPhotoData || null;
+
+  // Kcal: manual override or auto-calc
+  let kcalManual = parseInt(document.getElementById('crKcal')?.value);
   let totalKcal = 0;
-  ingrs.forEach(ing => {
-    const key = Object.keys(NUTRI_APPROX).find(k => ing.name.toLowerCase().includes(k.toLowerCase()));
-    if(key) totalKcal += NUTRI_APPROX[key].kcal * (parseFloat(ing.qty)||100) / 100;
-  });
-  const kcal = Math.round(totalKcal/portions);
-  
+  if(!kcalManual) {
+    ingrs.forEach(ing => {
+      const key = Object.keys(NUTRI_APPROX).find(k => ing.name.toLowerCase().includes(k.toLowerCase()));
+      if(key) {
+        const gramsStr = ing.qty.replace(/[^0-9.]/g,'');
+        totalKcal += NUTRI_APPROX[key].kcal * (parseFloat(gramsStr)||100) / 100;
+      }
+    });
+  }
+  const kcal = kcalManual || Math.round(totalKcal/portions) || 0;
+
   const recipe = {
-    id: 'custom_'+Date.now(),
+    id: window._crEditId || ('custom_'+Date.now()),
     emoji, name, time, portions, kcal,
-    diet: 'omnivore', mealTypes: mealTypes.length ? mealTypes : ['l','d'],
+    diet: 'omnivore',
+    mealTypes: mealTypes.length ? mealTypes : ['l','d'],
     ingredients: ingrs.map(i => ({name:i.name, qty:i.qty, unit:'', emoji:i.emoji})),
-    instructions: instrRaw ? instrRaw.split('\n').filter(l=>l.trim()).map(l=>l.replace(/^\d+\.\s*/,'')) : [],
-    source: 'custom', createdAt: Date.now()
+    instructions,
+    photo,
+    source: 'custom',
+    createdAt: Date.now()
   };
-  
+
+  // Save to global DB too
+  saveToGlobalDB([recipe]);
+
   // Modifier ou créer
+  if(!state.customRecipes) state.customRecipes = [];
   if(window._crEditId) {
     const idx = state.customRecipes.findIndex(r=>r.id===window._crEditId);
-    if(idx>=0) { recipe.id = window._crEditId; state.customRecipes[idx] = recipe; }
+    if(idx>=0) state.customRecipes[idx] = recipe;
     else state.customRecipes.unshift(recipe);
   } else {
     state.customRecipes.unshift(recipe);
   }
+
   await saveState();
   document.getElementById('createRecipeModal')?.remove();
-  window._crIngredients = []; window._crPhotoData = null; window._crEditId = null;
-  showToast('✅', emoji+' '+name, (window._crEditId?'Recette modifiée !': (kcal?kcal+' kcal/portion · Recette créée !':'Recette créée !')));
+  window._crIngredients = []; window._crSteps = []; window._crPhotoData = null; window._crEditId = null;
+  const savedMsg = window._crEditId ? 'Recette modifiée !' : (kcal ? kcal+' kcal/portion · Recette créée !' : 'Recette créée !');
+  showToast('✅', emoji+' '+name, savedMsg);
   renderRecipesGrid();
   switchMenuTab('recipes');
   window._mdbCache = null; _mdbFridgeCache = null;
-  try { _spoonCache = null; } catch(e) {}
 }
 
 

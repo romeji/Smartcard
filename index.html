@@ -63,6 +63,71 @@
 --grad2:linear-gradient(135deg,#ff6b9d,#ff6b6b);
 --grad3:linear-gradient(135deg,#00d2c6,#3498db);
 }
+
+/* ══ TABLET / DESKTOP LAYOUT ══ */
+@media (min-width: 768px) {
+  body.tablet-layout .app {
+    max-width: 900px;
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: 240px 1fr;
+    grid-template-rows: 1fr;
+    height: 100dvh;
+    overflow: hidden;
+  }
+  body.tablet-layout .tabbar {
+    position: static;
+    flex-direction: column;
+    width: 240px;
+    height: 100dvh;
+    border-right: 1px solid var(--bg2);
+    border-top: none;
+    padding: 24px 12px;
+    overflow-y: auto;
+    border-radius: 0;
+  }
+  body.tablet-layout .tb-inner {
+    flex-direction: column;
+    gap: 4px;
+    padding: 0;
+  }
+  body.tablet-layout .tab {
+    flex-direction: row;
+    justify-content: flex-start;
+    padding: 12px 16px;
+    border-radius: 12px;
+    gap: 12px;
+    min-width: auto;
+  }
+  body.tablet-layout .tab.on {
+    background: var(--bg2);
+  }
+  body.tablet-layout .tab svg { width: 22px; height: 22px; }
+  body.tablet-layout .tab-lb { font-size: .9rem; display: block; }
+  body.tablet-layout .views-wrap {
+    overflow-y: auto;
+    height: 100dvh;
+    padding-bottom: 0;
+  }
+  body.tablet-layout .view.on {
+    min-height: 100dvh;
+  }
+  body.tablet-layout .vb {
+    padding-bottom: 24px;
+  }
+  body.tablet-layout .offline-banner {
+    position: sticky;
+    top: 0;
+  }
+}
+
+@media (min-width: 1100px) {
+  body.tablet-layout .app {
+    max-width: 1100px;
+    grid-template-columns: 260px 1fr;
+  }
+}
+
 /* ── Anthracite: glassmorphism panels ── */
 [data-theme=anthracite] .card,[data-theme=anthracite] .rc,[data-theme=anthracite] .fi-card{
   background:rgba(255,255,255,.04);
@@ -746,7 +811,23 @@ svg{display:block;flex-shrink:0;}
 
 /* ══ RESPONSIVE ══ */
 @media(min-width:600px){.vb{padding-left:26px;padding-right:26px;}}
-@media(min-width:900px){.vb{max-width:740px;margin:0 auto;width:100%;}}
+/* ══ ONBOARDING ══ */
+.onboard-overlay{position:fixed;inset:0;z-index:1000;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;}
+.onboard-dots{display:flex;gap:6px;margin-bottom:32px;}
+.onboard-dot{width:8px;height:8px;border-radius:50%;background:var(--bg2);transition:all .3s;}
+.onboard-dot.active{width:24px;border-radius:4px;background:var(--ac);}
+.onboard-slide{text-align:center;max-width:340px;animation:fadeIn .4s ease;}
+.onboard-emoji{font-size:4rem;margin-bottom:16px;}
+.onboard-title{font-size:1.4rem;font-weight:900;margin-bottom:10px;line-height:1.3;}
+.onboard-sub{font-size:.88rem;color:var(--tx2);line-height:1.6;margin-bottom:32px;}
+/* ══ TABLET ══ */
+@media(min-width:600px){
+  .vb{max-width:560px;margin:0 auto;}
+  .spoon-grid{grid-template-columns:repeat(2,1fr)!important;}
+  .fgrid-beautiful{grid-template-columns:repeat(6,1fr)!important;}
+  .rc-grid{grid-template-columns:repeat(2,1fr)!important;}
+}
+@media(min-width:900px){.vb{max-width:860px;margin:0 auto;width:100%;}}
 @media(max-width:380px){
   .lg-title{font-size:1.4rem;}.ls-v{font-size:1.1rem;}
   .fgrid{grid-template-columns:repeat(auto-fill,minmax(60px,1fr));}
@@ -1069,6 +1150,7 @@ body.offline-mode .offline-banner{display:block;}
           <div class="sec-row">
             <span class="sec-lbl" id="toBuyLabel">À acheter</span>
             <div style="display:flex;gap:6px;">
+              <button class="btn sm" onclick="shareShoppingList()" title="Partager" style="padding:7px 10px;">📤</button>
               <button class="btn sm" onclick="sortItems()">A→Z</button>
               <button class="btn sm" style="color:var(--rd);" onclick="clearChecked()">Suppr. cochés</button>
             </div>
@@ -1205,6 +1287,7 @@ body.offline-mode .offline-banner{display:block;}
           </div>
 
           <!-- Résultat produit -->
+          <div id="cameraZone" style="display:none;margin:10px 0;"></div>
           <div id="barcodeResult" style="display:none;"></div>
 
         </div>
@@ -1239,7 +1322,9 @@ body.offline-mode .offline-banner{display:block;}
                 oninput="onFridgeSearchInput(this.value)" onkeydown="if(event.key==='Enter')addFridgeItem()">
               <div class="ac-list" id="acFridgeList" style="display:none;"></div>
             </div>
-            <button class="btn acc3" onclick="addFridgeItem()" style="padding:11px 16px;font-weight:900;">＋</button>
+            <button class="btn ico voice-btn" onclick="toggleVoice('frigo')" title="Ajouter par la voix" style="padding:11px 12px;">🎤</button>
+          <button class="btn acc3" onclick="addFridgeItem()" style="padding:11px 16px;font-weight:900;">＋</button>
+            <button class="btn" onclick="voiceAddFridgeItem()" title="Ajouter par la voix" style="padding:11px 12px;font-size:.9rem;flex-shrink:0;">🎙️</button>
           </div>
         </div>
 
@@ -1990,6 +2075,8 @@ async function saveItems() { saveState(); await syncToFirestore('items', state.i
 async function saveFridge() { saveState(); await syncToFirestore('fridge', state.fridge); }
 async function saveHistory() { saveState(); await syncToFirestore('history', state.history); }
 async function saveWeekMenu() {
+  saveWeekToHistory().catch(()=>{}); // non-blocking
+  saveCurrentWeekToHistory();
   saveState();
   syncToFirestore('weekMenu', state.weekMenu).catch(function(){});
   if(window._menuTab === 'nutri') setTimeout(renderNutriPanel, 100);
@@ -2183,6 +2270,8 @@ async function initFirebase() {
     }
     await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
     dbg('Firebase OK');
+    // Sync shared recipes in background (non-blocking)
+    setTimeout(() => syncGlobalRecipesFromFirestore().catch(()=>{}), 2000);
     return true;
   } catch(e) {
     dbg('Firebase error: ' + e.message, '#ff4444');
@@ -2431,6 +2520,7 @@ async function startApp(user) {
   updateMenuProfileCard();
   renderAll();
   renderSeason();
+  setTimeout(checkOnboarding, 800);
 }
 
 function fillProfileForm() {
@@ -2459,21 +2549,417 @@ function renderAll() {
 // ═══════════════════════════════════════════════
 // TABS
 // ═══════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════════
+// 🚀 NOUVELLES FONCTIONNALITÉS
+// ═══════════════════════════════════════════════════════════
+
+// ── 1. ONBOARDING ────────────────────────────────────────
+function checkOnboarding() {
+  try {
+    if(localStorage.getItem('sc_onboarding_done')) return;
+    setTimeout(showOnboarding, 800);
+  } catch(e) {}
+}
+
+function showOnboarding() {
+  if(document.getElementById('onboardingOverlay')) return;
+  const steps = [
+    { icon:'🛒', title:'Bienvenue sur SmartCard !', sub:'Votre assistant cuisine intelligent.', color:'#ff6b6b' },
+    { icon:'🧊', title:'Gérez votre frigo', sub:'Ajoutez vos aliments et recevez des recettes adaptées à vos stocks.', color:'#00d2c6' },
+    { icon:'📷', title:'Scannez vos produits', sub:'Photographiez vos tickets de caisse ou scannez les codes-barres pour les ajouter automatiquement.', color:'#6c5ce7' },
+    { icon:'⚙️', title:'Personnalisez votre profil', sub:'Renseignez votre profil nutritionnel pour des recommandations précises.', color:'#f39c12' },
+    { icon:'✨', title:'Prêt à commencer !', sub:'Commencez par ajouter des articles à votre liste de courses.', color:'#27ae60' },
+  ];
+  let current = 0;
+
+  const overlay = document.createElement('div');
+  overlay.id = 'onboardingOverlay';
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px 24px;';
+
+  function render() {
+    const s = steps[current];
+    overlay.innerHTML = '<div style="width:100%;max-width:360px;text-align:center;">'
+      // Progress dots
+      + '<div style="display:flex;justify-content:center;gap:6px;margin-bottom:32px;">'
+      + steps.map((_,i) => '<div style="width:'+(i===current?'20':'6')+'px;height:6px;border-radius:3px;background:'+(i===current?s.color:'var(--bg2)')+';transition:all .3s;"></div>').join('')
+      + '</div>'
+      // Icon
+      + '<div style="width:100px;height:100px;border-radius:28px;background:'+s.color+';display:flex;align-items:center;justify-content:center;font-size:3rem;margin:0 auto 24px;box-shadow:0 12px 32px '+s.color+'44;">'
+      + s.icon + '</div>'
+      // Text
+      + '<div style="font-size:1.35rem;font-weight:900;margin-bottom:10px;color:var(--tx);">'+s.title+'</div>'
+      + '<div style="font-size:.9rem;color:var(--tx2);line-height:1.6;margin-bottom:36px;">'+s.sub+'</div>'
+      // Buttons
+      + '<button onclick="onboardNext()" style="width:100%;padding:16px;border:none;border-radius:16px;background:'+s.color+';color:#fff;font-weight:900;font-size:.95rem;cursor:pointer;margin-bottom:12px;">'
+      + (current < steps.length-1 ? 'Suivant →' : '🚀 Commencer') + '</button>'
+      + (current > 0 ? '<button onclick="onboardPrev()" style="width:100%;padding:12px;border:none;background:none;color:var(--tx2);font-size:.82rem;cursor:pointer;">← Précédent</button>' : '')
+      + '<button onclick="onboardSkip()" style="width:100%;padding:10px;border:none;background:none;color:var(--tx3);font-size:.75rem;cursor:pointer;">Passer</button>'
+      + '</div>';
+  }
+
+  window.onboardNext = function() {
+    if(current < steps.length - 1) { current++; render(); }
+    else onboardDone();
+  };
+  window.onboardPrev = function() { if(current > 0) { current--; render(); } };
+  window.onboardSkip = function() { onboardDone(); };
+  window.onboardDone = function() {
+    try { localStorage.setItem('sc_onboarding_done', '1'); } catch(e) {}
+    overlay.style.opacity = '0';
+    overlay.style.transition = 'opacity .4s';
+    setTimeout(() => overlay.remove(), 400);
+    // Open profile setup
+    setTimeout(() => openMenuProfile(), 500);
+  };
+
+  render();
+  document.body.appendChild(overlay);
+}
+
+// ── 2. VOICE RECOGNITION ─────────────────────────────────
+let _voiceActive = false;
+let _voiceRecognition = null;
+
+function initVoice() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if(!SR) return false;
+  _voiceRecognition = new SR();
+  _voiceRecognition.lang = 'fr-FR';
+  _voiceRecognition.interimResults = false;
+  _voiceRecognition.maxAlternatives = 1;
+  _voiceRecognition.onresult = handleVoiceResult;
+  _voiceRecognition.onerror = (e) => {
+    _voiceActive = false;
+    updateVoiceBtn(false);
+    if(e.error !== 'aborted') showToast('🎤','Erreur voix', e.error);
+  };
+  _voiceRecognition.onend = () => { _voiceActive = false; updateVoiceBtn(false); };
+  return true;
+}
+
+function toggleVoice(context) {
+  if(!initVoice()) { showToast('⚠️','Non supporté','La reconnaissance vocale n\'est pas disponible sur ce navigateur'); return; }
+  if(_voiceActive) {
+    _voiceRecognition.abort();
+    _voiceActive = false;
+    updateVoiceBtn(false);
+    return;
+  }
+  _voiceActive = true;
+  window._voiceContext = context || 'liste';
+  updateVoiceBtn(true);
+  _voiceRecognition.start();
+  showToast('🎤','Écoute…','Dites un aliment ou article');
+}
+
+function updateVoiceBtn(active) {
+  document.querySelectorAll('.voice-btn').forEach(b => {
+    b.style.background = active ? 'var(--rd)' : '';
+    b.style.color = active ? '#fff' : '';
+    b.textContent = active ? '🔴' : '🎤';
+  });
+}
+
+function handleVoiceResult(event) {
+  const transcript = event.results[0][0].transcript.toLowerCase().trim();
+  console.log('[Voice]', transcript, 'ctx:', window._voiceContext);
+  const ctx = window._voiceContext || 'liste';
+  if(ctx === 'frigo') {
+    // Parse "ajoute X" or just "X"
+    const name = transcript.replace(/^(ajoute|mets|rajoute|met|ajouter)\s+/i, '').trim();
+    addFridgeItemByName(name);
+    showToast('🧊', name, 'Ajouté au frigo');
+  } else {
+    const name = transcript.replace(/^(ajoute|mets|rajoute|met|ajouter)\s+/i, '').trim();
+    addItemByName(name);
+    showToast('🛒', name, 'Ajouté à la liste');
+  }
+}
+
+function addFridgeItemByName(name) {
+  const prod = (typeof PRODUCTS !== 'undefined' ? PRODUCTS : []).find(p => p.name.toLowerCase().includes(name));
+  const emoji = prod ? prod.emoji : '🛍️';
+  state.fridge.push({ id:'f'+Date.now(), name: prod ? prod.name : name, emoji, qty:1, addedAt:Date.now() });
+  saveFridge();
+  renderFridge();
+}
+
+// ── 3. SHARE LIST ─────────────────────────────────────────
+function shareList() {
+  const items = state.items.filter(i => !i.checked);
+  if(!items.length) { showToast('ℹ️','Liste vide','Ajoutez des articles avant de partager'); return; }
+
+  const text = '🛒 Ma liste de courses SmartCard\n\n'
+    + items.map(i => '• ' + (i.emoji||'') + ' ' + i.name + (i.qty > 1 ? ' ×'+i.qty : '')).join('\\n')
+    + '\n\nGénéré avec SmartCard 🍽️';
+
+  if(navigator.share) {
+    navigator.share({ title: 'Ma liste de courses', text }).catch(() => copyTextToClipboard(text));
+  } else {
+    copyTextToClipboard(text);
+    showToast('📋','Copié !','La liste est dans votre presse-papier');
+  }
+}
+
+function copyTextToClipboard(text) {
+  navigator.clipboard?.writeText(text).catch(() => {
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    document.execCommand('copy'); ta.remove();
+  });
+}
+
+function showQRCode(content, title) {
+  // Generate QR using a free API
+  const url = 'https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=' + encodeURIComponent(content);
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:900;background:rgba(0,0,0,.6);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;';
+  overlay.innerHTML = '<div style="background:var(--bg);border-radius:20px;padding:24px;text-align:center;max-width:280px;width:90%;">'
+    + '<div style="font-weight:900;font-size:1rem;margin-bottom:16px;">'+title+'</div>'
+    + '<img src="'+url+'" style="width:200px;height:200px;border-radius:12px;margin-bottom:16px;" alt="QR Code">'
+    + '<div style="font-size:.72rem;color:var(--tx2);margin-bottom:16px;">Scannez ce code pour accéder à la liste</div>'
+    + '<button onclick="this.closest(\'[style*=fixed]\').remove()" class="btn" style="width:100%;padding:12px;">Fermer</button>'
+    + '</div>';
+  overlay.onclick = e => { if(e.target === overlay) overlay.remove(); };
+  document.body.appendChild(overlay);
+}
+
+function shareQRList() {
+  const items = state.items.filter(i => !i.checked);
+  if(!items.length) { showToast('ℹ️','Liste vide','Rien à partager'); return; }
+  const text = items.map(i => (i.emoji||'') + ' ' + i.name).join('\n');
+  showQRCode(text, '📲 Ma liste de courses');
+}
+
+// ── 4. RECIPE COST ESTIMATION ─────────────────────────────
+const PRIX_APPROX = {
+  'poulet':6.5,'boeuf':12,'porc':8,'saumon':18,'thon':4,'crevettes':14,
+  'oeuf':0.25,'lait':1.2,'beurre':2.8,'fromage':12,'crème':1.8,'yaourt':0.5,
+  'pâtes':1.5,'riz':1.8,'farine':0.9,'pain':2,'couscous':2.5,
+  'tomate':2.5,'carotte':1.2,'poivron':3.5,'oignon':1.5,'ail':3,'pomme de terre':1.8,
+  'pomme':3,'banane':1.8,'citron':3.5,'orange':2.8,
+  'huile':3.5,'vinaigre':2,'sel':0.5,'sucre':1.2,'fécule':1.5,
+};
+
+function estimateRecipeCost(recipe) {
+  if(!recipe || !Array.isArray(recipe.ingredients)) return null;
+  let total = 0;
+  let found = 0;
+  recipe.ingredients.forEach(ing => {
+    const name = (typeof ing === 'string' ? ing : ing.name || '').toLowerCase();
+    const qtyStr = typeof ing === 'object' ? (ing.qty || '') : '';
+    const grams = parseFloat(qtyStr) || 150;
+    const key = Object.keys(PRIX_APPROX).find(k => name.includes(k));
+    if(key) {
+      // Prix approximatif pour la quantité
+      const pricePerKg = PRIX_APPROX[key];
+      total += (pricePerKg * grams / 1000);
+      found++;
+    }
+  });
+  if(!found) return null;
+  return { total: Math.round(total * 100) / 100, perPortion: Math.round(total / (recipe.portions || 4) * 100) / 100 };
+}
+
+function formatCost(c) {
+  if(!c) return '';
+  return c.toFixed(2).replace('.', ',') + ' €';
+}
+
+// ── 5. MENU HISTORY ───────────────────────────────────────
+function saveCurrentWeekToHistory() {
+  const menu = state.weekMenu;
+  const hasData = Object.values(menu).some(d => d && (d.b || d.l || d.d));
+  if(!hasData) return;
+  if(!state.menuHistory) state.menuHistory = [];
+  // Check if this week already saved
+  const weekKey = _getCurrentWeekKey();
+  if(state.menuHistory.some(h => h.weekKey === weekKey)) return;
+  // Calculate average nutrition
+  const days = Object.values(menu).filter(d => d && d.nutri && d.nutri.kcal);
+  const avgKcal = days.length ? Math.round(days.reduce((s,d)=>s+(d.nutri.kcal||0),0)/days.length) : 0;
+  state.menuHistory.unshift({
+    weekKey,
+    savedAt: Date.now(),
+    label: _getWeekLabel(),
+    avgKcal,
+    daysCount: Object.values(menu).filter(d=>d&&(d.l||d.d)).length,
+    snapshot: JSON.parse(JSON.stringify(menu)),
+  });
+  // Keep max 8 weeks
+  if(state.menuHistory.length > 8) state.menuHistory = state.menuHistory.slice(0, 8);
+  saveState();
+}
+
+function _getCurrentWeekKey() {
+  const now = new Date();
+  const startOfYear = new Date(now.getFullYear(), 0, 1);
+  const week = Math.ceil(((now - startOfYear) / 86400000 + startOfYear.getDay() + 1) / 7);
+  return now.getFullYear() + '-W' + week;
+}
+
+function _getWeekLabel() {
+  const now = new Date();
+  const day = now.getDate();
+  const months = ['jan','fév','mar','avr','mai','jun','jul','aoû','sep','oct','nov','déc'];
+  return 'Semaine du ' + day + ' ' + months[now.getMonth()];
+}
+
+function renderMenuHistory() {
+  if(!state.menuHistory || !state.menuHistory.length) return '';
+  return '<div style="margin-top:14px;">'
+    + '<div style="font-weight:900;font-size:.85rem;margin-bottom:10px;">📚 Semaines précédentes</div>'
+    + state.menuHistory.map(h => '<div style="background:var(--bg2);border-radius:var(--rs);padding:12px 14px;margin-bottom:6px;display:flex;align-items:center;gap:12px;cursor:pointer;" onclick="restoreWeekMenu('+JSON.stringify(h.weekKey)+')">'
+      + '<div style="flex:1;">'
+      + '<div style="font-weight:800;font-size:.82rem;">'+h.label+'</div>'
+      + '<div style="font-size:.68rem;color:var(--tx2);">'+h.daysCount+' jours · '+(h.avgKcal ? h.avgKcal+' kcal/j moy' : '')+'</div>'
+      + '</div>'
+      + '<button style="background:none;border:none;font-size:.72rem;color:var(--ac);font-weight:800;cursor:pointer;">Restaurer</button>'
+      + '</div>').join('')
+    + '</div>';
+}
+
+function restoreWeekMenu(weekKey) {
+  const h = (state.menuHistory||[]).find(h => h.weekKey === weekKey);
+  if(!h) return;
+  if(confirm('Restaurer le menu de "' + h.label + '" ? Le menu actuel sera remplacé.')) {
+    state.weekMenu = JSON.parse(JSON.stringify(h.snapshot));
+    saveState();
+    renderWeek();
+    showToast('📅', 'Menu restauré', h.label);
+  }
+}
+
+// ── 6. REAL-TIME BARCODE CAMERA ──────────────────────────
+let _cameraStream = null;
+let _barcodeInterval = null;
+
+async function startCameraBarcode() {
+  const btn = document.getElementById('cameraBarcodeBtn');
+  const zone = document.getElementById('cameraZone');
+  if(!zone) return;
+
+  // Already active? Stop it.
+  if(_cameraStream) { stopCameraBarcode(); return; }
+
+  if(!('BarcodeDetector' in window)) {
+    showToast('⚠️','Non supporté','La détection de code-barres en direct nécessite Chrome/Safari récent');
+    return;
+  }
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width:1280, height:720 } });
+    _cameraStream = stream;
+    if(btn) { btn.textContent = '⏹ Arrêter'; btn.style.background = 'var(--rd)'; btn.style.color = '#fff'; }
+
+    zone.style.display = 'block';
+    zone.innerHTML = '<div style="position:relative;border-radius:16px;overflow:hidden;background:#000;">'
+      + '<video id="barcodeVideo" autoplay playsinline muted style="width:100%;display:block;border-radius:16px;"></video>'
+      + '<div style="position:absolute;inset:20%;border:2px solid rgba(255,255,255,.8);border-radius:8px;box-shadow:0 0 0 9999px rgba(0,0,0,.3);"></div>'
+      + '<div style="position:absolute;bottom:12px;left:0;right:0;text-align:center;color:#fff;font-size:.72rem;font-weight:700;">Pointez vers un code-barres</div>'
+      + '</div>';
+
+    const video = document.getElementById('barcodeVideo');
+    video.srcObject = stream;
+
+    const detector = new BarcodeDetector({ formats: ['ean_13','ean_8','upc_a','upc_e','code_128','code_39','qr_code'] });
+
+    _barcodeInterval = setInterval(async () => {
+      if(video.readyState !== 4) return;
+      try {
+        const codes = await detector.detect(video);
+        if(codes.length > 0) {
+          const code = codes[0].rawValue;
+          stopCameraBarcode();
+          // Fill in the barcode input
+          const inp = document.getElementById('barcodeInp');
+          if(inp) inp.value = code;
+          lookupBarcode(code);
+          showToast('✅','Code détecté', code);
+        }
+      } catch(e) {}
+    }, 400);
+
+  } catch(e) {
+    showToast('❌','Caméra','Impossible d\'accéder à la caméra: ' + e.message);
+  }
+}
+
+function stopCameraBarcode() {
+  if(_barcodeInterval) { clearInterval(_barcodeInterval); _barcodeInterval = null; }
+  if(_cameraStream) { _cameraStream.getTracks().forEach(t => t.stop()); _cameraStream = null; }
+  const zone = document.getElementById('cameraZone');
+  if(zone) { zone.style.display = 'none'; zone.innerHTML = ''; }
+  const btn = document.getElementById('cameraBarcodeBtn');
+  if(btn) { btn.textContent = '📷 Caméra live'; btn.style.background = ''; btn.style.color = ''; }
+}
+
+// ── 7. TABLET / DESKTOP LAYOUT ───────────────────────────
+function applyTabletLayout() {
+  const isWide = window.innerWidth >= 768;
+  document.body.classList.toggle('tablet-layout', isWide);
+}
+window.addEventListener('resize', applyTabletLayout);
+applyTabletLayout();
+
+
+function renderMenuPremiumLock() {
+  const vMenu = document.getElementById('vMenu');
+  if(!vMenu) return;
+  // Remove existing
+  const ex = document.getElementById('menuPremiumLockOverlay');
+  if(ex) ex.remove();
+  
+  const overlay = document.createElement('div');
+  overlay.id = 'menuPremiumLockOverlay';
+  overlay.style.cssText = 'position:absolute;inset:0;z-index:100;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px 20px;text-align:center;';
+  overlay.innerHTML = '<div style="font-size:3rem;margin-bottom:12px;">📅</div>'
+    + '<div style="font-size:1.2rem;font-weight:900;margin-bottom:8px;">Menu & Planification</div>'
+    + '<div style="font-size:.82rem;color:var(--tx2);line-height:1.6;margin-bottom:20px;">Planifiez vos repas de la semaine, générez votre menu IA, explorez des milliers de recettes et suivez votre nutrition.<br><br>Fonctionnalité réservée aux membres <strong>Premium</strong>.</div>'
+    + '<div style="display:flex;flex-direction:column;gap:10px;width:100%;max-width:300px;">'
+    + '<button onclick="openPremiumModal("Menu Premium")" style="width:100%;padding:16px;border:none;border-radius:16px;background:linear-gradient(135deg,#f6d365,#fda085);color:#fff;font-weight:900;font-size:.95rem;cursor:pointer;">✨ Essai gratuit 7 jours</button>'
+    + '<div style="display:flex;gap:8px;">'
+    + ['📅 Menu IA','🍳 Recettes','🔍 Explorer','📊 Nutrition'].map(f=>'<div style="flex:1;background:var(--bg2);border-radius:10px;padding:10px 4px;font-size:.65rem;font-weight:800;color:var(--tx2);">'+f+'</div>').join('')
+    + '</div></div>';
+  // Make vMenu positioned
+  vMenu.style.position = 'relative';
+  vMenu.appendChild(overlay);
+}
+
 function switchTab(tab) {
-  // Menu tab is premium-gated
-  if(tab === 'menu' && !isPremium()) { openPremiumModal('Menu & Planification'); return; }
+  // Menu tab shows premium paywall
+  if(tab === 'menu' && !isPremium()) {
+    // Switch to menu view but show the premium overlay
+    _doSwitchTab(tab);
+    renderMenuPremiumLock();
+    return;
+  }
+  if(tab === 'menu') {
+    _doSwitchTab(tab);
+    // Hide premium lock if user is now premium
+    const lock = document.getElementById('menuPremiumLockOverlay');
+    if(lock) lock.remove();
+    return;
+  }
+  _doSwitchTab(tab);
+  if(tab === 'frigo') loadRecipes();
+}
+
+function _doSwitchTab(tab) {
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('on'));
   document.querySelectorAll('.view').forEach(v => v.classList.remove('on'));
-  document.getElementById('tab-' + tab).classList.add('on');
+  const tabEl = document.getElementById('tab-' + tab);
+  if(tabEl) tabEl.classList.add('on');
   const viewId = 'v' + tab.charAt(0).toUpperCase() + tab.slice(1);
   const view = document.getElementById(viewId);
   if(view) {
     view.classList.add('on');
     const vb = view.querySelector('.vb');
-    if(vb) { vb.scrollTop = 0; }
+    if(vb) vb.scrollTop = 0;
   }
   if(tab === 'menu') { initMenuModule(); }
-  if(tab === 'frigo') loadRecipes();
 }
 
 function switchSubtab(tab) {
@@ -4581,6 +5067,464 @@ function _applyMDBTranslation(recipeId, translated) {
 // ═══════════════════════════════════════════════════════════
 
 // ═══════════════════════════════════════════════════════════
+// 📷 SCAN CAMÉRA AMÉLIORÉ (BarcodeDetector + ZXing fallback)
+// ═══════════════════════════════════════════════════════════
+let _barcodeDetector = null;
+let _scanActive = false;
+
+async function initBarcodeDetector() {
+  if(_barcodeDetector) return _barcodeDetector;
+  try {
+    if('BarcodeDetector' in window) {
+      const formats = await BarcodeDetector.getSupportedFormats().catch(() => ['ean_13','ean_8','upc_a','upc_e','code_128','code_39','qr_code']);
+      _barcodeDetector = new BarcodeDetector({formats});
+      console.log('[Barcode] Native BarcodeDetector ready');
+      return _barcodeDetector;
+    }
+  } catch(e) {}
+  // Fallback: ZXing
+  try {
+    if(window.ZXing) {
+      _barcodeDetector = { _zxing: true };
+      console.log('[Barcode] ZXing fallback');
+      return _barcodeDetector;
+    }
+  } catch(e) {}
+  return null;
+}
+
+async function startLiveBarcodeScan() {
+  const videoEl = document.getElementById('barcodeVideo');
+  if(!videoEl) return;
+
+  const detector = await initBarcodeDetector();
+  if(!detector) { showToast('ℹ️','Scanner','Utilisez la saisie manuelle'); return; }
+
+  _scanActive = true;
+  let lastCode = null;
+  let lastCodeTime = 0;
+
+  const scanFrame = async () => {
+    if(!_scanActive || !videoEl.srcObject) return;
+    try {
+      let codes = [];
+      if(detector._zxing) {
+        // ZXing path — skip (handled elsewhere)
+      } else {
+        codes = await detector.detect(videoEl);
+      }
+      if(codes.length > 0) {
+        const code = codes[0].rawValue;
+        // Debounce: same code must persist 500ms before triggering
+        if(code === lastCode && Date.now() - lastCodeTime > 500) {
+          _scanActive = false;
+          showToast('✅','Code scanné','Recherche du produit...');
+          lookupBarcode(code);
+          return;
+        }
+        if(code !== lastCode) { lastCode = code; lastCodeTime = Date.now(); }
+      }
+    } catch(e) {}
+    if(_scanActive) requestAnimationFrame(scanFrame);
+  };
+
+  videoEl.addEventListener('loadeddata', () => { scanFrame(); }, {once:true});
+}
+
+
+// ═══════════════════════════════════════════════════════════
+// 💶 BUDGET & COÛT DES RECETTES
+// ═══════════════════════════════════════════════════════════
+
+// Average price per 100g for common categories
+const PRICE_APPROX = {
+  'viande':2.5, 'poulet':1.5, 'bœuf':2.8, 'porc':1.8, 'poisson':2.2, 'saumon':3.5,
+  'légume':0.4, 'tomate':0.5, 'courgette':0.5, 'carotte':0.3, 'oignon':0.2,
+  'farine':0.15, 'sucre':0.12, 'huile':0.6, 'beurre':1.2, 'crème':1.5,
+  'fromage':2.5, 'lait':0.1, 'œuf':0.25, 'riz':0.3, 'pâtes':0.25,
+  'pain':0.4, 'pomme':0.5, 'banane':0.3,
+};
+
+function estimateRecipeCost(recipe) {
+  if(!recipe || !Array.isArray(recipe.ingredients)) return null;
+  let total = 0;
+  let matched = 0;
+  recipe.ingredients.forEach(ing => {
+    const name = (typeof ing === 'string' ? ing : ing.name || '').toLowerCase();
+    const qtyStr = typeof ing === 'string' ? '100' : (ing.qty || '100');
+    const grams = parseFloat(qtyStr.replace(/[^0-9.]/g, '')) || 100;
+    const key = Object.keys(PRICE_APPROX).find(k => name.includes(k));
+    if(key) {
+      total += PRICE_APPROX[key] * grams / 100;
+      matched++;
+    }
+  });
+  if(!matched) return null;
+  return {
+    total: Math.round(total * 100) / 100,
+    perPortion: Math.round(total / (recipe.portions || 4) * 100) / 100,
+  };
+}
+
+function getWeekBudgetEstimate() {
+  const allRec = getAllRecipes();
+  let totalCost = 0;
+  let mealCount = 0;
+  Object.values(state.weekMenu).forEach(day => {
+    if(!day) return;
+    ['b','l','d','snack'].forEach(slot => {
+      if(!day[slot]) return;
+      const mealName = day[slot].replace(/^[^\w]+/, '').trim().toLowerCase();
+      const recipe = allRec.find(r => r.name.toLowerCase().includes(mealName.split(' ')[0]) || mealName.includes(r.name.toLowerCase().split(' ')[0]));
+      if(recipe) {
+        const cost = estimateRecipeCost(recipe);
+        if(cost) { totalCost += cost.perPortion; mealCount++; }
+      }
+    });
+  });
+  return mealCount > 0 ? {total: Math.round(totalCost*100)/100, meals: mealCount} : null;
+}
+
+
+// ═══════════════════════════════════════════════════════════
+// 📤 PARTAGE LISTE DE COURSES
+// ═══════════════════════════════════════════════════════════
+function shareShoppingList() {
+  const items = state.items.filter(i => !i.checked);
+  if(!items.length) { showToast('ℹ️','Liste vide','Ajoutez des articles avant de partager'); return; }
+
+  const text = '🛒 Ma liste de courses (' + items.length + ' articles) :\n\n'
+    + items.map(i => (i.emoji||'•') + ' ' + i.name + (i.qty > 1 ? ' ×' + i.qty : '')).join('\n')
+    + '\n\n📱 Créée avec SmartCard';
+  if(navigator.share) {
+    navigator.share({ title: 'Ma liste de courses', text }).catch(()=>{});
+    return;
+  }
+
+  // Fallback: copy to clipboard
+  navigator.clipboard?.writeText(text).then(() => {
+    showToast('📋','Copié !','Liste copiée dans le presse-papier');
+  }).catch(() => {
+    showShareModal(text);
+  });
+}
+
+function _closeOverlay(el) { el.closest("[style*='fixed']")?.remove(); }
+
+function _copyShareText() {
+  const ta = document.querySelector('.sc-share-modal textarea');
+  if(ta) navigator.clipboard.writeText(ta.value).then(()=>showToast('📋','Copié !',''));
+  document.querySelector('[style*=fixed]')?.remove();
+}
+
+function showShareModal(text) {
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:900;background:rgba(0,0,0,.5);display:flex;align-items:flex-end;justify-content:center;';
+  overlay.innerHTML =
+    '<div class="sc-share-modal" style="background:var(--bg);border-radius:20px 20px 0 0;padding:20px;width:100%;max-width:480px;">'
+    + '<div style="font-weight:900;font-size:.9rem;margin-bottom:12px;">📤 Partager la liste</div>'
+    + '<textarea style="width:100%;min-height:120px;background:var(--bg2);border:none;border-radius:12px;padding:12px;font-size:.78rem;resize:none;" readonly>' + text + '</textarea>'
+    + '<button onclick="_copyShareText()" class="btn acc" style="width:100%;padding:13px;margin-top:10px;border-radius:14px;font-weight:800;">📋 Copier</button>'
+    + '<button onclick="_closeOverlay(this)" class="btn" style="width:100%;padding:12px;margin-top:6px;border-radius:14px;">Fermer</button>'
+    + '</div>';
+  overlay.onclick = e => { if(e.target===overlay) overlay.remove(); };
+  document.body.appendChild(overlay);
+}
+
+
+// ═══════════════════════════════════════════════════════════
+// 📅 HISTORIQUE DES MENUS
+// ═══════════════════════════════════════════════════════════
+async function saveWeekToHistory() {
+  const weekData = state.weekMenu;
+  const hasContent = Object.values(weekData).some(d => d && (d.b||d.l||d.d));
+  if(!hasContent) return;
+
+  const weekKey = getWeekKey();
+  const histEntry = {
+    weekKey,
+    menu: weekData,
+    savedAt: Date.now(),
+    nutri: computeWeekNutriSummary(),
+  };
+
+  // Save to localStorage history
+  try {
+    const hist = JSON.parse(localStorage.getItem('sc_menu_history') || '[]');
+    const idx = hist.findIndex(h => h.weekKey === weekKey);
+    if(idx >= 0) hist[idx] = histEntry; else hist.unshift(histEntry);
+    localStorage.setItem('sc_menu_history', JSON.stringify(hist.slice(0, 52))); // keep 1 year
+  } catch(e) {}
+
+  // Sync to Firestore
+  if(db && currentUser) {
+    try {
+      const docId = (state.houseId || currentUser.uid) + '_' + weekKey;
+      await db.collection('menu_history').doc(docId).set({
+        ...histEntry,
+        uid: currentUser.uid,
+        houseId: state.houseId,
+      });
+    } catch(e) {}
+  }
+}
+
+function getWeekKey() {
+  const now = new Date();
+  const jan1 = new Date(now.getFullYear(), 0, 1);
+  const week = Math.ceil(((now - jan1) / 86400000 + jan1.getDay() + 1) / 7);
+  return now.getFullYear() + 'W' + String(week).padStart(2, '0');
+}
+
+function computeWeekNutriSummary() {
+  const days = Object.values(state.weekMenu).filter(d => d?.nutri?.kcal);
+  if(!days.length) return null;
+  const avg = k => Math.round(days.reduce((s,d)=>s+(d.nutri[k]||0),0)/days.length);
+  return {kcal:avg('kcal'),prot:avg('prot'),carb:avg('carb'),fat:avg('fat'),days:days.length};
+}
+
+function getMenuHistory() {
+  try { return JSON.parse(localStorage.getItem('sc_menu_history') || '[]'); } catch(e) { return []; }
+}
+
+function openMenuHistoryModal() {
+  const hist = getMenuHistory();
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:900;background:rgba(0,0,0,.5);backdrop-filter:blur(6px);display:flex;align-items:flex-end;justify-content:center;';
+
+  if(!hist.length) {
+    overlay.innerHTML = '<div style="background:var(--bg);border-radius:20px 20px 0 0;padding:24px 20px 32px;width:100%;max-width:480px;text-align:center;">'
+      + '<div style="font-size:2rem;margin-bottom:10px;">📅</div>'
+      + '<div style="font-weight:900;margin-bottom:6px;">Pas encore d\'historique</div>'
+      + '<div style="font-size:.78rem;color:var(--tx2);">Vos menus seront sauvegardés ici automatiquement semaine après semaine.</div>'
+      + '<button onclick="_closeOverlay(this)" class="btn acc" style="margin-top:16px;width:100%;padding:13px;border-radius:14px;">Fermer</button>'
+      + '</div>';
+    overlay.onclick = e => { if(e.target===overlay) overlay.remove(); };
+    document.body.appendChild(overlay);
+    return;
+  }
+
+  const days = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
+  overlay.innerHTML = '<div style="background:var(--bg);border-radius:20px 20px 0 0;padding:20px;width:100%;max-width:480px;max-height:85vh;overflow-y:auto;">'
+    + '<div style="width:36px;height:4px;background:var(--bg2);border-radius:2px;margin:0 auto 16px;"></div>'
+    + '<div style="font-weight:900;font-size:.95rem;margin-bottom:14px;">📅 Historique des menus</div>'
+    + hist.slice(0,12).map(h => {
+        const n = h.nutri;
+        return '<div style="background:var(--bg2);border-radius:var(--rs);padding:12px 14px;margin-bottom:8px;cursor:pointer;" onclick="restoreWeekMenu('+JSON.stringify(h.weekKey)+')">'
+          + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">'
+          + '<div style="font-weight:800;font-size:.85rem;">Semaine ' + h.weekKey + '</div>'
+          + (n ? '<div style="font-size:.68rem;color:var(--ac);font-weight:700;">~' + n.kcal + ' kcal/j</div>' : '')
+          + '</div>'
+          + '<div style="font-size:.72rem;color:var(--tx2);">'
+          + Object.entries(h.menu||{}).slice(0,4).filter(([,d])=>d?.l||d?.d).map(([k,d])=>'<span style="margin-right:8px;">' + (days[+k-1]||k) + ': ' + (d.l||d.d||'') + '</span>').join('')
+          + '</div>'
+          + '</div>';
+      }).join('')
+    + '<button onclick="_closeOverlay(this)" class="btn" style="width:100%;padding:12px;margin-top:8px;border-radius:14px;">Fermer</button>'
+    + '</div>';
+  overlay.onclick = e => { if(e.target===overlay) overlay.remove(); };
+  document.body.appendChild(overlay);
+}
+
+function restoreWeekMenu(weekKey) {
+  const hist = getMenuHistory();
+  const entry = hist.find(h => h.weekKey === weekKey);
+  if(!entry || !entry.menu) return;
+  showConfirm('Restaurer cette semaine ?', 'Cela remplacera le menu actuel.', () => {
+    state.weekMenu = entry.menu;
+    saveWeekMenu();
+    renderWeek();
+    document.querySelector('[style*=fixed]')?.remove();
+    showToast('✅','Menu restauré','Semaine ' + weekKey);
+  });
+}
+
+
+// ═══════════════════════════════════════════════════════════
+// 🎙️ RECONNAISSANCE VOCALE
+// ═══════════════════════════════════════════════════════════
+let _speechRecognition = null;
+let _voiceTarget = null; // id of input to fill
+
+function startVoiceInput(targetInputId, onResultCallback) {
+  const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if(!SpeechRec) {
+    showToast('❌','Non supporté','La reconnaissance vocale n\'est pas disponible sur ce navigateur');
+    return;
+  }
+  if(_speechRecognition) { _speechRecognition.abort(); _speechRecognition = null; }
+
+  _voiceTarget = targetInputId;
+  _speechRecognition = new SpeechRec();
+  _speechRecognition.lang = 'fr-FR';
+  _speechRecognition.continuous = false;
+  _speechRecognition.interimResults = false;
+  _speechRecognition.maxAlternatives = 1;
+
+  // Show voice UI
+  const btn = document.getElementById('voiceBtn_' + targetInputId);
+  if(btn) { btn.style.background = 'var(--rd)'; btn.textContent = '🔴'; }
+  showToast('🎙️','En écoute…','Parlez maintenant');
+
+  _speechRecognition.onresult = e => {
+    const text = e.results[0][0].transcript.trim();
+    const inp = document.getElementById(targetInputId);
+    if(inp) {
+      inp.value = text;
+      inp.dispatchEvent(new Event('input', {bubbles:true}));
+    }
+    if(onResultCallback) onResultCallback(text);
+    if(btn) { btn.style.background = ''; btn.textContent = '🎙️'; }
+  };
+
+  _speechRecognition.onerror = e => {
+    showToast('⚠️','Erreur micro', e.error === 'not-allowed' ? 'Autorisation refusée' : 'Réessayez');
+    if(btn) { btn.style.background = ''; btn.textContent = '🎙️'; }
+  };
+
+  _speechRecognition.onend = () => {
+    if(btn) { btn.style.background = ''; btn.textContent = '🎙️'; }
+    _speechRecognition = null;
+  };
+
+  _speechRecognition.start();
+}
+
+function stopVoiceInput() {
+  if(_speechRecognition) { _speechRecognition.abort(); _speechRecognition = null; }
+}
+
+// Quick add fridge item by voice
+function voiceAddFridgeItem() {
+  const tmpId = 'voiceFridgeTmp';
+  let tmp = document.getElementById(tmpId);
+  if(!tmp) {
+    tmp = document.createElement('input');
+    tmp.id = tmpId;
+    tmp.style.display = 'none';
+    document.body.appendChild(tmp);
+  }
+  startVoiceInput(tmpId, text => {
+    // Parse "add X" / "ajoute X" / just "X"
+    const name = text.replace(/^(ajoute?r?|add|met[sz]?)\s+/i, '').trim();
+    if(name) {
+      document.getElementById('fridgeInput').value = name;
+      addFridgeItem();
+    }
+  });
+}
+
+// Quick add shopping list item by voice
+function voiceAddListItem() {
+  const tmpId = 'voiceListTmp';
+  let tmp = document.getElementById(tmpId);
+  if(!tmp) { tmp = document.createElement('input'); tmp.id=tmpId; tmp.style.display='none'; document.body.appendChild(tmp); }
+  startVoiceInput(tmpId, text => {
+    const name = text.replace(/^(ajoute?r?|add|met[sz]?)\s+/i, '').trim();
+    if(name) {
+      // Try to find product
+      const p = (typeof PRODUCTS !== 'undefined' ? PRODUCTS : []).find(pr => pr.name.toLowerCase().includes(name.toLowerCase()));
+      if(p) { addItemByName(p.name); showToast('✅', p.emoji + ' ' + p.name, 'Ajouté par la voix'); }
+      else {
+        state.items.unshift({id:'i'+Date.now(),name,emoji:'🛒',cat:'🍝 Épicerie',price:0,qty:1,checked:false,addedAt:Date.now()});
+        saveItems(); renderList();
+        showToast('✅', '🛒 ' + name, 'Ajouté par la voix');
+      }
+    }
+  });
+}
+
+
+// ═══════════════════════════════════════════════════════════
+// 🎓 ONBOARDING
+// ═══════════════════════════════════════════════════════════
+const ONBOARD_STEPS = [
+  {
+    emoji: '🛒',
+    title: 'Bienvenue sur SmartCard !',
+    sub: 'Votre assistant culinaire intelligent. Gérez vos courses, votre frigo et planifiez vos repas de la semaine.',
+    action: null
+  },
+  {
+    emoji: '🧊',
+    title: 'Remplissez votre frigo',
+    sub: 'Scannez vos produits ou ajoutez-les manuellement. SmartCard vous proposera des recettes avec ce que vous avez.',
+    action: null
+  },
+  {
+    emoji: '🤖',
+    title: 'L\'IA cuisine pour vous',
+    sub: 'Générez des menus personnalisés, découvrez des milliers de recettes et recevez des conseils nutritionnels.',
+    action: null
+  },
+  {
+    emoji: '⚙️',
+    title: 'Personnalisez votre profil',
+    sub: 'Indiquez votre régime, vos objectifs et votre activité physique pour des recommandations sur-mesure.',
+    action: 'profile'
+  }
+];
+
+let _onboardStep = 0;
+
+function checkOnboarding() {
+  try {
+    if(localStorage.getItem('sc_onboarded')) return;
+  } catch(e) {}
+  _onboardStep = 0;
+  showOnboarding();
+}
+
+function showOnboarding() {
+  const existing = document.getElementById('onboardOverlay');
+  if(existing) existing.remove();
+
+  const overlay = document.createElement('div');
+  overlay.className = 'onboard-overlay';
+  overlay.id = 'onboardOverlay';
+
+  const step = ONBOARD_STEPS[_onboardStep];
+  const isLast = _onboardStep === ONBOARD_STEPS.length - 1;
+
+  overlay.innerHTML =
+    '<div class="onboard-dots">'
+    + ONBOARD_STEPS.map((_, i) => '<div class="onboard-dot' + (i === _onboardStep ? ' active' : '') + '"></div>').join('')
+    + '</div>'
+    + '<div class="onboard-slide">'
+    + '<div class="onboard-emoji">' + step.emoji + '</div>'
+    + '<div class="onboard-title">' + step.title + '</div>'
+    + '<div class="onboard-sub">' + step.sub + '</div>'
+    + '</div>'
+    + '<div style="width:100%;max-width:340px;">'
+    + '<button onclick="nextOnboardStep()" style="width:100%;padding:16px;border:none;border-radius:16px;background:var(--ac);color:#fff;font-weight:900;font-size:1rem;cursor:pointer;margin-bottom:12px;">'
+    + (isLast ? '✨ Commencer !' : 'Suivant →')
+    + '</button>'
+    + (!isLast ? '<button onclick="skipOnboarding()" style="width:100%;padding:10px;border:none;background:none;color:var(--tx3);font-size:.8rem;cursor:pointer;">Passer</button>' : '')
+    + '</div>';
+
+  document.body.appendChild(overlay);
+}
+
+function nextOnboardStep() {
+  const step = ONBOARD_STEPS[_onboardStep];
+  _onboardStep++;
+  if(_onboardStep >= ONBOARD_STEPS.length) {
+    skipOnboarding();
+    if(step.action === 'profile') {
+      setTimeout(() => openMenuProfile(), 300);
+    }
+    return;
+  }
+  showOnboarding();
+}
+
+function skipOnboarding() {
+  document.getElementById('onboardOverlay')?.remove();
+  try { localStorage.setItem('sc_onboarded', '1'); } catch(e) {}
+}
+
+
+// ═══════════════════════════════════════════════════════════
 // 💎 SYSTÈME PREMIUM
 // ═══════════════════════════════════════════════════════════
 
@@ -4610,7 +5554,14 @@ function openPremiumModal(featureName) {
   const perksData = [['🤖','Recettes IA frigo','Génération illimitée personnalisée'],['📅','Menu IA semaine','Planification selon votre profil'],['🔍','Explorer IA illimité','Recherche sans limite'],['📊','Analyse nutritionnelle','Conseils personnalisés'],['💾','Sync cloud','Données disponibles partout']];
   const perksHtml = perksData.map(function(p){ return '<div style="display:flex;gap:12px;align-items:center;padding:10px 14px;background:var(--bg2);border-radius:12px;"><div style="font-size:1.3rem;">'+p[0]+'</div><div><div style="font-weight:800;font-size:.82rem;">'+p[1]+'</div><div style="font-size:.7rem;color:var(--tx2);">'+p[2]+'</div></div></div>'; }).join('');
   const plansData = [{id:'monthly',label:'Mensuel',price:'2,99 €',badge:'',desc:'Facturé chaque mois'},{id:'yearly',label:'Annuel',price:'19,99 €',badge:'🔥 -44%',desc:'Soit 1,67 €/mois'}];
-  const plansHtml = plansData.map(function(pl){ return '<div class="prem-plan-card'+(pl.id==='yearly'?' selected':'')+'" data-plan="'+pl.id+'" onclick="selectPremPlan(\''+pl.id+'\')" style="flex:1;text-align:center;"><div style="height:16px;font-size:.6rem;font-weight:900;color:#fda085;">'+pl.badge+'</div><div style="font-weight:900;">'+pl.label+'</div><div style="font-size:1.2rem;font-weight:900;color:#fda085;">'+pl.price+'</div><div style="font-size:.62rem;color:var(--tx2);">'+pl.desc+'</div></div>'; }).join('');
+  const plansHtml = plansData.map(function(pl){
+    const sel = pl.id === 'yearly' ? ' selected' : '';
+    return '<div class="prem-plan-card' + sel + '" data-plan="' + pl.id + '" style="flex:1;text-align:center;cursor:pointer;" onclick="selectPremPlan(this.dataset.plan)">'
+      + '<div style="height:16px;font-size:.6rem;font-weight:900;color:#fda085;">' + pl.badge + '</div>'
+      + '<div style="font-weight:900;">' + pl.label + '</div>'
+      + '<div style="font-size:1.2rem;font-weight:900;color:#fda085;">' + pl.price + '</div>'
+      + '<div style="font-size:.62rem;color:var(--tx2);">' + pl.desc + '</div></div>';
+  }).join('');
   overlay.innerHTML = '<div style="background:var(--bg);border-radius:24px 24px 0 0;padding:24px 20px calc(28px + env(safe-area-inset-bottom));width:100%;max-width:480px;max-height:90vh;overflow-y:auto;"><div style="width:40px;height:4px;background:var(--bg2);border-radius:2px;margin:0 auto 18px;"></div><div style="text-align:center;margin-bottom:18px;"><div style="font-size:2.5rem;margin-bottom:6px;">⭐</div><div style="font-size:1.15rem;font-weight:900;background:linear-gradient(135deg,#f6d365,#fda085);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;">SmartCard Premium</div><div style="font-size:.8rem;color:var(--tx2);margin-top:5px;">'+fHtml+'</div></div><div style="display:flex;flex-direction:column;gap:7px;margin-bottom:18px;">'+perksHtml+'</div><div style="display:flex;gap:10px;margin-bottom:14px;">'+plansHtml+'</div><button onclick="activatePremium()" style="width:100%;padding:15px;border:none;border-radius:16px;background:linear-gradient(135deg,#f6d365,#fda085);color:#fff;font-weight:900;font-size:.9rem;cursor:pointer;margin-bottom:8px;">✨ Essai gratuit 7 jours</button><div style="font-size:.62rem;color:var(--tx3);text-align:center;margin-bottom:12px;">Annulez à tout moment · Sans engagement</div><div style="display:flex;gap:8px;margin-bottom:8px;"><input id="premPromoInput" class="inp" placeholder="Code promo…" style="flex:1;font-size:.78rem;"><button onclick="applyPromoCode()" class="btn sm">Appliquer</button></div><button onclick="restorePremium()" style="width:100%;padding:10px;border:none;background:none;color:var(--tx2);font-size:.73rem;cursor:pointer;text-decoration:underline;">Restaurer un achat</button><button onclick="document.getElementById(\'premiumModal\').remove()" style="width:100%;padding:9px;border:none;background:none;color:var(--tx3);font-size:.7rem;cursor:pointer;">Pas maintenant</button></div>';
   overlay.onclick = function(e){ if(e.target===overlay) overlay.remove(); };
   document.body.appendChild(overlay);
@@ -4619,12 +5570,56 @@ function openPremiumModal(featureName) {
 let _selectedPremPlan = 'yearly';
 function selectPremPlan(p) { _selectedPremPlan=p; document.querySelectorAll('.prem-plan-card').forEach(function(c){c.classList.toggle('selected',c.dataset.plan===p);}); }
 
+// Stripe Payment Links (replace placeholder with real Stripe links)
+const STRIPE_LINKS = {
+  monthly: 'https://buy.stripe.com/test_monthly_placeholder',
+  yearly:  'https://buy.stripe.com/test_yearly_placeholder',
+};
+
 function activatePremium() {
-  state.premium = {active:true,plan:_selectedPremPlan||'yearly',expiresAt:Date.now()+7*24*3600*1000,activatedAt:Date.now(),trial:true};
-  saveState(); document.getElementById('premiumModal')?.remove();
-  showToast('⭐','Premium activé !','7 jours gratuits · Toutes fonctionnalités débloquées');
+  const plan = _selectedPremPlan || 'yearly';
+  const link = STRIPE_LINKS[plan];
+
+  // Production: redirect to Stripe
+  if(link && !link.includes('placeholder')) {
+    const userId = (typeof currentUser !== 'undefined' && currentUser) ? currentUser.uid : 'guest';
+    window.open(link + '?client_reference_id=' + userId, '_blank');
+    document.getElementById('premiumModal')?.remove();
+    showToast('↗️','Paiement sécurisé','Redirection vers Stripe...');
+    _pollPremiumActivation();
+    return;
+  }
+
+  // Demo/dev mode: 7-day free trial
+  state.premium = {active:true, plan, expiresAt:Date.now()+7*24*3600*1000, activatedAt:Date.now(), trial:true};
+  saveState();
+  if(typeof db !== 'undefined' && db && typeof currentUser !== 'undefined' && currentUser) {
+    db.collection('users').doc(currentUser.uid).set({premium: state.premium}, {merge:true}).catch(()=>{});
+  }
+  document.getElementById('premiumModal')?.remove();
+  showToast('⭐','Premium activé !','7 jours d\'essai gratuit débloqué');
   renderAll();
 }
+
+let _premPollTimer = null;
+function _pollPremiumActivation() {
+  if(typeof db === 'undefined' || !db || typeof currentUser === 'undefined' || !currentUser) return;
+  let tries = 0;
+  _premPollTimer = setInterval(async () => {
+    if(++tries > 30) { clearInterval(_premPollTimer); return; }
+    try {
+      const doc = await db.collection('users').doc(currentUser.uid).get();
+      if(doc.data()?.premium?.active) {
+        state.premium = doc.data().premium;
+        saveState(); clearInterval(_premPollTimer);
+        showToast('⭐','Premium activé !','Bienvenue dans SmartCard Premium !');
+        renderAll();
+      }
+    } catch(e) {}
+  }, 10000);
+}
+
+
 
 function applyPromoCode() {
   const code = (document.getElementById('premPromoInput')?.value||'').trim().toUpperCase();
@@ -4646,7 +5641,8 @@ function getPremiumBadge() {
   if(!isPremium()) return '';
   const p = state.premium;
   const d = p.expiresAt ? Math.ceil((p.expiresAt-Date.now())/(24*3600*1000)) : null;
-  return '<span style="font-size:.6rem;background:linear-gradient(135deg,#f6d365,#fda085);color:#fff;padding:2px 8px;border-radius:99px;font-weight:900;margin-left:5px;">'+(p.trial?'⭐ ESSAI'+(d?' · '+d+'j':''):'⭐ PREMIUM')+'</span>';
+  const label = p.trial ? ('⭐ ESSAI' + (d ? ' · ' + d + 'j' : '')) : '⭐ PREMIUM';
+  return '<span style="font-size:.6rem;background:linear-gradient(135deg,#f6d365,#fda085);color:#fff;padding:2px 8px;border-radius:99px;font-weight:900;margin-left:5px;">' + label + '</span>';
 }
 
 
@@ -4656,45 +5652,70 @@ function getGlobalRecipeDB() {
   } catch(e) { return []; }
 }
 
-function saveToGlobalDB(recipes) {
-  if(!Array.isArray(recipes) || !recipes.length) return;
-  try {
-    const existing = getGlobalRecipeDB();
-    const existingIds = new Set(existing.map(r => r.id));
-    const existingNames = new Set(existing.map(r => (r.name||'').toLowerCase()));
-    let added = 0;
-    recipes.forEach(r => {
-      if(!r.name || !r.id) return;
-      if(!existingIds.has(r.id) && !existingNames.has(r.name.toLowerCase())) {
-        existing.unshift({
-          ...r,
-          _savedAt: Date.now(),
-          _rawMeal: undefined, // don't store raw meal data to save space
-        });
-        existingIds.add(r.id);
-        existingNames.add(r.name.toLowerCase());
-        added++;
-      }
-    });
-    if(added > 0) {
-      // Keep max 200 recipes
-      const trimmed = existing.slice(0, 200);
-      localStorage.setItem('sc_global_recipes', JSON.stringify(trimmed));
+async function saveToGlobalDB(recipes) {
+  if(!Array.isArray(recipes) || !recipes.length) return 0;
+  const existing = getGlobalRecipeDB();
+  const existingIds = new Set(existing.map(r => r.id));
+  const existingNames = new Set(existing.map(r => (r.name||'').toLowerCase()));
+  let added = 0;
+  for(const r of recipes) {
+    if(!r.name || !r.id) continue;
+    if(existingIds.has(r.id) || existingNames.has(r.name.toLowerCase())) continue;
+    const clean = {...r, _rawMeal:undefined, _savedAt:Date.now()};
+    delete clean._rawMeal;
+    existing.unshift(clean);
+    existingIds.add(r.id);
+    existingNames.add(r.name.toLowerCase());
+    added++;
+    // Persist to Firestore shared collection
+    if(typeof db !== 'undefined' && db) {
+      try {
+        const firestoreData = {...clean};
+        // Don't store base64 photos in Firestore (too large)
+        if(firestoreData.photo && firestoreData.photo.startsWith('data:')) delete firestoreData.photo;
+        await db.collection('recipes').doc(r.id).set({
+          ...firestoreData,
+          savedBy: (typeof currentUser !== 'undefined' && currentUser) ? currentUser.uid : 'anonymous',
+          savedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        }, {merge: true});
+      } catch(e) { /* offline — local cache is fine */ }
     }
-    return added;
-  } catch(e) { return 0; }
+  }
+  if(added > 0) localStorage.setItem('sc_global_recipes', JSON.stringify(existing.slice(0, 300)));
+  return added;
 }
 
 function searchGlobalDB(query, filters) {
-  const db = getGlobalRecipeDB();
-  if(!query && !filters) return db.slice(0, 20);
+  const localDB = getGlobalRecipeDB();
+  if(!query && !filters) return localDB.slice(0, 20);
   const q = (query||'').toLowerCase();
-  return db.filter(r => {
+  return localDB.filter(r => {
     if(q && !r.name.toLowerCase().includes(q)) return false;
     if(filters?.diet && filters.diet !== 'all' && r.diet && r.diet !== filters.diet) return false;
     return true;
   }).slice(0, 20);
 }
+
+// Sync shared recipes from Firestore → local cache (called at startup)
+async function syncGlobalRecipesFromFirestore() {
+  if(typeof db === 'undefined' || !db) return;
+  try {
+    const existing = getGlobalRecipeDB();
+    const existingIds = new Set(existing.map(r => r.id));
+    const snap = await db.collection('recipes').orderBy('savedAt','desc').limit(80).get();
+    let added = 0;
+    snap.forEach(doc => {
+      const r = {id: doc.id, ...doc.data(), savedAt: undefined};
+      if(!existingIds.has(r.id) && r.name) { existing.push(r); existingIds.add(r.id); added++; }
+    });
+    if(added > 0) {
+      localStorage.setItem('sc_global_recipes', JSON.stringify(existing.slice(0, 300)));
+      console.log('[Firestore] Synced', added, 'shared recipes');
+    }
+  } catch(e) { /* offline */ }
+}
+
+
 
 function getRecipesMatchingFridge(fridgeNames) {
   // Combine all recipe sources (deduplicated)
@@ -5023,7 +6044,7 @@ function renderSpoonResults(recipes) {
     const bm = isBookmarked(r.id);
     return `<div class="spoon-recipe" style="position:relative;">
       ${r.photo ? `<img class="spoon-recipe-img" src="${r.photo}" alt="${r.name}" loading="lazy" onerror="this.style.display='none'">` : '<div class="spoon-recipe-img skel"></div>'}
-      <button class="spoon-bookmark-btn" onclick="event.stopPropagation();toggleBookmark('${r.id}')" title="${bm?'Retirer':'Ajouter aux favoris'}">
+      <button class="spoon-bookmark-btn" onclick="event.stopPropagation();toggleBookmark('${r.id}')" title="${bm?"Retirer":"Ajouter aux favoris"}">
         ${bm ? '⭐' : '☆'}
       </button>
       <div class="spoon-recipe-body" onclick="openSpoonRecipe('${r.id}')">
@@ -5109,7 +6130,7 @@ function renderRecipeModal(recipe, portions, isBookmarked) {
       <span style="font-size:.78rem;font-weight:700;flex-shrink:0;">👥 Portions</span>
       <div style="display:flex;gap:4px;flex:1;">
         ${[1,2,3,4,6,8].map(n=>`<button onclick="changePortions(${n})" id="portionBtn${n}"
-          style="padding:6px 10px;font-size:.75rem;border-radius:var(--rs);border:1.5px solid ${n===portions?'var(--ac)':'var(--bg)'};background:${n===portions?'var(--ac)':'var(--bg)'};color:${n===portions?'#fff':'var(--tx)'};font-weight:${n===portions?'900':'600'};cursor:pointer;transition:all .15s;">${n}</button>`).join('')}
+          style="padding:6px 10px;font-size:.75rem;border-radius:var(--rs);border:1.5px solid ${n===portions?"var(--ac)":"var(--bg)"};background:${n===portions?"var(--ac)":"var(--bg)"};color:${n===portions?"#fff":"var(--tx)"};font-weight:${n===portions?"900":"600"};cursor:pointer;transition:all .15s;">${n}</button>`).join('')}
       </div>
       ${scaledKcal ? `<span style="font-size:.72rem;color:var(--tx2);flex-shrink:0;">🔥 ${scaledKcal} kcal</span>` : ''}
     </div>
@@ -5126,7 +6147,7 @@ function renderRecipeModal(recipe, portions, isBookmarked) {
     <!-- Ingrédients -->
     ${scaledIngr.length ? `
     <div style="font-weight:900;font-size:.85rem;margin-bottom:8px;" id="ingrTitle">
-      📋 Ingrédients <span style="font-weight:500;font-size:.75rem;color:var(--tx3);">(pour ${portions} personne${portions>1?'s':''})</span>
+      📋 Ingrédients <span style="font-weight:500;font-size:.75rem;color:var(--tx3);">(pour ${portions} personne${portions>1?"s":""})</span>
     </div>
     <div id="ingrList" style="margin-bottom:14px;background:var(--bg2);border-radius:var(--rs);overflow:hidden;">
       ${scaledIngr.map(i => `<div style="display:flex;justify-content:space-between;padding:9px 14px;border-bottom:1px solid var(--bg);font-size:.8rem;">
@@ -5148,7 +6169,7 @@ function renderRecipeModal(recipe, portions, isBookmarked) {
     <!-- Actions -->
     <div style="display:flex;gap:8px;position:sticky;bottom:0;background:var(--bg);padding:10px 0;">
       <button class="btn acc" onclick="addSpoonRecipeToDay('${recipe.id}')" style="flex:1;padding:13px;border-radius:var(--rs);font-weight:800;">📅 Ajouter au menu</button>
-      <button onclick="toggleBookmark('${recipe.id}')" style="padding:13px;border-radius:var(--rs);background:${isBookmarked?'rgba(246,211,101,.2)':'var(--bg2)'};border:none;font-size:1.1rem;cursor:pointer;">${isBookmarked?'⭐':'☆'}</button>
+      <button onclick="toggleBookmark('${recipe.id}')" style="padding:13px;border-radius:var(--rs);background:${isBookmarked?"rgba(246,211,101,.2)":"var(--bg2)"};border:none;font-size:1.1rem;cursor:pointer;">${isBookmarked?"⭐":"☆"}</button>
       ${recipe.sourceUrl ? `<a href="${recipe.sourceUrl}" target="_blank" style="padding:13px;border-radius:var(--rs);background:var(--bg2);color:var(--tx2);font-size:.75rem;display:flex;align-items:center;text-decoration:none;">🔗</a>` : ''}
     </div>
   `;
@@ -5174,15 +6195,16 @@ function translateIngredientUnit(unit) {
     'pound':'livre', 'pounds':'livres', 'lb':'livre', 'lbs':'livres',
     'ounce':'oz', 'ounces':'oz',
     'clove':'gousse', 'cloves':'gousses',
-    'piece':'pièce', 'pieces':'pièces',
+    'piece':'piece', 'pieces':'pieces',
     'slice':'tranche', 'slices':'tranches',
-    'can':'boîte', 'cans':'boîtes',
+    'can':'boite', 'cans':'boites',
     'bunch':'bouquet', 'bunches':'bouquets',
-    'pinch':'pincée', 'pinches':'pincées',
-    'handful':'poignée',
+    'pinch':'pincee', 'pinches':'pincees',
+    'handful':'poignee',
     'large':'grand', 'medium':'moyen', 'small':'petit',
     'whole':'entier',
   };
+
   return map[u] || unit;
 }
 
@@ -5392,7 +6414,7 @@ function renderDayDetail() {
   detail.innerHTML = `<div class="meal-card">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
       <div class="meal-card-ti">📅 ${dayName}</div>
-      ${menu.quality ? `<span style="font-size:.7rem;padding:2px 8px;border-radius:99px;background:${menu.quality==='good'?'rgba(0,184,148,.15)':menu.quality==='warn'?'rgba(214,63,49,.1)':'var(--bg2)'};color:${menu.quality==='good'?'var(--gn)':menu.quality==='warn'?'var(--rd)':'var(--tx2)'};">${menu.quality==='good'?'✅ Équilibré':menu.quality==='warn'?'⚠️ À améliorer':'📋 Planifié'}</span>` : ''}
+      ${menu.quality ? `<span style="font-size:.7rem;padding:2px 8px;border-radius:99px;background:${menu.quality==='good'?'rgba(0,184,148,.15)':menu.quality==='warn'?"rgba(214,63,49,.1)":"var(--bg2)"};color:${menu.quality==='good'?'var(--gn)':menu.quality==='warn'?"var(--rd)":"var(--tx2)"};">${menu.quality==='good'?'✅ Équilibré':menu.quality==='warn'?"⚠️ À améliorer":"📋 Planifié"}</span>` : ''}
     </div>
 
     ${calTarget ? `<div class="meal-card-sub" style="margin-bottom:8px;">🎯 Objectif: ${calTarget} kcal</div>
@@ -5449,6 +6471,7 @@ function renderDayDetail() {
     <div style="display:flex;gap:7px;margin-top:12px;">
       <button class="btn sm" style="flex:1;" onclick="regenDayAI(${selectedDay})">🤖 Régénérer</button>
       <button class="btn sm" style="flex:1;color:var(--gn);" onclick="addDayIngredients(${selectedDay})">🛒 Ingrédients</button>
+      <button class="btn sm" style="flex:1;" onclick="openMenuHistoryModal()" title="Historique">📅</button>
       <button class="btn sm" style="color:var(--rd);" onclick="clearDayMenu(${selectedDay})">🗑</button>
     </div>
   </div>`;
@@ -5484,7 +6507,7 @@ function applyAIMenuResult(data) {
       </div>
       ${data.days.slice(0,3).map(d=>`
         <div class="ai-menu-day">
-          <div class="ai-menu-day-title">📅 ${d.day} <span style="font-size:.65rem;font-weight:700;color:${d.quality==='good'?'var(--gn)':d.quality==='warn'?'var(--yl)':'var(--bl)'};">● ${d.total_kcal||'?'} kcal</span></div>
+          <div class="ai-menu-day-title">📅 ${d.day} <span style="font-size:.65rem;font-weight:700;color:${d.quality==='good'?'var(--gn)':d.quality==='warn'?"var(--yl)":"var(--bl)"};">● ${d.total_kcal||'?'} kcal</span></div>
           <div class="ai-meal-row"><span class="ai-meal-label">Matin</span><span class="ai-meal-content">${d.breakfast?.emoji||''} ${d.breakfast?.name||''}</span></div>
           <div class="ai-meal-row"><span class="ai-meal-label">Midi</span><span class="ai-meal-content">${d.lunch?.emoji||''} ${d.lunch?.name||''}</span></div>
           <div class="ai-meal-row"><span class="ai-meal-label">Soir</span><span class="ai-meal-content">${d.dinner?.emoji||''} ${d.dinner?.name||''}</span></div>
@@ -5617,7 +6640,7 @@ function openBreakfastBuilder(day) {
 
   box.innerHTML = '<div class="modal">'
     + '<div class="modal-hd"><div><div class="modal-ti">🌅 Petit-déjeuner</div><div class="modal-su">'+dayName+'</div></div>'
-    + '<button class="btn ico" onclick="document.getElementById(\'breakfastModal\').remove()">✕</button></div>'
+    + '<button class="btn ico" onclick="document._closePremModal()">✕</button></div>'
     + '<div id="bfSelDisplay" style="min-height:38px;background:var(--bg2);border-radius:var(--rs);padding:8px 12px;margin-bottom:12px;display:flex;flex-wrap:wrap;gap:5px;align-items:center;">'
     + '<span style="font-size:.72rem;color:var(--tx3);">Rien sélectionné</span></div>'
     + '<div style="position:relative;margin-bottom:12px;">'
@@ -5893,12 +6916,12 @@ function renderNutriWeekChart(target) {
     const x=pad+i*barW+barW*.12, bw=barW*.76;
     const bh=v?Math.max(5,Math.round(v/maxV*H)):4, y=H-bh;
     const col=!v?'var(--bg2)':Math.abs(v-tgt)<tgt*.1?'#2ecc71':v>tgt*1.15?'#e74c3c':'#f39c12';
-    svg+=`<rect x="${x}" y="${y}" width="${bw}" height="${bh}" rx="4" fill="${col}" opacity="${v?'1':'.35'}">
+    svg+=`<rect x="${x}" y="${y}" width="${bw}" height="${bh}" rx="4" fill="${col}" opacity="${v?"1":".35"}">
       <animate attributeName="height" from="0" to="${bh}" dur=".5s" begin="${i*.06}s" fill="freeze"/>
       <animate attributeName="y" from="${H}" to="${y}" dur=".5s" begin="${i*.06}s" fill="freeze"/>
     </rect>`;
     if(v) svg+=`<text x="${x+bw/2}" y="${y-4}" text-anchor="middle" font-size="9" fill="var(--tx2)" font-weight="700">${v}</text>`;
-    svg+=`<text x="${x+bw/2}" y="${H+13}" text-anchor="middle" font-size="10" fill="${v?'var(--tx)':'var(--tx3)'}" font-weight="${v?'700':'400'}">${DAYS_S[i]}</text>`;
+    svg+=`<text x="${x+bw/2}" y="${H+13}" text-anchor="middle" font-size="10" fill="${v?"var(--tx)":"var(--tx3)"}" font-weight="${v?"700":"400"}">${DAYS_S[i]}</text>`;
   });
   svg+='</svg>';
   chart.innerHTML=svg;
@@ -6516,7 +7539,7 @@ function openMealEdit(day, slot) {
       </div>
       <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px;">
         ${['Poulet','Boeuf','Saumon','Pâtes','Soupe','Légumes','Riz','Oeufs'].map(q=>
-          '<button class="spoon-recipe-tag" onclick="document.getElementById(\'omeDbSearch\').value=\''+q+'\';omeSearchMealDB('+day+',\''+slot+'\')" style="cursor:pointer;padding:5px 10px;">'+q+'</button>'
+          '<button class="spoon-recipe-tag" data-q="'+q+'" onclick="document.getElementById(\'omeDbSearch\').value=this.dataset.q;omeSearchMealDB('+day+',\''+slot+'\')" style="cursor:pointer;padding:5px 10px;">'+q+'</button>'
         ).join('')}
       </div>
       <div id="omeDbResults" style="max-height:220px;overflow-y:auto;display:flex;flex-direction:column;gap:5px;"></div>
@@ -7098,7 +8121,7 @@ function addDayIngredients(day) {
     : '')
     
     + (missing.length ? '<button onclick="window._doAddIngredients()" class="btn acc" style="width:100%;padding:13px;margin-top:14px;border-radius:14px;font-weight:800;">🛒 Ajouter la sélection à la liste</button>' : '')
-    + '<button onclick="document.body.querySelector(\'.sc-ingr-overlay\').remove()" class="btn" style="width:100%;padding:12px;margin-top:8px;border-radius:14px;">Annuler</button>'
+    + '<button onclick="document.body._closeOverlay(this)" class="btn" style="width:100%;padding:12px;margin-top:8px;border-radius:14px;">Annuler</button>'
     + '</div>';
   
   // Store ingredients data for checkbox toggle
@@ -7339,7 +8362,7 @@ function renderRecipesGrid() {
           <div style="display:flex;gap:4px;padding:4px 8px 8px;">
             <button onclick="editCustomRecipe('${r.id}')" style="flex:1;font-size:.6rem;padding:4px;background:var(--bg2);border:none;border-radius:var(--rx);cursor:pointer;font-weight:700;color:var(--tx2);">✏️ Modifier</button>
             <button onclick="deleteCustomRecipe('${r.id}')" style="flex:1;font-size:.6rem;padding:4px;background:rgba(231,76,60,.1);border:none;border-radius:var(--rx);cursor:pointer;font-weight:700;color:var(--rd);">🗑 Suppr.</button>
-            <button onclick="toggleBookmark('${r.id}')" style="padding:4px 6px;background:none;border:none;cursor:pointer;font-size:.75rem;" title="Favori">${(state.recipeBookmarks||[]).some(b=>b.id===r.id)?'⭐':'☆'}</button>
+            <button onclick="toggleBookmark('${r.id}')" style="padding:4px 6px;background:none;border:none;cursor:pointer;font-size:.75rem;" title="Favori">${(state.recipeBookmarks||[]).some(b=>b.id===r.id)?"⭐":"☆"}</button>
           </div>
         </div>`).join('')
       + '</div>';
@@ -7369,7 +8392,7 @@ function renderRecipesGrid() {
               <div style="font-size:.6rem;color:var(--tx2);margin-top:2px;">${r.time?r.time+'min · ':''}${r.kcal?r.kcal+'kcal':''}</div>
             </div>
           </div>
-          <button onclick="toggleBookmark('${r.id||r.name}')" style="position:absolute;top:4px;right:4px;background:rgba(0,0,0,.35);border:none;border-radius:50%;width:24px;height:24px;cursor:pointer;font-size:.75rem;display:flex;align-items:center;justify-content:center;">${isBm?'⭐':'☆'}</button>
+          <button onclick="toggleBookmark('${r.id||r.name}')" style="position:absolute;top:4px;right:4px;background:rgba(0,0,0,.35);border:none;border-radius:50%;width:24px;height:24px;cursor:pointer;font-size:.75rem;display:flex;align-items:center;justify-content:center;">${isBm?"⭐":"☆"}</button>
         </div>`;
       }).join('')
       + '</div>';
@@ -7429,7 +8452,7 @@ function openCustomRecipeDetail(id) {
     <div style="display:flex;flex-direction:column;gap:8px;padding-top:12px;border-top:1px solid var(--bg2);">
       <div style="display:flex;gap:8px;">
         <button class="btn acc" style="flex:1;padding:12px;" onclick="editCustomRecipe('${r.id}');document.getElementById('customDetailOverlay').remove()">✏️ Modifier</button>
-        <button onclick="toggleBookmark('${r.id}')" style="padding:12px 14px;border-radius:var(--rs);background:${isBm?'rgba(246,211,101,.2)':'var(--bg2)'};border:none;font-size:1rem;cursor:pointer;">${isBm?'⭐':'☆'}</button>
+        <button onclick="toggleBookmark('${r.id}')" style="padding:12px 14px;border-radius:var(--rs);background:${isBm?"rgba(246,211,101,.2)":"var(--bg2)"};border:none;font-size:1rem;cursor:pointer;">${isBm?"⭐":"☆"}</button>
       </div>
       <button class="btn" style="width:100%;padding:11px;color:var(--rd);" onclick="deleteCustomRecipe('${r.id}');document.getElementById('customDetailOverlay').remove()">🗑️ Supprimer cette recette</button>
       <button class="btn" style="width:100%;padding:11px;" onclick="document.getElementById('customDetailOverlay').remove()">Fermer</button>
@@ -7795,8 +8818,15 @@ function renderNutriTab() {
     const month = new Date().getMonth() + 1;
     const monthNames = ['','Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
     if(snHeader) snHeader.textContent = '🌱 Produits de saison · ' + monthNames[month];
-    const items = (typeof SEASONAL !== 'undefined' ? SEASONAL : {})[month] || [];
-    snGrid.innerHTML = items.map(v => '<div class="season-item" onclick="addItemByName(\'' + v.n.replace(/\'/g,"") + '\')" style="min-width:60px;">'
+    snGrid.innerHTML = items.map(v => {
+      const safeName = v.n.replace(/['"]/g,'');
+      return '<div class="season-item" onclick="addItemByName(\'' + safeName + '\')" style="min-width:60px;">'
+        + '<span class="season-item-em">' + v.em + '</span>'
+        + '<div class="season-item-nm">' + v.n + '</div>'
+        + (v.t ? '<div class="season-item-type">' + v.t + '</div>' : '')
+        + '</div>';
+    }).join('');
+    snGrid.innerHTML = items.map(v => '<div class="season-item" onclick="addItemByName(\'' + v.n.replace(/'/g,'') + '\')" style="min-width:60px;">'
       + '<span class="season-item-em">' + v.em + '</span>'
       + '<div class="season-item-nm">' + v.n + '</div>'
       + (v.t ? '<div class="season-item-type">' + v.t + '</div>' : '')
@@ -7823,7 +8853,7 @@ function renderNutriWeek(calTarget) {
         <div class="nutri-week-bar-fill" style="width:${pct}%;background:${color};"></div>
       </div></div>
       <div class="nutri-week-kcal">${kcal?kcal+' kcal':'—'}</div>
-      <span style="font-size:.7rem;margin-left:4px;">${pct>=85&&pct<=105?'✅':pct>110?'⚠️':kcal?'🔵':'➖'}</span>
+      <span style="font-size:.7rem;margin-left:4px;">${pct>=85&&pct<=105?'✅':pct>110?'⚠️':kcal?"🔵":"➖"}</span>
     </div>`;
   }).join('');
 }
@@ -7835,7 +8865,7 @@ async function generateNutriAdvice() {
   const p=state.profile||{};
   const cals=calculateDailyCalories(p);
   const weekData=Object.values(state.weekMenu).filter(m=>m?.nutri).map(m=>`${m.nutri.kcal}kcal, ${m.nutri.prot}g prot`).join(' | ');
-  const prompt=`Tu es nutritionniste expert. Profil: ${p.age||'?'}ans, ${p.sex==='H'?'homme':'femme'}, ${p.poids||'?'}kg, objectif: ${p.goal||'équilibre'}, régime: ${p.diet||'omnivore'}. Objectif: ${cals||'?'}kcal/j. Menu semaine: ${weekData||'non défini'}.
+  const prompt=`Tu es nutritionniste expert. Profil: ${p.age||'?'}ans, ${p.sex==='H'?"homme":"femme"}, ${p.poids||'?'}kg, objectif: ${p.goal||'équilibre'}, régime: ${p.diet||'omnivore'}. Objectif: ${cals||'?'}kcal/j. Menu semaine: ${weekData||'non défini'}.
 Donne 4 conseils nutritionnels personnalisés et précis en JSON:
 [{"type":"tip|warn|bad|info","title":"Titre court","body":"Conseil de 2 phrases précises et actionnables"}]
 Pas de généralités. Adapte à ce profil spécifique.`;
@@ -8309,7 +9339,7 @@ function showTicketError(errMsg) {
 function showTicketEditZone(storeName, total, items) {
   document.getElementById('ticketZone').style.display = 'none';
   document.getElementById('ticketEditZone').style.display = 'block';
-  const storeOptions = STORES_LIST.map(s => `<option value="${s}" ${s===storeName?'selected':''}>${s}</option>`).join('');
+  const storeOptions = STORES_LIST.map(s => `<option value="${s}" ${s===storeName?"selected":""}>${s}</option>`).join('');
 
   document.getElementById('ticketEditZone').innerHTML = `
     <div class="sr-block">
@@ -8370,7 +9400,7 @@ function showTicketEditZone(storeName, total, items) {
 
 function renderTicketEditItem(it, i) {
   return `<div id="tkRow-${it.id}" style="display:flex;align-items:flex-start;gap:8px;padding:10px 0;border-bottom:1px solid var(--bg2);">
-    <input type="checkbox" id="tkChk-${it.id}" ${it.include?'checked':''} onchange="ticketItemToggle('${it.id}',this.checked)"
+    <input type="checkbox" id="tkChk-${it.id}" ${it.include?"checked":""} onchange="ticketItemToggle('${it.id}',this.checked)"
       style="accent-color:var(--ac);width:20px;height:20px;flex-shrink:0;margin-top:4px;cursor:pointer;">
     <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:5px;">
       <div style="display:flex;gap:6px;align-items:center;position:relative;">
@@ -8397,14 +9427,14 @@ function renderTicketEditItem(it, i) {
         <select class="inp" style="flex:1;padding:7px 8px;font-size:.72rem;" id="tkCat-${it.id}"
           onchange="ticketItemCatChange('${it.id}',this.value)">
           ${['🥛 Laitage','🥩 Viande','🥦 Légumes','🍎 Fruits','🥖 Boulangerie','🐟 Poisson','🍝 Épicerie','🥤 Boissons','🧴 Hygiène','🧹 Ménager','🐾 Animaux']
-            .map(c=>`<option value="${c}" ${it.cat===c?'selected':''}>${c}</option>`).join('')}
+            .map(c=>`<option value="${c}" ${it.cat===c?"selected":""}>${c}</option>`).join('')}
         </select>
         <button onclick="deleteTicketItem('${it.id}')"
           style="padding:7px 10px;background:rgba(231,76,60,.12);color:var(--rd);border-radius:var(--rx);cursor:pointer;font-size:.8rem;flex-shrink:0;border:none;font-weight:700;">
           🗑
         </button>
       </div>
-      <div style="font-size:.62rem;font-weight:700;color:${it.matched?'var(--gn)':'var(--or)'};" id="tkStatus-${it.id}">
+      <div style="font-size:.62rem;font-weight:700;color:${it.matched?"var(--gn)":"var(--or)"};" id="tkStatus-${it.id}">
         ${it.matched ? '✓ Produit reconnu' : '⚠️ Non reconnu — modifiez le nom'}
       </div>
     </div>
@@ -8839,11 +9869,11 @@ function nutriscoreSVG(grade) {
   const bars = grades.map(gr => {
     const active = gr === g;
     const bc = colors[gr];
-    return `<div style="flex:1;height:${active?'18px':'12px'};border-radius:3px;background:${bc};transition:all .3s;${active?'box-shadow:0 2px 8px rgba(0,0,0,.3);':''};align-self:flex-end;"></div>`;
+    return `<div style="flex:1;height:${active?"18px":"12px"};border-radius:3px;background:${bc};transition:all .3s;${active?"box-shadow:0 2px 8px rgba(0,0,0,.3);":""};align-self:flex-end;"></div>`;
   }).join('');
   return `<div style="display:flex;align-items:flex-end;gap:3px;height:20px;">${bars}</div>
   <div style="display:flex;margin-top:4px;">
-    ${grades.map(gr=>`<div style="flex:1;text-align:center;font-size:.58rem;font-weight:${gr===g?'900':'400'};color:${gr===g?colors[gr]:'var(--tx3)'};">${gr.toUpperCase()}</div>`).join('')}
+    ${grades.map(gr=>`<div style="flex:1;text-align:center;font-size:.58rem;font-weight:${gr===g?"900":"400"};color:${gr===g?colors[gr]:'var(--tx3)'};">${gr.toUpperCase()}</div>`).join('')}
   </div>`;
 }
 
@@ -8905,7 +9935,7 @@ function displayBarcodeProduct(product) {
 
           <!-- Badges -->
           <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:12px;">
-            ${product.nova ? `<span class="off-badge off-badge-${product.nova<=2?'green':product.nova===3?'orange':'red'}">NOVA ${product.nova} · ${novaLabel[product.nova]||''}</span>` : ''}
+            ${product.nova ? `<span class="off-badge off-badge-${product.nova<=2?'green':product.nova===3?"orange":"red"}">NOVA ${product.nova} · ${novaLabel[product.nova]||''}</span>` : ''}
             ${goodLabels.map(l=>`<span class="off-badge off-badge-green">✓ ${l}</span>`).join('')}
             ${allergens.length ? `<span class="off-badge off-badge-red">⚠️ ${allergens.slice(0,3).join(', ')}</span>` : ''}
           </div>
@@ -9039,7 +10069,7 @@ function renderAlternatives(products) {
         <div class="off-alt-name">${p.product_name}</div>
         <div class="off-alt-brand">${p.brands||''}${kcal?' · '+Math.round(kcal)+' kcal':''}</div>
       </div>
-      <div style="width:28px;height:28px;border-radius:8px;background:${colors[ns]};display:flex;align-items:center;justify-content:center;font-size:.75rem;font-weight:900;color:${ns==='c'?'#333':'#fff'};flex-shrink:0;">${ns.toUpperCase()}</div>
+      <div style="width:28px;height:28px;border-radius:8px;background:${colors[ns]};display:flex;align-items:center;justify-content:center;font-size:.75rem;font-weight:900;color:${ns==='c'?"#333":"#fff"};flex-shrink:0;">${ns.toUpperCase()}</div>
       <div style="color:var(--tx3);font-size:.85rem;margin-left:4px;">›</div>
     </div>`;
   }).join('');
@@ -9083,6 +10113,7 @@ async function startBarcodeCamera() {
       video: { facingMode: {ideal:'environment'}, width:{ideal:1280}, height:{ideal:720} }
     });
     video.srcObject = barcodeStream;
+    startLiveBarcodeScan(); // Enable native BarcodeDetector if available
     await video.play();
     camZone.style.display = 'block';
     statusEl.textContent = '🔍 Centrez le code-barres dans le cadre...';
@@ -9146,7 +10177,7 @@ function renderBarcodeHistory() {
         <div class="barcode-hist-name">${h.name}</div>
         <div class="barcode-hist-sub">${h.brand||''} · <span style="font-family:monospace;">${h.barcode}</span></div>
       </div>
-      <div style="width:24px;height:24px;border-radius:7px;background:${colors[(h.nutriscore||'u').toLowerCase()]};display:flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:900;color:${h.nutriscore==='c'?'#333':'#fff'};flex-shrink:0;">${(h.nutriscore||'?').toUpperCase()}</div>
+      <div style="width:24px;height:24px;border-radius:7px;background:${colors[(h.nutriscore||'u').toLowerCase()]};display:flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:900;color:${h.nutriscore==='c'?"#333":"#fff"};flex-shrink:0;">${(h.nutriscore||'?').toUpperCase()}</div>
     </div>`).join('');
 }
 
@@ -9212,23 +10243,23 @@ const PRODUCTS = [
 
 
 const RECIPES_DB = [
-  {emoji:'🍝',name:'Pâtes bolognaise',diet:'omnivore',mealTypes:['l','d'],time:30,portions:4,kcal:520,prot:32,carb:68,fat:12,ingredients:[{name:'Pâtes',qty:400,unit:'g'},{name:'Steak haché',qty:300,unit:'g'},{name:'Tomates concassées',qty:400,unit:'g'},{name:'Oignons',qty:2,unit:'pièce'},{name:'Ail',qty:3,unit:'gousse'},{name:"Huile d'olive",qty:30,unit:'mL'},{name:'Concentré tomate',qty:30,unit:'g'}],steps:["Faire revenir oignon et ail dans l'huile","Ajouter la viande hachée et faire dorer","Ajouter tomates et concentré, mijoter 20 min","Cuire les pâtes al dente, égoutter","Mélanger et servir avec parmesan"],notes:"Classique indémodable. Parfait pour le batch cooking."},
+  {emoji:'🍝',name:'Pâtes bolognaise',diet:'omnivore',mealTypes:['l','d'],time:30,portions:4,kcal:520,prot:32,carb:68,fat:12,ingredients:[{name:'Pâtes',qty:400,unit:'g'},{name:'Steak haché',qty:300,unit:'g'},{name:'Tomates concassées',qty:400,unit:'g'},{name:'Oignons',qty:2,unit:'pièce'},{name:'Ail',qty:3,unit:'gousse'},{name:"Huile d\'olive",qty:30,unit:'mL'},{name:'Concentré tomate',qty:30,unit:'g'}],steps:["Faire revenir oignon et ail dans l\'huile","Ajouter la viande hachée et faire dorer","Ajouter tomates et concentré, mijoter 20 min","Cuire les pâtes al dente, égoutter","Mélanger et servir avec parmesan"],notes:"Classique indémodable. Parfait pour le batch cooking."},
 
   {emoji:'🥗',name:'Salade César poulet',mealTypes:['l','d'],diet:'omnivore',time:20,portions:2,kcal:480,prot:42,carb:28,fat:22,ingredients:[{name:'Laitue',qty:1,unit:'pièce'},{name:'Escalopes de poulet',qty:300,unit:'g'},{name:'Parmesan',qty:40,unit:'g'},{name:'Pain',qty:100,unit:'g'},{name:'Mayonnaise',qty:30,unit:'g'},{name:'Citron',qty:0.5,unit:'pièce'}],steps:["Griller le poulet coupé en lanières","Faire des croûtons au four","Préparer sauce Mayo-citron-ail","Assembler salade, poulet, croûtons","Râper le parmesan dessus"],notes:"Remplacez la mayo par du yaourt grec pour alléger."},
 
-  {emoji:'🍳',name:'Omelette au fromage',mealTypes:['l','d'],diet:'veg',time:10,portions:1,kcal:380,prot:26,carb:4,fat:29,ingredients:[{name:'Œufs',qty:3,unit:'pièce'},{name:'Emmental râpé',qty:50,unit:'g'},{name:'Beurre',qty:15,unit:'g'},{name:'Sel',qty:1,unit:'pincée'},{name:'Ciboulette',qty:5,unit:'g'}],steps:["Battre les œufs avec sel et ciboulette","Faire fondre le beurre à feu moyen","Verser les œufs, remuer doucement","Ajouter le fromage, plier l'omelette"],notes:""},
+  {emoji:'🍳',name:'Omelette au fromage',mealTypes:['l','d'],diet:'veg',time:10,portions:1,kcal:380,prot:26,carb:4,fat:29,ingredients:[{name:'Œufs',qty:3,unit:'pièce'},{name:'Emmental râpé',qty:50,unit:'g'},{name:'Beurre',qty:15,unit:'g'},{name:'Sel',qty:1,unit:'pincée'},{name:'Ciboulette',qty:5,unit:'g'}],steps:["Battre les œufs avec sel et ciboulette","Faire fondre le beurre à feu moyen","Verser les œufs, remuer doucement","Ajouter le fromage, plier l\'omelette"],notes:""},
 
-  {emoji:'🍲',name:'Soupe de légumes',mealTypes:['l','d'],diet:'vegan',time:40,portions:4,kcal:145,prot:5,carb:28,fat:3,ingredients:[{name:'Carottes',qty:3,unit:'pièce'},{name:'Poireaux',qty:2,unit:'pièce'},{name:'Pommes de terre',qty:2,unit:'pièce'},{name:'Oignons',qty:1,unit:'pièce'},{name:'Bouillon cube',qty:2,unit:'cube'},{name:"Huile d'olive",qty:20,unit:'mL'}],steps:["Éplucher et couper tous les légumes","Faire revenir oignons dans l'huile","Ajouter légumes et eau bouillante","Cuire 25 min à frémissement","Mixer partiellement selon goût"],notes:""},
+  {emoji:'🍲',name:'Soupe de légumes',mealTypes:['l','d'],diet:'vegan',time:40,portions:4,kcal:145,prot:5,carb:28,fat:3,ingredients:[{name:'Carottes',qty:3,unit:'pièce'},{name:'Poireaux',qty:2,unit:'pièce'},{name:'Pommes de terre',qty:2,unit:'pièce'},{name:'Oignons',qty:1,unit:'pièce'},{name:'Bouillon cube',qty:2,unit:'cube'},{name:"Huile d\'olive",qty:20,unit:'mL'}],steps:["Éplucher et couper tous les légumes","Faire revenir oignons dans l\'huile","Ajouter légumes et eau bouillante","Cuire 25 min à frémissement","Mixer partiellement selon goût"],notes:""},
 
-  {emoji:'🥘',name:'Ratatouille provençale',mealTypes:['l','d'],diet:'vegan',time:60,portions:4,kcal:160,prot:4,carb:20,fat:8,ingredients:[{name:'Courgettes',qty:3,unit:'pièce'},{name:'Aubergine',qty:2,unit:'pièce'},{name:'Poivrons',qty:2,unit:'pièce'},{name:'Tomates',qty:4,unit:'pièce'},{name:'Oignons',qty:2,unit:'pièce'},{name:'Ail',qty:4,unit:'gousse'},{name:"Huile d'olive",qty:40,unit:'mL'}],steps:["Couper tous les légumes en dés","Faire revenir oignons et ail","Ajouter légumes par ordre de cuisson","Laisser mijoter 30 min à couvert"],notes:"Meilleure réchauffée le lendemain."},
+  {emoji:'🥘',name:'Ratatouille provençale',mealTypes:['l','d'],diet:'vegan',time:60,portions:4,kcal:160,prot:4,carb:20,fat:8,ingredients:[{name:'Courgettes',qty:3,unit:'pièce'},{name:'Aubergine',qty:2,unit:'pièce'},{name:'Poivrons',qty:2,unit:'pièce'},{name:'Tomates',qty:4,unit:'pièce'},{name:'Oignons',qty:2,unit:'pièce'},{name:'Ail',qty:4,unit:'gousse'},{name:"Huile d\'olive",qty:40,unit:'mL'}],steps:["Couper tous les légumes en dés","Faire revenir oignons et ail","Ajouter légumes par ordre de cuisson","Laisser mijoter 30 min à couvert"],notes:"Meilleure réchauffée le lendemain."},
 
   {emoji:'🍛',name:'Curry de légumes lait de coco',mealTypes:['l','d'],diet:'vegan',time:35,portions:4,kcal:320,prot:8,carb:42,fat:14,ingredients:[{name:'Pommes de terre',qty:3,unit:'pièce'},{name:'Carottes',qty:2,unit:'pièce'},{name:'Pois chiches',qty:400,unit:'g'},{name:'Lait de coco',qty:400,unit:'mL'},{name:'Curry en poudre',qty:15,unit:'g'},{name:'Oignons',qty:1,unit:'pièce'},{name:'Ail',qty:2,unit:'gousse'},{name:'Gingembre frais',qty:10,unit:'g'}],steps:["Faire revenir oignons, ail et gingembre","Ajouter curry et mélanger 1 min","Ajouter légumes et pois chiches","Verser lait de coco, cuire 20 min"],notes:""},
 
   {emoji:'🥞',name:'Pancakes moelleux',mealTypes:['b','s'],diet:'veg',time:20,portions:4,kcal:290,prot:9,carb:44,fat:9,ingredients:[{name:'Farine',qty:200,unit:'g'},{name:'Lait',qty:300,unit:'mL'},{name:'Œufs',qty:2,unit:'pièce'},{name:'Beurre',qty:30,unit:'g'},{name:'Sucre',qty:20,unit:'g'},{name:'Levure chimique',qty:8,unit:'g'}],steps:["Mélanger farine, sucre et levure","Ajouter œufs battus et lait","Incorporer beurre fondu","Laisser reposer 10 min","Cuire 2 min par face sur poêle chaude"],notes:""},
 
-  {emoji:'🍕',name:'Pizza maison',mealTypes:['l','d'],diet:'veg',time:45,portions:4,kcal:480,prot:18,carb:62,fat:18,ingredients:[{name:'Farine',qty:250,unit:'g'},{name:'Sauce tomate',qty:200,unit:'g'},{name:'Mozzarella',qty:200,unit:'g'},{name:"Huile d'olive",qty:20,unit:'mL'},{name:'Levure boulangère',qty:7,unit:'g'},{name:'Sel',qty:5,unit:'g'}],steps:["Préparer la pâte, laisser lever 1h","Étaler finement","Garnir sauce tomate et toppings","Cuire 12 min à 220°C"],notes:""},
+  {emoji:'🍕',name:'Pizza maison',mealTypes:['l','d'],diet:'veg',time:45,portions:4,kcal:480,prot:18,carb:62,fat:18,ingredients:[{name:'Farine',qty:250,unit:'g'},{name:'Sauce tomate',qty:200,unit:'g'},{name:'Mozzarella',qty:200,unit:'g'},{name:"Huile d\'olive",qty:20,unit:'mL'},{name:'Levure boulangère',qty:7,unit:'g'},{name:'Sel',qty:5,unit:'g'}],steps:["Préparer la pâte, laisser lever 1h","Étaler finement","Garnir sauce tomate et toppings","Cuire 12 min à 220°C"],notes:""},
 
-  {emoji:'🥣',name:'Porridge avoine banane',mealTypes:['b','s'],diet:'veg',time:10,portions:2,kcal:350,prot:11,carb:62,fat:8,ingredients:[{name:"Flocons d'avoine",qty:160,unit:'g'},{name:'Lait',qty:300,unit:'mL'},{name:'Bananes',qty:2,unit:'pièce'},{name:'Miel',qty:20,unit:'g'},{name:'Noix',qty:30,unit:'g'}],steps:["Porter lait à ébullition","Ajouter flocons, cuire 5 min","Trancher banane","Servir avec miel et noix"],notes:""},
+  {emoji:'🥣',name:'Porridge avoine banane',mealTypes:['b','s'],diet:'veg',time:10,portions:2,kcal:350,prot:11,carb:62,fat:8,ingredients:[{name:"Flocons d\'avoine",qty:160,unit:'g'},{name:'Lait',qty:300,unit:'mL'},{name:'Bananes',qty:2,unit:'pièce'},{name:'Miel',qty:20,unit:'g'},{name:'Noix',qty:30,unit:'g'}],steps:["Porter lait à ébullition","Ajouter flocons, cuire 5 min","Trancher banane","Servir avec miel et noix"],notes:""},
 
   // (le reste est déjà safe, aucune apostrophe problématique)
 ];

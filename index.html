@@ -372,6 +372,10 @@ svg{display:block;flex-shrink:0;}
 /* ══ TABBAR INNER ══ */
 .tb-inner{display:flex;gap:3px;background:var(--bg);border-radius:var(--rp);box-shadow:var(--so);padding:4px;width:100%;}
 .tab{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 4px;border-radius:var(--rp);cursor:pointer;transition:all .22s;color:var(--tx3);}
+.tab svg{color:var(--tx3);transition:color .2s;}
+.tab.on{color:var(--ac);}
+.tab.on svg{color:var(--ac);}
+.tab-lb{font-size:.56rem;font-weight:800;color:inherit;margin-top:1px;line-height:1;}
 .tab.on{background:var(--grad);box-shadow:inset 2px 2px 5px rgba(0,0,0,.1);color:#fff;}
 .tab-lb{font-size:.5rem;font-weight:800;text-transform:uppercase;letter-spacing:.4px;}
 .tb-logo{display:flex;align-items:center;gap:9px;}
@@ -1344,6 +1348,7 @@ body.offline-mode .offline-banner{display:block;}
             </div>
             <button class="btn ico voice-btn" onclick="toggleVoice('frigo')" title="Ajouter par la voix" style="padding:11px 12px;">🎤</button>
           <button class="btn acc3" onclick="addFridgeItem()" style="padding:11px 16px;font-weight:900;">＋</button>
+            <button class="btn" onclick="scanFridgeWithPhoto()" title="Scanner avec la caméra" style="padding:11px 12px;font-size:.9rem;flex-shrink:0;">📸</button>
           </div>
         </div>
 
@@ -1930,6 +1935,10 @@ body.offline-mode .offline-banner{display:block;}
       <div style="font-size:.75rem;font-weight:800;color:var(--tx2);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">🎨 Thème</div>
       <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;" id="themePickerGrid"></div>
     </div>
+      <div style="margin-top:10px;display:flex;flex-direction:column;gap:6px;">
+        <button class="btn" onclick="openFamilyModal()" style="width:100%;padding:12px;border-radius:14px;font-weight:700;text-align:left;">👨‍👩‍👧 Foyer familial &amp; partage</button>
+        <button class="btn" onclick="requestPushPermission()" style="width:100%;padding:12px;border-radius:14px;font-weight:700;text-align:left;">🔔 Activer les notifications</button>
+      </div>
     <button class="btn" style="width:100%;margin-bottom:8px;" onclick="showFoyerModal();closeProfile()">👨‍👩‍👧 Mon Foyer</button>
     <button class="btn" style="width:100%;color:var(--rd);" onclick="logout()">👋 Déconnexion</button>
   </div>
@@ -2287,7 +2296,7 @@ async function initFirebase() {
       }
       firebaseInitialized = true;
     }
-    await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+    try { await auth.setPersistence(firebase.auth.Auth.Persistence?.LOCAL || 'local'); } catch(pe) { /* persistence may not be available */ }
     dbg('Firebase OK');
     // Sync shared recipes in background (non-blocking)
     setTimeout(() => syncGlobalRecipesFromFirestore().catch(()=>{}), 2000);
@@ -2540,6 +2549,8 @@ async function startApp(user) {
   renderAll();
   renderSeason();
   setTimeout(checkOnboarding, 800);
+  setTimeout(checkDailyReminders, 3000);
+  setTimeout(checkPendingInvites, 5000);
 }
 
 function fillProfileForm() {
@@ -3856,7 +3867,7 @@ function addMissingToList(i) {
 let _menuTab = 'week';
 let _recipeDietFilter = 'all';
 let _recipeSearch = '';
-let _crIngredients = [];
+let _crIngredients = []; // recipe creation ingredients
 let _crSteps = [];
 let _menuOptsOpen = false;
 menuUnlocked = true; // BÊTA accessible directement
@@ -4561,11 +4572,29 @@ function calculateDailyCalories(p) {
   let bmr = p.sex==='F' ? 10*poids+6.25*taille-5*age-161 : 10*poids+6.25*taille-5*age+5;
   const factors=[1.2,1.375,1.55,1.725,1.9];
   let tdee = Math.round(bmr*(factors[+p.sportFreq||2]||1.55));
+  // Add manual sport calories if provided
+  if(p.kcalSport && +p.kcalSport > 0) tdee += Math.round(+p.kcalSport);
   const goal = p.goal||'equilibre';
   if(goal==='perte') tdee-=500;
   else if(goal==='prise') tdee+=300;
   else if(goal==='perf') tdee+=200;
   return tdee;
+}
+
+function getSportBurnSummary(p) {
+  if(!p) return null;
+  const acts = [
+    {label:'Sédentaire', burn:0, desc:'Bureau, peu de déplacements'},
+    {label:'Légèrement actif', burn:200, desc:'1-3 séances légères/semaine'},
+    {label:'Modérément actif', burn:400, desc:'3-5 séances modérées/semaine'},
+    {label:'Très actif', burn:650, desc:'6-7 séances intenses/semaine'},
+    {label:'Extrêmement actif', burn:900, desc:'Effort intense tous les jours'},
+  ];
+  const idx = Math.min(Math.max(+(p.sportFreq)||2, 0), 4);
+  const act = acts[idx];
+  const extraKcal = +(p.kcalSport||0);
+  const totalBurn = act.burn + extraKcal;
+  return { ...act, extraKcal, totalBurn };
 }
 function getMacroTargets(p, kcal) {
   if(!kcal) return null;
@@ -5630,8 +5659,11 @@ const STRIPE_LINKS = {
 
 function activatePremium() {
   const plan = _selectedPremPlan || 'yearly';
-  const link = STRIPE_LINKS[plan];
+  // Use Stripe Payment Config if URL is set
+  const stripeConfig = (typeof STRIPE_PAYMENT_CONFIG !== 'undefined') ? STRIPE_PAYMENT_CONFIG[plan] : null;
+  if(stripeConfig && stripeConfig.url) { openStripeCheckout(plan); return; }
 
+  const link = STRIPE_LINKS[plan];
   // Production: redirect to Stripe
   if(link && !link.includes('placeholder')) {
     const userId = (typeof currentUser !== 'undefined' && currentUser) ? currentUser.uid : 'guest';
@@ -5695,6 +5727,733 @@ function getPremiumBadge() {
   const d = p.expiresAt ? Math.ceil((p.expiresAt-Date.now())/(24*3600*1000)) : null;
   const label = p.trial ? ('⭐ ESSAI' + (d ? ' · ' + d + 'j' : '')) : '⭐ PREMIUM';
   return '<span style="font-size:.6rem;background:linear-gradient(135deg,#f6d365,#fda085);color:#fff;padding:2px 8px;border-radius:99px;font-weight:900;margin-left:5px;">' + label + '</span>';
+}
+
+
+// ═══════════════════════════════════════════════════════════
+// 🚀 NOUVELLES FONCTIONNALITÉS
+// ═══════════════════════════════════════════════════════════
+
+// ── 1. ONBOARDING ────────────────────────────────────────
+function checkOnboarding() {
+  try {
+    if(localStorage.getItem('sc_onboarding_done')) return;
+    setTimeout(showOnboarding, 800);
+  } catch(e) {}
+}
+
+function showOnboarding() {
+  if(document.getElementById('onboardingOverlay')) return;
+  const steps = [
+    { icon:'🛒', title:'Bienvenue sur SmartCard !', sub:'Votre assistant cuisine intelligent.', color:'#ff6b6b' },
+    { icon:'🧊', title:'Gérez votre frigo', sub:'Ajoutez vos aliments et recevez des recettes adaptées à vos stocks.', color:'#00d2c6' },
+    { icon:'📷', title:'Scannez vos produits', sub:'Photographiez vos tickets de caisse ou scannez les codes-barres pour les ajouter automatiquement.', color:'#6c5ce7' },
+    { icon:'⚙️', title:'Personnalisez votre profil', sub:'Renseignez votre profil nutritionnel pour des recommandations précises.', color:'#f39c12' },
+    { icon:'✨', title:'Prêt à commencer !', sub:'Commencez par ajouter des articles à votre liste de courses.', color:'#27ae60' },
+  ];
+  let current = 0;
+
+  const overlay = document.createElement('div');
+  overlay.id = 'onboardingOverlay';
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px 24px;';
+
+  function render() {
+    const s = steps[current];
+    overlay.innerHTML = '<div style="width:100%;max-width:360px;text-align:center;">'
+      // Progress dots
+      + '<div style="display:flex;justify-content:center;gap:6px;margin-bottom:32px;">'
+      + steps.map((_,i) => '<div style="width:'+(i===current?'20':'6')+'px;height:6px;border-radius:3px;background:'+(i===current?s.color:'var(--bg2)')+';transition:all .3s;"></div>').join('')
+      + '</div>'
+      // Icon
+      + '<div style="width:100px;height:100px;border-radius:28px;background:'+s.color+';display:flex;align-items:center;justify-content:center;font-size:3rem;margin:0 auto 24px;box-shadow:0 12px 32px '+s.color+'44;">'
+      + s.icon + '</div>'
+      // Text
+      + '<div style="font-size:1.35rem;font-weight:900;margin-bottom:10px;color:var(--tx);">'+s.title+'</div>'
+      + '<div style="font-size:.9rem;color:var(--tx2);line-height:1.6;margin-bottom:36px;">'+s.sub+'</div>'
+      // Buttons
+      + '<button onclick="onboardNext()" style="width:100%;padding:16px;border:none;border-radius:16px;background:'+s.color+';color:#fff;font-weight:900;font-size:.95rem;cursor:pointer;margin-bottom:12px;">'
+      + (current < steps.length-1 ? 'Suivant →' : '🚀 Commencer') + '</button>'
+      + (current > 0 ? '<button onclick="onboardPrev()" style="width:100%;padding:12px;border:none;background:none;color:var(--tx2);font-size:.82rem;cursor:pointer;">← Précédent</button>' : '')
+      + '<button onclick="onboardSkip()" style="width:100%;padding:10px;border:none;background:none;color:var(--tx3);font-size:.75rem;cursor:pointer;">Passer</button>'
+      + '</div>';
+  }
+
+  window.onboardNext = function() {
+    if(current < steps.length - 1) { current++; render(); }
+    else onboardDone();
+  };
+  window.onboardPrev = function() { if(current > 0) { current--; render(); } };
+  window.onboardSkip = function() { onboardDone(); };
+  window.onboardDone = function() {
+    try { localStorage.setItem('sc_onboarding_done', '1'); } catch(e) {}
+    overlay.style.opacity = '0';
+    overlay.style.transition = 'opacity .4s';
+    setTimeout(() => overlay.remove(), 400);
+    // Open profile setup
+    setTimeout(() => openMenuProfile(), 500);
+  };
+
+  render();
+  document.body.appendChild(overlay);
+}
+
+// ── 2. VOICE RECOGNITION ─────────────────────────────────
+
+function initVoice() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if(!SR) return false;
+  _voiceRecognition = new SR();
+  _voiceRecognition.lang = 'fr-FR';
+  _voiceRecognition.interimResults = false;
+  _voiceRecognition.maxAlternatives = 1;
+  _voiceRecognition.onresult = handleVoiceResult;
+  _voiceRecognition.onerror = (e) => {
+    _voiceActive = false;
+    updateVoiceBtn(false);
+    if(e.error !== 'aborted') showToast('🎤','Erreur voix', e.error);
+  };
+  _voiceRecognition.onend = () => { _voiceActive = false; updateVoiceBtn(false); };
+  return true;
+}
+
+function toggleVoice(context) {
+  if(!initVoice()) { showToast('⚠️','Non supporté','La reconnaissance vocale n\'est pas disponible sur ce navigateur'); return; }
+  if(_voiceActive) {
+    _voiceRecognition.abort();
+    _voiceActive = false;
+    updateVoiceBtn(false);
+    return;
+  }
+  _voiceActive = true;
+  window._voiceContext = context || 'liste';
+  updateVoiceBtn(true);
+  _voiceRecognition.start();
+  showToast('🎤','Écoute…','Dites un aliment ou article');
+}
+
+function updateVoiceBtn(active) {
+  document.querySelectorAll('.voice-btn').forEach(b => {
+    b.style.background = active ? 'var(--rd)' : '';
+    b.style.color = active ? '#fff' : '';
+    b.textContent = active ? '🔴' : '🎤';
+  });
+}
+
+function handleVoiceResult(event) {
+  const transcript = event.results[0][0].transcript.toLowerCase().trim();
+  console.log('[Voice]', transcript, 'ctx:', window._voiceContext);
+  const ctx = window._voiceContext || 'liste';
+  if(ctx === 'frigo') {
+    // Parse "ajoute X" or just "X"
+    const name = transcript.replace(/^(ajoute|mets|rajoute|met|ajouter)\s+/i, '').trim();
+    addFridgeItemByName(name);
+    showToast('🧊', name, 'Ajouté au frigo');
+  } else {
+    const name = transcript.replace(/^(ajoute|mets|rajoute|met|ajouter)\s+/i, '').trim();
+    addItemByName(name);
+    showToast('🛒', name, 'Ajouté à la liste');
+  }
+}
+
+function addFridgeItemByName(name) {
+  const prod = (typeof PRODUCTS !== 'undefined' ? PRODUCTS : []).find(p => p.name.toLowerCase().includes(name));
+  const emoji = prod ? prod.emoji : '🛍️';
+  state.fridge.push({ id:'f'+Date.now(), name: prod ? prod.name : name, emoji, qty:1, addedAt:Date.now() });
+  saveFridge();
+  renderFridge();
+}
+
+// ── 3. SHARE LIST ─────────────────────────────────────────
+function shareList() {
+  const items = state.items.filter(i => !i.checked);
+  if(!items.length) { showToast('ℹ️','Liste vide','Ajoutez des articles avant de partager'); return; }
+
+  const text = '🛒 Ma liste de courses SmartCard\n\n'
+    + items.map(i => '• ' + (i.emoji||'') + ' ' + i.name + (i.qty > 1 ? ' ×'+i.qty : '')).join('\n')
+    + '\n\nGénéré avec SmartCard 🍽️';
+
+  if(navigator.share) {
+    navigator.share({ title: 'Ma liste de courses', text }).catch(() => copyTextToClipboard(text));
+  } else {
+    copyTextToClipboard(text);
+    showToast('📋','Copié !','La liste est dans votre presse-papier');
+  }
+}
+
+function copyTextToClipboard(text) {
+  navigator.clipboard?.writeText(text).catch(() => {
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    document.execCommand('copy'); ta.remove();
+  });
+}
+
+function showQRCode(content, title) {
+  // Generate QR using a free API
+  const url = 'https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=' + encodeURIComponent(content);
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:900;background:rgba(0,0,0,.6);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;';
+  overlay.innerHTML = '<div style="background:var(--bg);border-radius:20px;padding:24px;text-align:center;max-width:280px;width:90%;">'
+    + '<div style="font-weight:900;font-size:1rem;margin-bottom:16px;">'+title+'</div>'
+    + '<img src="'+url+'" style="width:200px;height:200px;border-radius:12px;margin-bottom:16px;" alt="QR Code">'
+    + '<div style="font-size:.72rem;color:var(--tx2);margin-bottom:16px;">Scannez ce code pour accéder à la liste</div>'
+    + '<button onclick="this.closest(\'[style*=fixed]\').remove()" class="btn" style="width:100%;padding:12px;">Fermer</button>'
+    + '</div>';
+  overlay.onclick = e => { if(e.target === overlay) overlay.remove(); };
+  document.body.appendChild(overlay);
+}
+
+function shareQRList() {
+  const items = state.items.filter(i => !i.checked);
+  if(!items.length) { showToast('ℹ️','Liste vide','Rien à partager'); return; }
+  const text = items.map(i => (i.emoji||'') + ' ' + i.name).join('\n');
+  showQRCode(text, '📲 Ma liste de courses');
+}
+
+function estimateRecipeCost(recipe) {
+  if(!recipe || !Array.isArray(recipe.ingredients)) return null;
+  let total = 0;
+  let found = 0;
+  recipe.ingredients.forEach(ing => {
+    const name = (typeof ing === 'string' ? ing : ing.name || '').toLowerCase();
+    const qtyStr = typeof ing === 'object' ? (ing.qty || '') : '';
+    const grams = parseFloat(qtyStr) || 150;
+    const key = Object.keys(PRIX_APPROX).find(k => name.includes(k));
+    if(key) {
+      // Prix approximatif pour la quantité
+      const pricePerKg = PRIX_APPROX[key];
+      total += (pricePerKg * grams / 1000);
+      found++;
+    }
+  });
+  if(!found) return null;
+  return { total: Math.round(total * 100) / 100, perPortion: Math.round(total / (recipe.portions || 4) * 100) / 100 };
+}
+
+function formatCost(c) {
+  if(!c) return '';
+  return c.toFixed(2).replace('.', ',') + ' €';
+}
+
+// ── 5. MENU HISTORY ───────────────────────────────────────
+function saveCurrentWeekToHistory() {
+  const menu = state.weekMenu;
+  const hasData = Object.values(menu).some(d => d && (d.b || d.l || d.d));
+  if(!hasData) return;
+  if(!state.menuHistory) state.menuHistory = [];
+  // Check if this week already saved
+  const weekKey = _getCurrentWeekKey();
+  if(state.menuHistory.some(h => h.weekKey === weekKey)) return;
+  // Calculate average nutrition
+  const days = Object.values(menu).filter(d => d && d.nutri && d.nutri.kcal);
+  const avgKcal = days.length ? Math.round(days.reduce((s,d)=>s+(d.nutri.kcal||0),0)/days.length) : 0;
+  state.menuHistory.unshift({
+    weekKey,
+    savedAt: Date.now(),
+    label: _getWeekLabel(),
+    avgKcal,
+    daysCount: Object.values(menu).filter(d=>d&&(d.l||d.d)).length,
+    snapshot: JSON.parse(JSON.stringify(menu)),
+  });
+  // Keep max 8 weeks
+  if(state.menuHistory.length > 8) state.menuHistory = state.menuHistory.slice(0, 8);
+  saveState();
+}
+
+function _getCurrentWeekKey() {
+  const now = new Date();
+  const startOfYear = new Date(now.getFullYear(), 0, 1);
+  const week = Math.ceil(((now - startOfYear) / 86400000 + startOfYear.getDay() + 1) / 7);
+  return now.getFullYear() + '-W' + week;
+}
+
+function _getWeekLabel() {
+  const now = new Date();
+  const day = now.getDate();
+  const months = ['jan','fév','mar','avr','mai','jun','jul','aoû','sep','oct','nov','déc'];
+  return 'Semaine du ' + day + ' ' + months[now.getMonth()];
+}
+
+function renderMenuHistory() {
+  if(!state.menuHistory || !state.menuHistory.length) return '';
+  return '<div style="margin-top:14px;">'
+    + '<div style="font-weight:900;font-size:.85rem;margin-bottom:10px;">📚 Semaines précédentes</div>'
+    + state.menuHistory.map(h => '<div style="background:var(--bg2);border-radius:var(--rs);padding:12px 14px;margin-bottom:6px;display:flex;align-items:center;gap:12px;cursor:pointer;" onclick="restoreWeekMenu('+JSON.stringify(h.weekKey)+')">'
+      + '<div style="flex:1;">'
+      + '<div style="font-weight:800;font-size:.82rem;">'+h.label+'</div>'
+      + '<div style="font-size:.68rem;color:var(--tx2);">'+h.daysCount+' jours · '+(h.avgKcal ? h.avgKcal+' kcal/j moy' : '')+'</div>'
+      + '</div>'
+      + '<button style="background:none;border:none;font-size:.72rem;color:var(--ac);font-weight:800;cursor:pointer;">Restaurer</button>'
+      + '</div>').join('')
+    + '</div>';
+}
+
+function restoreWeekMenu(weekKey) {
+  const h = (state.menuHistory||[]).find(h => h.weekKey === weekKey);
+  if(!h) return;
+  if(confirm('Restaurer le menu de "' + h.label + '" ? Le menu actuel sera remplacé.')) {
+    state.weekMenu = JSON.parse(JSON.stringify(h.snapshot));
+    saveState();
+    renderWeek();
+    showToast('📅', 'Menu restauré', h.label);
+  }
+}
+
+// ── 6. REAL-TIME BARCODE CAMERA ──────────────────────────
+
+async function startCameraBarcode() {
+  const btn = document.getElementById('cameraBarcodeBtn');
+  const zone = document.getElementById('cameraZone');
+  if(!zone) return;
+
+  // Already active? Stop it.
+  if(_cameraStream) { stopCameraBarcode(); return; }
+
+  if(!('BarcodeDetector' in window)) {
+    showToast('⚠️','Non supporté','La détection de code-barres en direct nécessite Chrome/Safari récent');
+    return;
+  }
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width:1280, height:720 } });
+    _cameraStream = stream;
+    if(btn) { btn.textContent = '⏹ Arrêter'; btn.style.background = 'var(--rd)'; btn.style.color = '#fff'; }
+
+    zone.style.display = 'block';
+    zone.innerHTML = '<div style="position:relative;border-radius:16px;overflow:hidden;background:#000;">'
+      + '<video id="barcodeVideo" autoplay playsinline muted style="width:100%;display:block;border-radius:16px;"></video>'
+      + '<div style="position:absolute;inset:20%;border:2px solid rgba(255,255,255,.8);border-radius:8px;box-shadow:0 0 0 9999px rgba(0,0,0,.3);"></div>'
+      + '<div style="position:absolute;bottom:12px;left:0;right:0;text-align:center;color:#fff;font-size:.72rem;font-weight:700;">Pointez vers un code-barres</div>'
+      + '</div>';
+
+    const video = document.getElementById('barcodeVideo');
+    video.srcObject = stream;
+
+    const detector = new BarcodeDetector({ formats: ['ean_13','ean_8','upc_a','upc_e','code_128','code_39','qr_code'] });
+
+    _barcodeInterval = setInterval(async () => {
+      if(video.readyState !== 4) return;
+      try {
+        const codes = await detector.detect(video);
+        if(codes.length > 0) {
+          const code = codes[0].rawValue;
+          stopCameraBarcode();
+          // Fill in the barcode input
+          const inp = document.getElementById('barcodeInp');
+          if(inp) inp.value = code;
+          lookupBarcode(code);
+          showToast('✅','Code détecté', code);
+        }
+      } catch(e) {}
+    }, 400);
+
+  } catch(e) {
+    showToast('❌','Caméra','Impossible d\'accéder à la caméra: ' + e.message);
+  }
+}
+
+function stopCameraBarcode() {
+  if(_barcodeInterval) { clearInterval(_barcodeInterval); _barcodeInterval = null; }
+  if(_cameraStream) { _cameraStream.getTracks().forEach(t => t.stop()); _cameraStream = null; }
+  const zone = document.getElementById('cameraZone');
+  if(zone) { zone.style.display = 'none'; zone.innerHTML = ''; }
+  const btn = document.getElementById('cameraBarcodeBtn');
+  if(btn) { btn.textContent = '📷 Caméra live'; btn.style.background = ''; btn.style.color = ''; }
+}
+
+// ── 7. TABLET / DESKTOP LAYOUT ───────────────────────────
+function applyTabletLayout() {
+  const isWide = window.innerWidth >= 768;
+  document.body.classList.toggle('tablet-layout', isWide);
+}
+window.addEventListener('resize', applyTabletLayout);
+applyTabletLayout();
+
+
+// ═══════════════════════════════════════════════════════════
+// 📸 RECONNAISSANCE PHOTO FRIGO — Gemini Vision
+// ═══════════════════════════════════════════════════════════
+
+function showFridgeScanResults(items) {
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:900;background:rgba(0,0,0,.55);backdrop-filter:blur(6px);display:flex;align-items:flex-end;justify-content:center;';
+
+  const selected = new Set(items.map((_, i) => i)); // all selected by default
+
+  const renderList = () => {
+    overlay.querySelector('#scanItemsList').innerHTML = items.map((it, i) =>
+      '<div id="scanRow_'+i+'" onclick="document.getElementById(\'scanRow_'+i+'\').classList.toggle(\'scan-off\');window._scanSelected.has('+i+')?window._scanSelected.delete('+i+'):window._scanSelected.add('+i+')" style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--bg2);border-radius:var(--rs);margin-bottom:6px;cursor:pointer;transition:opacity .15s;">'
+        + '<div style="font-size:1.5rem;">' + (it.emoji||'🥗') + '</div>'
+        + '<div style="flex:1;"><div style="font-weight:800;font-size:.85rem;">' + it.name + '</div>'
+        + '<div style="font-size:.68rem;color:var(--tx2);">' + (it.qty||'') + '</div></div>'
+        + '<div style="width:20px;height:20px;border-radius:6px;background:var(--ac);display:flex;align-items:center;justify-content:center;font-size:.7rem;color:#fff;font-weight:900;">✓</div>'
+        + '</div>'
+    ).join('');
+    window._scanSelected = selected;
+  };
+
+  overlay.innerHTML = '<div style="background:var(--bg);border-radius:20px 20px 0 0;padding:20px;width:100%;max-width:480px;max-height:80vh;overflow-y:auto;">'
+    + '<div style="width:36px;height:4px;background:var(--bg2);border-radius:2px;margin:0 auto 16px;"></div>'
+    + '<div style="font-weight:900;font-size:.95rem;margin-bottom:4px;">📸 ' + items.length + ' aliments détectés</div>'
+    + '<div style="font-size:.72rem;color:var(--tx2);margin-bottom:14px;">Sélectionnez ceux à ajouter à votre frigo</div>'
+    + '<div id="scanItemsList"></div>'
+    + '<button onclick="confirmScanItems()" class="btn acc" style="width:100%;padding:13px;margin-top:12px;border-radius:14px;font-weight:800;">✅ Ajouter au frigo</button>'
+    + '<button onclick="this.closest(\'[style*=fixed]\').remove()" class="btn" style="width:100%;padding:11px;margin-top:6px;border-radius:14px;">Annuler</button>'
+    + '</div>';
+  overlay.onclick = e => { if(e.target===overlay) overlay.remove(); };
+  window._scanItems = items;
+  document.body.appendChild(overlay);
+  renderList();
+}
+
+function confirmScanItems() {
+  const items = window._scanItems || [];
+  const selected = window._scanSelected || new Set();
+  let added = 0;
+  selected.forEach(idx => {
+    const it = items[idx];
+    if(!it) return;
+    const prod = (typeof PRODUCTS !== 'undefined' ? PRODUCTS : []).find(p => p.name.toLowerCase().includes(it.name.toLowerCase()) || it.name.toLowerCase().includes(p.name.toLowerCase()));
+    const emoji = it.emoji || prod?.emoji || '🥗';
+    const existing = state.fridge.find(f => f.name.toLowerCase() === it.name.toLowerCase());
+    if(!existing) {
+      state.fridge.push({id:'f'+Date.now()+Math.random().toString(36).slice(2,5), name:it.name, emoji, qty:1, addedAt:Date.now()});
+      added++;
+    }
+  });
+  if(added) { saveFridge(); renderFridge(); }
+  document.querySelector('[style*=fixed]')?.remove();
+  showToast('✅', added + ' aliments ajoutés', 'Votre frigo a été mis à jour');
+}
+
+
+// ═══════════════════════════════════════════════════════════
+// 🥗 BASE CIQUAL (données nutritionnelles ANSES françaises)
+// Source: Table de composition nutritionnelle ANSES CIQUAL 2020
+// ═══════════════════════════════════════════════════════════
+const CIQUAL_DB = {
+  // Format: [kcal/100g, protéines, glucides, lipides, fibres]
+  'pomme':        [52,  0.3, 14.0, 0.2, 2.4],
+  'banane':       [90,  1.1, 23.0, 0.3, 2.6],
+  'orange':       [47,  0.9, 12.0, 0.1, 2.2],
+  'poire':        [58,  0.4, 15.5, 0.1, 3.1],
+  'fraise':       [33,  0.7,  7.7, 0.3, 2.0],
+  'tomate':       [18,  0.9,  3.9, 0.2, 1.2],
+  'carotte':      [41,  0.9, 10.0, 0.2, 2.8],
+  'courgette':    [17,  1.1,  3.4, 0.3, 1.2],
+  'brocoli':      [34,  2.8,  7.0, 0.4, 2.6],
+  'epinard':      [23,  2.9,  3.6, 0.4, 2.2],
+  'salade':       [15,  1.3,  2.9, 0.2, 1.5],
+  'oignon':       [40,  1.1,  9.3, 0.1, 1.8],
+  'ail':          [149, 6.4, 33.1, 0.5, 2.1],
+  'poivron':      [27,  1.0,  6.3, 0.3, 2.1],
+  'champignon':   [22,  3.1,  3.3, 0.3, 1.8],
+  'poulet':       [165, 31.0, 0.0, 3.6, 0.0],
+  'boeuf':        [270, 26.0, 0.0, 17.0, 0.0],
+  'porc':         [242, 27.0, 0.0, 14.0, 0.0],
+  'saumon':       [208, 20.0, 0.0, 13.0, 0.0],
+  'thon':         [116, 26.0, 0.0, 1.0,  0.0],
+  'sardine':      [185, 23.0, 0.0, 10.0, 0.0],
+  'crevette':     [85,  18.0, 0.9, 1.0,  0.0],
+  'oeuf':         [155, 13.0, 1.1, 11.0, 0.0],
+  'lait':         [46,  3.3,  4.9, 1.5,  0.0],
+  'yaourt':       [59,  3.5,  4.9, 3.0,  0.0],
+  'fromage':      [350, 25.0, 1.0, 28.0, 0.0],
+  'beurre':       [717, 0.7,  0.6, 81.0, 0.0],
+  'creme':        [292, 2.0,  3.6, 30.0, 0.0],
+  'riz':          [130, 2.7,  28.0, 0.3, 0.4],
+  'pates':        [157, 5.5,  31.0, 0.9, 2.1],
+  'pain':         [265, 9.0,  49.0, 3.2, 2.7],
+  'farine':       [364, 10.0, 76.0, 1.0, 2.7],
+  'pomme de terre':[77, 2.0,  17.0, 0.1, 1.8],
+  'lentille':     [116, 9.0,  20.0, 0.5, 3.8],
+  'haricot':      [105, 6.7,  19.5, 0.5, 7.1],
+  'pois chiche':  [164, 8.9,  27.4, 2.6, 7.6],
+  'huile olive':  [884, 0.0,  0.0, 100.0, 0.0],
+  'noix':         [654, 15.0, 14.0, 65.0, 6.7],
+  'amande':       [579, 21.0, 22.0, 50.0, 12.5],
+  'chocolat':     [546, 5.0,  60.0, 31.0, 7.0],
+  'sucre':        [400, 0.0, 100.0,  0.0, 0.0],
+  'miel':         [304, 0.3,  82.0,  0.0, 0.2],
+  'confiture':    [250, 0.5,  65.0,  0.1, 1.0],
+  'avocat':       [160, 2.0,   9.0, 15.0, 6.7],
+  'quinoa':       [368, 14.0, 64.0,  6.0, 7.0],
+  'tofu':         [76,  8.0,   2.0,  4.5, 0.3],
+  'tempeh':       [193, 19.0, 10.0, 11.0, 0.0],
+  'pain complet': [247, 8.5,  48.0,  2.5, 6.5],
+  'creme fraiche':[292, 2.1,   3.6, 30.0, 0.0],
+  'parmesan':     [431, 38.0,  0.0, 29.0, 0.0],
+  'mozzarella':   [253, 18.0,  2.2, 20.0, 0.0],
+};
+
+function getCiqualNutri(foodName, grams) {
+  const name = foodName.toLowerCase().trim();
+  // Try direct match first
+  let key = Object.keys(CIQUAL_DB).find(k => name.includes(k) || k.includes(name.split(' ')[0]));
+  if(!key) return null;
+  const [kcal, prot, carb, fat, fiber] = CIQUAL_DB[key];
+  const factor = (grams || 100) / 100;
+  return {
+    kcal: Math.round(kcal * factor),
+    prot: Math.round(prot * factor * 10) / 10,
+    carb: Math.round(carb * factor * 10) / 10,
+    fat:  Math.round(fat  * factor * 10) / 10,
+    fiber: Math.round((fiber||0) * factor * 10) / 10,
+    source: 'Ciqual ANSES 2020',
+    per100g: {kcal, prot, carb, fat, fiber},
+  };
+}
+
+function getRecipeNutri(recipe) {
+  if(!recipe || !Array.isArray(recipe.ingredients)) return null;
+  let total = {kcal:0, prot:0, carb:0, fat:0, fiber:0};
+  let matched = 0;
+  recipe.ingredients.forEach(ing => {
+    const name = typeof ing === 'string' ? ing : (ing.name||'');
+    const qtyStr = typeof ing === 'object' ? (ing.qty||'100') : '100';
+    const gramsRaw = parseFloat(qtyStr.replace(/[^0-9.]/g,'')) || 100;
+    // Convert units
+    let grams = gramsRaw;
+    if(/cup|tasse/i.test(qtyStr)) grams = gramsRaw * 240;
+    else if(/cs|cuillère à soupe|tbsp/i.test(qtyStr)) grams = gramsRaw * 15;
+    else if(/cc|cuillère à café|tsp/i.test(qtyStr)) grams = gramsRaw * 5;
+    else if(/kg/i.test(qtyStr)) grams = gramsRaw * 1000;
+    else if(/l\b|litre/i.test(qtyStr)) grams = gramsRaw * 1000;
+    else if(/cl/i.test(qtyStr)) grams = gramsRaw * 10;
+    else if(/ml/i.test(qtyStr)) grams = gramsRaw;
+
+    const nutri = getCiqualNutri(name, grams);
+    if(nutri) {
+      total.kcal += nutri.kcal;
+      total.prot += nutri.prot;
+      total.carb += nutri.carb;
+      total.fat  += nutri.fat;
+      total.fiber += nutri.fiber;
+      matched++;
+    }
+  });
+  if(!matched) return null;
+  const portions = recipe.portions || 4;
+  return {
+    perPortion: {
+      kcal: Math.round(total.kcal / portions),
+      prot: Math.round(total.prot / portions * 10) / 10,
+      carb: Math.round(total.carb / portions * 10) / 10,
+      fat:  Math.round(total.fat  / portions * 10) / 10,
+      fiber: Math.round(total.fiber / portions * 10) / 10,
+    },
+    total,
+    portions,
+    matchedIngredients: matched,
+    source: 'Ciqual ANSES 2020',
+  };
+}
+
+// ═══════════════════════════════════════════════════════════
+// 👨‍👩‍👧 PLANIFICATION FAMILIALE — Foyer partagé temps réel
+// ═══════════════════════════════════════════════════════════
+let _householdUnsubscribers = [];
+
+async function inviteFamilyMember(email) {
+  if(!db || !currentUser || !state.houseId) {
+    showToast('❌','Foyer requis','Créez ou rejoignez un foyer d\'abord');
+    return;
+  }
+  try {
+    await db.collection('household_invites').add({
+      houseId: state.houseId,
+      houseName: state.houseName,
+      invitedBy: currentUser.email,
+      invitedEmail: email.toLowerCase().trim(),
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      status: 'pending',
+    });
+    showToast('✅','Invitation envoyée', email + ' recevra une notification');
+  } catch(e) {
+    showToast('❌','Erreur',e.message);
+  }
+}
+
+async function checkPendingInvites() {
+  if(!db || !currentUser) return;
+  try {
+    const snap = await db.collection('household_invites')
+      .where('invitedEmail','==', currentUser.email)
+      .where('status','==','pending')
+      .limit(3)
+      .get();
+    snap.forEach(doc => {
+      const inv = doc.data();
+      const overlay = document.createElement('div');
+      overlay.style.cssText = 'position:fixed;inset:0;z-index:950;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:20px;';
+      overlay.innerHTML = '<div style="background:var(--bg);border-radius:20px;padding:24px;max-width:360px;width:100%;text-align:center;">'
+        + '<div style="font-size:2rem;margin-bottom:10px;">👨‍👩‍👧</div>'
+        + '<div style="font-weight:900;font-size:1rem;margin-bottom:8px;">Invitation de foyer</div>'
+        + '<div style="font-size:.82rem;color:var(--tx2);margin-bottom:20px;"><strong>' + (inv.invitedBy||'Quelqu\'un') + '</strong> vous invite à rejoindre le foyer <strong>' + (inv.houseName||'') + '</strong></div>'
+        + '<button onclick="acceptFamilyInvite(\''+doc.id+'\',\''+inv.houseId+'\',\''+inv.houseName+'\')" class="btn acc" style="width:100%;padding:13px;margin-bottom:8px;border-radius:14px;font-weight:800;">✅ Rejoindre le foyer</button>'
+        + '<button onclick="this.closest(\'[style*=fixed]\').remove()" class="btn" style="width:100%;padding:11px;border-radius:14px;">Plus tard</button>'
+        + '</div>';
+      overlay.onclick = e => { if(e.target===overlay) overlay.remove(); };
+      document.body.appendChild(overlay);
+    });
+  } catch(e) { /* not critical */ }
+}
+
+async function acceptFamilyInvite(inviteId, houseId, houseName) {
+  if(!db || !currentUser) return;
+  try {
+    // Join the household
+    const docId = houseId;
+    await db.collection('households').doc(docId).update({
+      members: firebase.firestore.FieldValue.arrayUnion(currentUser.uid),
+      memberEmails: firebase.firestore.FieldValue.arrayUnion(currentUser.email),
+    });
+    // Update user's state
+    state.houseId = houseId;
+    state.houseName = houseName;
+    await saveState();
+    // Mark invite as accepted
+    await db.collection('household_invites').doc(inviteId).update({status:'accepted'});
+    document.querySelector('[style*=fixed]')?.remove();
+    showToast('✅','Foyer rejoint !','Vous êtes maintenant dans le foyer ' + houseName);
+    subscribeToHousehold();
+  } catch(e) {
+    showToast('❌','Erreur',e.message);
+  }
+}
+
+function openFamilyModal() {
+  if(!currentUser) { showToast('🔑','Connexion requise','Connectez-vous pour gérer votre foyer'); return; }
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:900;background:rgba(0,0,0,.55);backdrop-filter:blur(6px);display:flex;align-items:flex-end;justify-content:center;';
+  overlay.innerHTML = '<div style="background:var(--bg);border-radius:20px 20px 0 0;padding:20px;width:100%;max-width:480px;">'
+    + '<div style="width:36px;height:4px;background:var(--bg2);border-radius:2px;margin:0 auto 16px;"></div>'
+    + '<div style="font-weight:900;font-size:.95rem;margin-bottom:4px;">👨‍👩‍👧 Foyer familial</div>'
+    + '<div style="font-size:.72rem;color:var(--tx2);margin-bottom:14px;">' + (state.houseId ? 'Foyer: ' + (state.houseName||state.houseId) : 'Partagez liste de courses et menu avec votre famille') + '</div>'
+    + (state.houseId
+      ? '<div style="background:var(--bg2);border-radius:var(--rs);padding:12px;margin-bottom:12px;font-size:.78rem;"><strong>Code foyer:</strong> ' + (state.houseCode||state.houseId.slice(-6).toUpperCase()) + '</div>'
+        + '<div style="display:flex;gap:8px;margin-bottom:12px;">'
+        + '<input id="inviteEmail" class="inp" placeholder="Email à inviter..." style="flex:1;font-size:.82rem;">'
+        + '<button onclick="inviteFamilyMember(document.getElementById(\'inviteEmail\').value)" class="btn acc sm" style="padding:10px 14px;">Inviter</button>'
+        + '</div>'
+      : '<button onclick="createHousehold()" class="btn acc" style="width:100%;padding:13px;margin-bottom:8px;border-radius:14px;font-weight:800;">🏠 Créer un foyer</button>'
+        + '<div style="display:flex;gap:8px;"><input id="joinCode" class="inp" placeholder="Code foyer..." style="flex:1;font-size:.82rem;"><button onclick="joinHousehold()" class="btn acc2 sm" style="padding:10px 14px;">Rejoindre</button></div>')
+    + '<button onclick="this.closest(\'[style*=fixed]\').remove()" class="btn" style="width:100%;padding:11px;margin-top:10px;border-radius:14px;">Fermer</button>'
+    + '</div>';
+  overlay.onclick = e => { if(e.target===overlay) overlay.remove(); };
+  document.body.appendChild(overlay);
+}
+
+// ═══════════════════════════════════════════════════════════
+// 🔔 PUSH NOTIFICATIONS — Web Push API
+// ═══════════════════════════════════════════════════════════
+async function requestPushPermission() {
+  if(!('Notification' in window)) {
+    showToast('❌','Non supporté','Les notifications ne sont pas disponibles');
+    return false;
+  }
+  if(Notification.permission === 'granted') return true;
+  if(Notification.permission === 'denied') {
+    showToast('❌','Bloqué','Autorisez les notifications dans les paramètres du navigateur');
+    return false;
+  }
+  const perm = await Notification.requestPermission();
+  if(perm === 'granted') {
+    showToast('🔔','Notifications activées','Vous recevrez des rappels de menu');
+    // Schedule weekly menu reminder (Monday 9am)
+    scheduleWeeklyReminder();
+    return true;
+  }
+  return false;
+}
+
+function scheduleWeeklyReminder() {
+  // Store preference
+  try { localStorage.setItem('sc_push_enabled','1'); } catch(e) {}
+  // Show local notification to confirm
+  if(Notification.permission === 'granted') {
+    new Notification('SmartCard 🛒', {
+      body: 'Rappels de menu activés ! Vous serez notifié chaque lundi.',
+      icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180"><rect width="180" height="180" rx="40" fill="%23ff6b6b"/></svg>',
+      badge: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72"><rect width="72" height="72" rx="18" fill="%23ff6b6b"/></svg>',
+    });
+  }
+}
+
+function sendLocalNotification(title, body, data) {
+  if(Notification.permission !== 'granted') return;
+  new Notification(title, {
+    body,
+    icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180"><rect width="180" height="180" rx="40" fill="%23ff6b6b"/></svg>',
+    data,
+    tag: 'smartcard-' + Date.now(),
+  });
+}
+
+// Check & send reminders on app open
+function checkDailyReminders() {
+  try {
+    const pushEnabled = localStorage.getItem('sc_push_enabled');
+    if(!pushEnabled || Notification.permission !== 'granted') return;
+
+    const now = new Date();
+    const day = now.getDay(); // 0=Sunday, 1=Monday
+    const hour = now.getHours();
+    const lastReminder = +(localStorage.getItem('sc_last_reminder')||0);
+    const todayKey = now.toDateString();
+
+    // Monday morning: menu reminder
+    if(day === 1 && hour >= 8 && hour <= 10 && lastReminder !== now.getDate()) {
+      localStorage.setItem('sc_last_reminder', now.getDate());
+      const hasMenu = Object.values(state.weekMenu||{}).some(d=>d&&(d.l||d.d));
+      if(!hasMenu) {
+        setTimeout(() => sendLocalNotification(
+          'SmartCard 🗓️ Planifiez votre semaine',
+          'Votre menu de la semaine n\'est pas encore planifié. Générez-le en 1 clic !',
+          {action: 'open_menu'}
+        ), 2000);
+      }
+    }
+  } catch(e) {}
+}
+
+// ═══════════════════════════════════════════════════════════
+// 💳 STRIPE — Intégration Payment Links
+// ═══════════════════════════════════════════════════════════
+// Configure ces URLs dans le dashboard Stripe:
+// https://dashboard.stripe.com/payment-links
+const STRIPE_PAYMENT_CONFIG = {
+  monthly: {
+    url: '', // e.g. 'https://buy.stripe.com/xxx'
+    price: '2,99 €',
+    label: 'Mensuel',
+  },
+  yearly: {
+    url: '', // e.g. 'https://buy.stripe.com/yyy'
+    price: '19,99 €',
+    label: 'Annuel',
+    savings: 'Économisez 44%',
+  },
+  // Webhook Stripe → Vercel Edge Function → Firestore update user premium status
+  webhookEndpoint: '/api/stripe-webhook',
+};
+
+function openStripeCheckout(plan) {
+  const config = STRIPE_PAYMENT_CONFIG[plan];
+  if(!config || !config.url) {
+    // Dev mode: direct activation
+    activatePremium();
+    return;
+  }
+  const userId = currentUser?.uid || 'guest';
+  const userEmail = currentUser?.email || '';
+  const checkoutUrl = config.url
+    + '?client_reference_id=' + encodeURIComponent(userId)
+    + '&prefilled_email=' + encodeURIComponent(userEmail);
+  window.open(checkoutUrl, '_blank');
+  showToast('↗️','Redirection Stripe','Paiement sécurisé...');
+  _pollPremiumActivation(); // Poll Firestore for activation
 }
 
 
@@ -7164,7 +7923,7 @@ function openCreateRecipeModal(editRecipe) {
       </label>
 
       <!-- Liste des ingrédients ajoutés -->
-      <div id="crIngrList" style="display:flex;flex-direction:column;gap:5px;margin-top:6px;margin-bottom:8px;min-height:36px;"></div>
+      <div id="crIngrList" style="display:flex;flex-direction:column;gap:5px;margin-top:6px;margin-bottom:8px;min-height:48px;background:var(--bg2);border-radius:var(--rs);padding:4px;"></div>
 
       <!-- Zone d'ajout -->
       <div style="background:var(--bg2);border-radius:var(--rs);padding:10px 12px;">
@@ -7345,13 +8104,14 @@ function crAddIngrFromInput() {
     ...state.fridge.map(f => ({name:f.name, emoji:f.emoji})),
   ].find(p => p.name.toLowerCase() === name.toLowerCase());
   const emoji = product?.emoji || '🛍️';
-  if(!window._crIngredients) window._crIngredients = [];
+  if(!Array.isArray(window._crIngredients)) window._crIngredients = _crIngredients;
   // Prevent duplicate
   if(window._crIngredients.some(i => i.name.toLowerCase() === name.toLowerCase())) {
     showToast('ℹ️', name, 'Déjà dans la liste');
     inp.value = ''; inp.focus(); return;
   }
   window._crIngredients.push({name, qty, emoji});
+  _crIngredients = window._crIngredients; // keep in sync
   inp.value = '';
   if(qtyNum) qtyNum.value = '';
   if(unit) unit.value = 'g';
@@ -7369,7 +8129,7 @@ function crRenderIngrList() {
   // Target both possible containers (old + new modal)
   const el = document.getElementById('crIngrList') || document.querySelector('[id="crIngrList"]');
   if(!el) return;
-  const ingrs = window._crIngredients || [];
+  const ingrs = window._crIngredients || _crIngredients || [];
   const cnt = document.getElementById('crIngrCount');
   if(cnt) cnt.textContent = ingrs.length + ' ajouté' + (ingrs.length !== 1 ? 's' : '');
 
@@ -7421,7 +8181,7 @@ function crRenderSteps() {
 const NUTRI_APPROX = {"Lait":{kcal:46,p:3.3,c:4.9,f:1.5},"Yaourt":{kcal:59,p:3.5,c:4.9,f:3},"Fromage":{kcal:350,p:25,c:1,f:28},"Beurre":{kcal:717,p:0.7,c:0.6,f:81},"Oeuf":{kcal:155,p:13,c:1.1,f:11},"Poulet":{kcal:165,p:31,c:0,f:3.6},"Boeuf":{kcal:250,p:26,c:0,f:15},"Porc":{kcal:242,p:27,c:0,f:14},"Saumon":{kcal:208,p:20,c:0,f:13},"Thon":{kcal:116,p:26,c:0,f:1},"Pâtes":{kcal:157,p:5.5,c:31,f:0.9},"Riz":{kcal:130,p:2.7,c:28,f:0.3},"Pain":{kcal:265,p:9,c:49,f:3.2},"Farine":{kcal:364,p:10,c:76,f:1},"Pomme de terre":{kcal:77,p:2,c:17,f:0.1},"Carotte":{kcal:41,p:0.9,c:10,f:0.2},"Tomate":{kcal:18,p:0.9,c:3.9,f:0.2},"Champignon":{kcal:22,p:3.1,c:3.3,f:0.3},"Avocat":{kcal:160,p:2,c:9,f:15},"Noix":{kcal:654,p:15,c:14,f:65},"Huile":{kcal:884,p:0,c:0,f:100},"Sucre":{kcal:400,p:0,c:100,f:0},"Chocolat":{kcal:546,p:5,c:60,f:31}};
 
 function crCalcAutoKcal() {
-  const ingrs = window._crIngredients || [];
+  const ingrs = window._crIngredients || _crIngredients || [];
   const portions = parseInt(document.getElementById('crPortions')?.value)||4;
   let total = 0;
   ingrs.forEach(ing => {
@@ -7438,7 +8198,7 @@ function crCalcAutoKcal() {
 
 async function saveCustomRecipeFull() {
   const name = document.getElementById('crName')?.value?.trim();
-  const ingrs = window._crIngredients || [];
+  const ingrs = window._crIngredients || _crIngredients || [];
   if(!name) { showToast('⚠️','Incomplet','Entrez un nom de recette.'); return; }
   if(!ingrs.length) { showToast('⚠️','Incomplet','Ajoutez au moins un ingrédient.'); return; }
 
@@ -7466,12 +8226,24 @@ async function saveCustomRecipeFull() {
       }
     });
   }
-  const kcal = kcalManual || Math.round(totalKcal/portions) || 0;
+  // Try Ciqual first for accurate nutrition
+  let ciqualNutri = null;
+  if(typeof getRecipeNutri === 'function') {
+    const tmpRecipe = {ingredients: ingrs.map(i => ({name:i.name, qty:i.qty})), portions};
+    ciqualNutri = getRecipeNutri(tmpRecipe);
+  }
+  const kcal = kcalManual || (ciqualNutri ? ciqualNutri.perPortion.kcal : Math.round(totalKcal/portions)) || 0;
+  const protAuto = ciqualNutri ? ciqualNutri.perPortion.prot : 0;
+  const carbAuto = ciqualNutri ? ciqualNutri.perPortion.carb : 0;
+  const fatAuto  = ciqualNutri ? ciqualNutri.perPortion.fat  : 0;
 
   const recipe = {
     id: window._crEditId || ('custom_'+Date.now()),
     emoji, name, time, portions, kcal,
     diet: 'omnivore',
+    prot: protAuto || 0,
+    carb: carbAuto || 0,
+    fat:  fatAuto  || 0,
     mealTypes: mealTypes.length ? mealTypes : ['l','d'],
     ingredients: ingrs.map(i => ({name:i.name, qty:i.qty, unit:'', emoji:i.emoji})),
     instructions,
@@ -8772,6 +9544,7 @@ function renderNutriTab() {
   if(heroSub) {
     if(!cals) { heroSub.textContent = 'Complétez votre profil pour voir vos besoins caloriques'; }
     else {
+      const sportBurn = typeof getSportBurnSummary === 'function' ? getSportBurnSummary(p) : null;
       const goalLabels = {equilibre:'⚖️ Équilibre',perte:'📉 Perte de poids',prise:'💪 Prise de masse',maintien:'🔄 Maintien',perf:'🏃 Performance'};
       const acts = [
         {label:'Sédentaire', desc:"Peu ou pas d'activité"},
@@ -8807,6 +9580,7 @@ function renderNutriTab() {
         {label:'IMC', val: bmi ? bmi + '<br><small>' + bmiLabel + '</small>' : '—', color: bmiColor},
         {label:'Régime', val: diets[p.diet||'omnivore'] || p.diet || '—', color: 'var(--tx)'},
         {label:'Objectif', val: goalShort[p.goal||'equilibre'] || '—', color: 'var(--ac)'},
+        {label:'Sport', val: (()=>{const sb=getSportBurnSummary(p);return sb?'~'+sb.totalBurn+' kcal':'—'})(), color:'var(--tl)'},
       ].map(s => '<div class="nutri-macro-card" style="padding:10px 8px;text-align:center;">'
         + '<div style="font-size:.78rem;font-weight:900;color:' + s.color + ';margin-bottom:2px;line-height:1.3;">' + s.val + '</div>'
         + '<div class="nutri-macro-label">' + s.label + '</div>'

@@ -141,7 +141,7 @@
 [data-theme=rouge] .card,[data-theme=rouge] .rc,[data-theme=rouge] .fi-card{
   background:linear-gradient(145deg,#fff8f8,#fff0f0);
 }
-[data-theme=rouge] .tabbar{background:linear-gradient(135deg,#ff6b6b,#c0392b);border:none;}
+[data-theme=rouge] .tabbar{background:var(--bg);box-shadow:0 8px 32px rgba(231,76,60,.2),var(--so);}
 [data-theme=rouge] .tab{color:rgba(255,255,255,.7)!important;}
 [data-theme=rouge] .tab svg{color:rgba(255,255,255,.7)!important;stroke:rgba(255,255,255,.7);}
 [data-theme=rouge] .tab.on{background:rgba(255,255,255,.2)!important;color:#fff!important;}
@@ -156,12 +156,8 @@
   background:linear-gradient(145deg,#fdf8ff,#f5e8ff);
   border:1px solid rgba(142,68,173,.1);
 }
-[data-theme=violet] .tabbar{background:linear-gradient(135deg,#8e44ad,#6c3483);border:none;}
-[data-theme=violet] .tab{color:rgba(255,255,255,.65)!important;}
-[data-theme=violet] .tab svg{color:rgba(255,255,255,.65)!important;stroke:rgba(255,255,255,.65);}
-[data-theme=violet] .tab.on{background:rgba(255,255,255,.2)!important;color:#fff!important;}
-[data-theme=violet] .tab.on svg{color:#fff!important;stroke:#fff;}
-[data-theme=violet] .tab-lb{color:inherit!important;}
+[data-theme=violet] .tabbar{background:var(--bg);box-shadow:0 8px 32px rgba(142,68,173,.2),var(--so);}
+/* violet tab icons use --ac naturally */
 [data-theme=violet] .btn.acc{background:linear-gradient(135deg,#8e44ad,#9b59b6);}
 
 /* ── Ocean: frosted sea glass ── */
@@ -169,21 +165,27 @@
   background:linear-gradient(145deg,#f5fbff,#e8f4ff);
   border:1px solid rgba(41,128,185,.12);
 }
-[data-theme=ocean] .tabbar{background:linear-gradient(135deg,#0e6fa5,#2980b9);border:none;}
-[data-theme=ocean] .tab{color:rgba(255,255,255,.65)!important;}
-[data-theme=ocean] .tab svg{color:rgba(255,255,255,.65)!important;stroke:rgba(255,255,255,.65);}
-[data-theme=ocean] .tab.on{background:rgba(255,255,255,.2)!important;color:#fff!important;}
-[data-theme=ocean] .tab.on svg{color:#fff!important;stroke:#fff;}
-[data-theme=ocean] .tab-lb{color:inherit!important;}
+[data-theme=ocean] .tabbar{background:var(--bg);box-shadow:0 8px 32px rgba(41,128,185,.2),var(--so);}
+/* ocean tab icons use --ac naturally */
 [data-theme=ocean] .btn.acc{background:linear-gradient(135deg,#2980b9,#3498db);}
 
+/* ══ THÈME VERT — Forêt ══ */
+[data-theme=green]{
+--bg:#f2faf4;--bg2:#d8f0df;--bg3:#e8f7ec;
+--so:6px 6px 16px rgba(39,174,96,.12),-5px -5px 14px rgba(255,255,255,.94);
+--si:inset 4px 4px 10px rgba(39,174,96,.08),inset -4px -4px 10px rgba(255,255,255,.9);
+--ss:inset 2px 2px 6px rgba(39,174,96,.07),inset -2px -2px 6px rgba(255,255,255,.8);
+--sf:10px 10px 24px rgba(39,174,96,.14),-8px -8px 20px rgba(255,255,255,.94);
+--sp:inset 3px 3px 8px rgba(39,174,96,.14),inset -3px -3px 8px rgba(255,255,255,.85);
+--tx:#0d2e16;--tx2:#2d6a3f;--tx3:#a8d8b5;
+--ac:#16a34a;--ac2:#22c55e;--tl:#14b8a6;--gn:#16a34a;--or:#ea580c;--rd:#dc2626;--yl:#ca8a04;--pk:#db2777;--lv:#7c3aed;--bl:#2563eb;
+--grad:linear-gradient(135deg,#15803d,#22c55e);
+--grad2:linear-gradient(135deg,#14b8a6,#15803d);
+--grad3:linear-gradient(135deg,#2563eb,#14b8a6);
+}
 /* ── Green: natural forest ── */
-[data-theme=green] .tabbar{background:linear-gradient(135deg,#1a6b3c,#27ae60);border:none;}
-[data-theme=green] .tab{color:rgba(255,255,255,.65)!important;}
-[data-theme=green] .tab svg{color:rgba(255,255,255,.65)!important;stroke:rgba(255,255,255,.65);}
-[data-theme=green] .tab.on{background:rgba(255,255,255,.2)!important;color:#fff!important;}
-[data-theme=green] .tab.on svg{color:#fff!important;stroke:#fff;}
-[data-theme=green] .tab-lb{color:inherit!important;}
+[data-theme=green] .tabbar{background:var(--bg);box-shadow:0 8px 32px rgba(39,174,96,.2),var(--so);}
+/* green tab icons use --ac naturally */
 
 [data-theme=dark]{
 --bg:#22243a;--bg2:#2c2f4a;--bg3:#1a1c30;
@@ -266,20 +268,22 @@
 --grad3:linear-gradient(135deg,#3498db,#e91e8c);
 }
 
-/* ══ THÈME CYAN/BLEU (dot 3) ══ */
+/* ══ THÈME OCÉAN — Profond (sombre bleu nuit) ══ */
 [data-theme=ocean]{
---bg:#f0faff;--bg2:#d0eeff;--bg3:#e5f5ff;
---so:6px 6px 16px rgba(52,152,219,.14),-5px -5px 14px rgba(255,255,255,.92);
---si:inset 4px 4px 10px rgba(52,152,219,.1),inset -4px -4px 10px rgba(255,255,255,.88);
---ss:inset 2px 2px 6px rgba(52,152,219,.08),inset -2px -2px 6px rgba(255,255,255,.78);
---sf:10px 10px 24px rgba(52,152,219,.16),-8px -8px 20px rgba(255,255,255,.92);
---sp:inset 3px 3px 8px rgba(52,152,219,.16),inset -3px -3px 8px rgba(255,255,255,.82);
---tx:#0a1828;--tx2:#1a6090;--tx3:#88c8e8;
---ac:#2980b9;--ac2:#3498db;--tl:#00d2c6;--gn:#27ae60;--or:#e67e22;--rd:#e74c3c;--yl:#f39c12;--pk:#e91e8c;--lv:#9b59b6;--bl:#2980b9;
---grad:linear-gradient(135deg,#2980b9,#3498db);
---grad2:linear-gradient(135deg,#00d2c6,#2980b9);
---grad3:linear-gradient(135deg,#1abc9c,#00d2c6);
+--bg:#030d1a;--bg2:#081828;--bg3:#051022;
+--so:6px 6px 20px rgba(0,0,0,.7),-3px -3px 10px rgba(0,120,255,.06);
+--si:inset 4px 4px 12px rgba(0,0,0,.6),inset -4px -4px 10px rgba(0,100,200,.05);
+--ss:inset 2px 2px 6px rgba(0,0,0,.55),inset -2px -2px 6px rgba(0,80,160,.04);
+--sf:10px 10px 28px rgba(0,0,0,.7),-5px -5px 14px rgba(0,100,200,.06);
+--sp:inset 3px 3px 10px rgba(0,0,0,.65),inset -3px -3px 8px rgba(0,80,160,.05);
+--tx:#c8e8ff;--tx2:#5a9fd4;--tx3:#1a3a5a;
+--ac:#38bdf8;--ac2:#0ea5e9;--tl:#06b6d4;--gn:#10b981;--or:#f59e0b;--rd:#ef4444;--yl:#fbbf24;--pk:#ec4899;--lv:#8b5cf6;--bl:#38bdf8;
+--grad:linear-gradient(135deg,#0369a1,#38bdf8);
+--grad2:linear-gradient(135deg,#06b6d4,#0369a1);
+--grad3:linear-gradient(135deg,#10b981,#06b6d4);
 }
+[data-theme=ocean] .tab svg{color:var(--tx3);}
+[data-theme=ocean] .tab.on svg{color:var(--ac);}
 
 /* ══ ANTHRACITE DARK: overrides for dark UI components ══ */
 [data-theme=anthracite] .chk{border-color:#4a5060;background:#252830;}
@@ -464,7 +468,7 @@ svg{display:block;flex-shrink:0;}
 
 /* ══ AUTOCOMPLETE ══ */
 .ac-wrap{position:relative;flex:1;}
-.ac-list{position:absolute;z-index:2000;background:var(--bg);border-radius:var(--rs);box-shadow:0 16px 40px rgba(0,0,0,.22);max-height:220px;overflow-y:auto;display:none;}
+.ac-list{position:fixed;z-index:9999;background:var(--bg);border-radius:var(--rs);box-shadow:0 12px 40px rgba(0,0,0,.25),0 2px 8px rgba(0,0,0,.12);max-height:220px;overflow-y:auto;display:none;}
 .ac-item{display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;transition:background .12s;}
 .ac-item:active{background:var(--bg2);}
 .ac-item-em{font-size:1.2rem;flex-shrink:0;}
@@ -1219,9 +1223,10 @@ body.offline-mode .offline-banner{display:block;}
         <div class="lg-sub" style="margin-bottom:14px;">Ticket de caisse · Code-barres</div>
 
         <!-- Sous-onglets -->
-        <div class="list-subtabs" style="margin-bottom:18px;">
-          <div class="list-subtab on" id="scan-stab-ticket" onclick="switchScanTab('ticket')">🧾 Ticket de caisse</div>
-          <div class="list-subtab" id="scan-stab-barcode" onclick="switchScanTab('barcode')">🔍 Code-barres</div>
+        <div class="list-subtabs" style="margin-bottom:18px;display:flex;gap:4px;">
+          <div class="list-subtab on" id="scan-stab-ticket" onclick="switchScanTab('ticket')" style="flex:1;font-size:.72rem;">🧾 Ticket</div>
+          <div class="list-subtab" id="scan-stab-barcode" onclick="switchScanTab('barcode')" style="flex:1;font-size:.72rem;">🔍 Barcode</div>
+          <div class="list-subtab" id="scan-stab-fridge" onclick="switchScanTab('fridge')" style="flex:1;font-size:.72rem;">📸 Frigo IA</div>
         </div>
 
         <!-- ═══ MODULE TICKET ═══ -->
@@ -1300,6 +1305,51 @@ body.offline-mode .offline-banner{display:block;}
             <button class="btn" style="width:100%;margin-top:8px;" onclick="stopBarcodeCamera()">✕ Arrêter le scan</button>
             <div id="barcodeScanStatus" style="text-align:center;font-size:.78rem;color:var(--tx2);margin-top:8px;"></div>
           </div>
+
+        </div>
+
+        <!-- ═══ MODULE FRIGO IA (Gemini Vision) ═══ -->
+        <div id="scanModFridge" style="display:none;">
+
+          <!-- Hero card -->
+          <div style="background:var(--grad);border-radius:var(--r);padding:20px 18px;color:#fff;margin-bottom:16px;position:relative;overflow:hidden;">
+            <div style="position:absolute;top:-20px;right:-20px;width:100px;height:100px;border-radius:50%;background:rgba(255,255,255,.1);"></div>
+            <div style="font-size:1.8rem;margin-bottom:8px;">📸</div>
+            <div style="font-weight:900;font-size:1.05rem;margin-bottom:6px;">Scanner mon frigo avec l'IA</div>
+            <div style="font-size:.78rem;opacity:.88;line-height:1.5;">Prenez une photo de votre frigo ou de vos aliments — Gemini Vision identifie automatiquement tout ce qu'il voit et l'ajoute à votre inventaire.</div>
+          </div>
+
+          <!-- Instructions -->
+          <div class="card mb14" style="border-left:3px solid var(--tl);">
+            <div style="font-weight:800;font-size:.82rem;margin-bottom:8px;">💡 Conseils pour un bon scan</div>
+            <div style="font-size:.75rem;color:var(--tx2);line-height:1.7;">
+              • <strong>Ouvrez la porte</strong> du frigo et reculez un peu pour tout voir<br>
+              • <strong>Bonne lumière</strong> — la lumière du frigo suffit souvent<br>
+              • Vous pouvez aussi photographier <strong>une tablette ou vos courses</strong>
+            </div>
+          </div>
+
+          <!-- Bouton principal -->
+          <div id="fridgeScanStartZone">
+            <div class="scan-c" onclick="scanFridgeWithPhoto()" style="margin-bottom:12px;">
+              <div class="scan-c-ic">📸</div>
+              <div class="scan-c-ti">Photographier mon frigo</div>
+              <div class="scan-c-su">Gemini Vision identifie tous les aliments visibles</div>
+            </div>
+          </div>
+
+          <!-- Résultats -->
+          <div id="fridgeScanResults" style="display:none;"></div>
+
+          <!-- Stats après scan -->
+          <div id="fridgeScanStats" style="display:none;background:var(--bg2);border-radius:var(--rs);padding:14px;margin-top:14px;text-align:center;">
+            <div style="font-size:.82rem;font-weight:700;" id="fridgeScanStatsText"></div>
+            <button class="btn acc" onclick="switchTab('frigo')" style="margin-top:10px;padding:10px 24px;border-radius:12px;font-weight:800;font-size:.82rem;">
+              🧊 Voir mon frigo
+            </button>
+          </div>
+
+        </div>
 
           <!-- Historique des derniers scans -->
           <div id="barcodeHistory" style="display:none;">
@@ -3317,19 +3367,26 @@ function onSearchInput(val) {
 
 function showAC(listId, inputId, products) {
   const list = document.getElementById(listId);
-  if(!products.length) { list.style.display = 'none'; return; }
+  if(!products.length || !products) { if(list) list.style.display = 'none'; return; }
   const inp = document.getElementById(inputId);
+  if(!inp || !list) return;
   const rect = inp.getBoundingClientRect();
-  list.style.top = (rect.bottom + 4) + 'px';
+  // Always position relative to viewport (fixed positioning)
+  list.style.position = 'fixed';
+  list.style.zIndex = '9999';
+  list.style.top = (rect.bottom + 2) + 'px';
   list.style.left = rect.left + 'px';
   list.style.width = rect.width + 'px';
+  list.style.minWidth = '200px';
   list.style.display = 'block';
-  list.innerHTML = products.map(p => `
-    <div class="ac-item" onclick="acSelect('${p.name.replace(/'/g,"&#39;")}','${listId}','${inputId}')">
-      <span class="ac-item-em">${p.emoji}</span>
-      <span class="ac-item-nm">${p.name}</span>
-      <span class="ac-item-cat">${p.cat}</span>
-    </div>`).join('');
+  list.innerHTML = products.map(p => {
+    const safeName = (p.name||'').replace(/'/g,"&#39;");
+    return '<div class="ac-item" onclick="acSelect(\'' + safeName + '\',\'' + listId + '\',\'' + inputId + '\')">'
+      + '<span class="ac-item-em">' + (p.emoji||'🛍️') + '</span>'
+      + '<span class="ac-item-nm">' + (p.name||'') + '</span>'
+      + '<span class="ac-item-cat">' + (p.cat||'') + '</span>'
+      + '</div>';
+  }).join('');
 }
 
 function acSelect(name, listId, inputId) {
@@ -6114,7 +6171,10 @@ function confirmScanItems() {
   selected.forEach(idx => {
     const it = items[idx];
     if(!it) return;
-    const prod = (typeof PRODUCTS !== 'undefined' ? PRODUCTS : []).find(p => p.name.toLowerCase().includes(it.name.toLowerCase()) || it.name.toLowerCase().includes(p.name.toLowerCase()));
+    const prod = (typeof PRODUCTS !== 'undefined' ? PRODUCTS : []).find(p =>
+      p.name.toLowerCase().includes(it.name.toLowerCase()) ||
+      it.name.toLowerCase().includes(p.name.toLowerCase())
+    );
     const emoji = it.emoji || prod?.emoji || '🥗';
     const existing = state.fridge.find(f => f.name.toLowerCase() === it.name.toLowerCase());
     if(!existing) {
@@ -6123,8 +6183,16 @@ function confirmScanItems() {
     }
   });
   if(added) { saveFridge(); renderFridge(); }
+  // Close overlay
   document.querySelector('[style*=fixed]')?.remove();
-  showToast('✅', added + ' aliments ajoutés', 'Votre frigo a été mis à jour');
+  // Show stats in scan fridge view
+  const stats = document.getElementById('fridgeScanStats');
+  const statsText = document.getElementById('fridgeScanStatsText');
+  if(stats && added > 0) {
+    stats.style.display = 'block';
+    if(statsText) statsText.textContent = '✅ ' + added + ' aliment' + (added>1?'s':'') + ' ajouté' + (added>1?'s':'') + ' à votre frigo !';
+  }
+  showToast('✅', added + ' ajouté' + (added>1?'s':''), 'Votre frigo a été mis à jour');
 }
 
 
@@ -7855,122 +7923,105 @@ function openCreateRecipeModal(editRecipe) {
   modal.id = 'createRecipeModal';
   modal.onclick = e => { if(e.target===modal) modal.remove(); };
   
-  modal.innerHTML = `<div class="modal" style="max-height:92vh;overflow-y:auto;">
-    <div class="modal-hd" style="position:sticky;top:0;background:var(--bg);z-index:5;padding-bottom:8px;border-bottom:1px solid var(--bg2);">
-      <div class="modal-ti">✏️ ${editRecipe ? 'Modifier' : 'Créer'} une recette</div>
-      <button class="btn ico" onclick="document.getElementById('createRecipeModal').remove()">✕</button>
-    </div>
+  modal.innerHTML = `<div style="background:var(--bg);border-radius:22px 22px 0 0;width:100%;max-width:480px;max-height:92vh;display:flex;flex-direction:column;overflow:hidden;">
 
-    <!-- PHOTO -->
-    <div class="a-field">
-      <label class="a-lbl">📷 Photo</label>
-      <div style="display:flex;align-items:center;gap:10px;margin-top:6px;">
-        <div id="crPhotoPreview" onclick="document.getElementById('crPhotoFile').click()" style="width:80px;height:80px;border-radius:var(--rs);border:2px dashed var(--bg2);overflow:hidden;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:var(--bg2);font-size:1.8rem;" title="Cliquez pour choisir une photo">📷</div>
-        <div style="flex:1;">
-          <div style="font-size:.75rem;color:var(--tx2);margin-bottom:6px;">Ajoutez une photo depuis votre galerie</div>
-          <input type="file" id="crPhotoFile" accept="image/*" style="display:none" onchange="crHandlePhoto(this)">
-          <button class="btn sm" onclick="document.getElementById('crPhotoFile').click()" style="font-size:.72rem;padding:7px 12px;">📂 Choisir une image</button>
-          <button class="btn sm" id="crPhotoDelBtn" onclick="crDeletePhoto()" style="font-size:.72rem;padding:7px 12px;display:none;color:var(--rd);">🗑️ Supprimer</button>
+  <!-- HEADER -->
+  <div style="padding:16px 18px 12px;border-bottom:1px solid var(--bg2);flex-shrink:0;">
+    <div style="width:36px;height:4px;background:var(--bg2);border-radius:2px;margin:0 auto 14px;"></div>
+    <div style="display:flex;align-items:center;justify-content:space-between;">
+      <div style="font-weight:900;font-size:1rem;">${editRecipe ? '✏️ Modifier' : '✨ Créer'} une recette</div>
+      <button onclick="document.getElementById('createRecipeModal').remove()" style="background:var(--bg2);border:none;border-radius:50%;width:30px;height:30px;font-size:.9rem;cursor:pointer;display:flex;align-items:center;justify-content:center;">✕</button>
+    </div>
+  </div>
+
+  <!-- SCROLLABLE BODY -->
+  <div style="overflow-y:auto;flex:1;padding:16px 18px;">
+
+    <!-- Photo + Emoji + Nom -->
+    <div style="display:flex;gap:10px;margin-bottom:14px;align-items:flex-start;">
+      <div id="crPhotoPreview" onclick="document.getElementById('crPhotoFile').click()" style="width:72px;height:72px;border-radius:14px;border:2px dashed var(--bg2);overflow:hidden;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:var(--bg2);font-size:1.6rem;">📷</div>
+      <input type="file" id="crPhotoFile" accept="image/*" style="display:none" onchange="crHandlePhoto(this)">
+      <div style="flex:1;display:flex;flex-direction:column;gap:8px;">
+        <input class="inp" id="crName" placeholder="Nom de la recette *" style="font-weight:800;">
+        <div style="display:flex;gap:6px;">
+          <input class="inp" id="crEmoji" value="🍽️" style="width:54px;text-align:center;font-size:1.1rem;">
+          <input class="inp" id="crTime" type="number" placeholder="⏱ min" min="1" style="flex:1;">
+          <input class="inp" id="crPortions" type="number" placeholder="👥" value="4" min="1" style="flex:1;">
         </div>
       </div>
     </div>
 
-    <!-- NOM + EMOJI -->
-    <div style="display:flex;gap:8px;">
-      <div class="a-field" style="flex:2;">
-        <label class="a-lbl">Nom de la recette *</label>
-        <input class="inp" id="crName" placeholder="Ex: Gratin dauphinois">
-      </div>
-      <div class="a-field" style="flex:1;">
-        <label class="a-lbl">Emoji</label>
-        <input class="inp" id="crEmoji" value="🍽️" style="font-size:1.2rem;text-align:center;">
-      </div>
+    <!-- Meal types -->
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;">
+      <button class="meal-type-btn" id="crMt-b" onclick="this.classList.toggle('on')" style="flex:1;">🌅</button>
+      <button class="meal-type-btn on" id="crMt-l" onclick="this.classList.toggle('on')" style="flex:1;">☀️</button>
+      <button class="meal-type-btn on" id="crMt-d" onclick="this.classList.toggle('on')" style="flex:1;">🌙</button>
+      <button class="meal-type-btn" id="crMt-snack" onclick="this.classList.toggle('on')" style="flex:1;">🍎</button>
     </div>
 
-    <!-- TEMPS + PORTIONS + KCAL -->
-    <div style="display:flex;gap:8px;">
-      <div class="a-field" style="flex:1;">
-        <label class="a-lbl">⏱ Temps (min)</label>
-        <input class="inp" id="crTime" type="number" value="30" min="1" max="300">
-      </div>
-      <div class="a-field" style="flex:1;">
-        <label class="a-lbl">👥 Portions</label>
-        <input class="inp" id="crPortions" type="number" value="4" min="1" max="20" oninput="crCalcAutoKcal()">
-      </div>
-      <div class="a-field" style="flex:1;">
-        <label class="a-lbl">🔥 Kcal/portion</label>
-        <input class="inp" id="crKcal" type="number" placeholder="Auto" min="0">
-        <div id="crAutoKcal" style="font-size:.6rem;color:var(--ac);margin-top:2px;font-weight:700;"></div>
-      </div>
-    </div>
-
-    <!-- TYPE DE REPAS -->
-    <div class="a-field">
-      <label class="a-lbl">🍽️ Type de repas</label>
-      <div style="display:flex;gap:6px;margin-top:4px;flex-wrap:wrap;">
-        <button class="meal-type-btn" id="crMt-b" onclick="this.classList.toggle('on')">🌅 Petit-déj</button>
-        <button class="meal-type-btn on" id="crMt-l" onclick="this.classList.toggle('on')">☀️ Déjeuner</button>
-        <button class="meal-type-btn on" id="crMt-d" onclick="this.classList.toggle('on')">🌙 Dîner</button>
-        <button class="meal-type-btn" id="crMt-snack" onclick="this.classList.toggle('on')">🍎 Collation</button>
-      </div>
-    </div>
-
-    <!-- INGRÉDIENTS -->
-    <div class="a-field">
-      <label class="a-lbl" style="display:flex;align-items:center;justify-content:space-between;">
+    <!-- ═══ INGRÉDIENTS ═══ -->
+    <div style="margin-bottom:14px;">
+      <div style="font-weight:900;font-size:.82rem;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;">
         <span>📋 Ingrédients</span>
-        <span id="crIngrCount" style="font-size:.65rem;color:var(--tx2);font-weight:600;">0 ajouté</span>
-      </label>
+        <span id="crIngrCount" style="font-size:.68rem;color:var(--tx2);font-weight:600;"></span>
+      </div>
 
-      <!-- Liste des ingrédients ajoutés -->
-      <div id="crIngrList" style="display:flex;flex-direction:column;gap:5px;margin-top:6px;margin-bottom:8px;min-height:48px;background:var(--bg2);border-radius:var(--rs);padding:4px;"></div>
+      <!-- Liste en temps réel -->
+      <div id="crIngrList" style="min-height:8px;margin-bottom:8px;display:flex;flex-direction:column;gap:5px;"></div>
 
-      <!-- Zone d'ajout -->
-      <div style="background:var(--bg2);border-radius:var(--rs);padding:10px 12px;">
-        <div style="font-size:.7rem;font-weight:700;color:var(--tx2);margin-bottom:8px;">➕ Ajouter un ingrédient</div>
-        <div style="display:flex;gap:6px;margin-bottom:6px;position:relative;">
-          <input class="inp" id="crIngrInput" placeholder="Nom de l'ingrédient…"
-            style="flex:1;background:var(--bg);" oninput="crSearchIngr(this.value)"
+      <!-- Zone ajout -->
+      <div style="background:var(--bg2);border-radius:12px;padding:10px 12px;">
+        <div style="position:relative;margin-bottom:8px;">
+          <input class="inp" id="crIngrInput" placeholder="🔍 Nom de l'ingrédient…" autocomplete="off"
+            style="width:100%;background:var(--bg);"
+            oninput="crSearchIngr(this.value)"
             onkeydown="if(event.key==='Enter'){event.preventDefault();crAddIngrFromInput();}"
             onblur="setTimeout(()=>{const a=document.getElementById('crIngrAC');if(a)a.style.display='none';},200)">
-          <div id="crIngrAC" style="display:none;position:absolute;left:0;right:0;top:46px;background:var(--bg);border:1px solid var(--bg2);border-radius:var(--rs);box-shadow:0 16px 40px rgba(0,0,0,.25);z-index:2000;max-height:160px;overflow-y:auto;"></div>
+          <div id="crIngrAC" style="display:none;position:fixed;z-index:3000;background:var(--bg);border:1px solid var(--bg2);border-radius:var(--rs);box-shadow:0 8px 32px rgba(0,0,0,.2);max-height:180px;overflow-y:auto;"></div>
         </div>
-        <div style="display:flex;gap:6px;align-items:center;">
-          <input class="inp" id="crIngrQtyNum" type="number" placeholder="Qté" min="1" style="width:70px;background:var(--bg);text-align:center;">
-          <select class="inp" id="crIngrUnit" style="flex:1;background:var(--bg);padding:10px 8px;">
-            <option value="g">g</option>
-            <option value="kg">kg</option>
-            <option value="ml">ml</option>
-            <option value="cl">cl</option>
-            <option value="l">l</option>
-            <option value="u.">u. (unité)</option>
-            <option value="cs">c. à soupe</option>
-            <option value="cc">c. à café</option>
-            <option value="pincée">pincée</option>
-            <option value="au goût">au goût</option>
+        <div style="display:flex;gap:6px;">
+          <input class="inp" id="crIngrQtyNum" type="number" placeholder="Qté" min="0.1" step="0.1" style="width:64px;background:var(--bg);text-align:center;">
+          <select class="inp" id="crIngrUnit" style="flex:1;background:var(--bg);">
+            <option value="g">g</option><option value="kg">kg</option><option value="ml">ml</option>
+            <option value="cl">cl</option><option value="l">l</option><option value="u.">unité</option>
+            <option value="cs">c. à soupe</option><option value="cc">c. à café</option>
+            <option value="pincée">pincée</option><option value="au goût">au goût</option>
           </select>
-          <button class="btn acc" onclick="crAddIngrFromInput()" style="padding:10px 16px;font-weight:900;font-size:.9rem;">+</button>
+          <button class="btn acc" onclick="crAddIngrFromInput()" style="padding:10px 16px;font-size:1rem;font-weight:900;flex-shrink:0;">＋</button>
         </div>
       </div>
     </div>
 
-    <!-- INSTRUCTIONS -->
-    <div class="a-field">
-      <label class="a-lbl">👨‍🍳 Instructions</label>
-      <div id="crStepsList" style="display:flex;flex-direction:column;gap:5px;margin-top:6px;margin-bottom:6px;"></div>
+    <!-- ═══ INSTRUCTIONS ═══ -->
+    <div style="margin-bottom:14px;">
+      <div style="font-weight:900;font-size:.82rem;margin-bottom:8px;">👨‍🍳 Instructions</div>
+
+      <!-- Liste étapes en temps réel -->
+      <div id="crStepsList" style="min-height:8px;margin-bottom:8px;display:flex;flex-direction:column;gap:5px;"></div>
+
+      <!-- Zone ajout étape -->
       <div style="display:flex;gap:6px;">
-        <input class="inp" id="crStepInput" placeholder="Ex: Faire chauffer l'huile à feu moyen…" style="flex:1;"
+        <input class="inp" id="crStepInput" placeholder="Ex: Faire chauffer l'huile à feu moyen…"
+          style="flex:1;"
           onkeydown="if(event.key==='Enter'){event.preventDefault();crAddStep();}">
-        <button class="btn sm" onclick="crAddStep()" style="padding:10px 12px;font-weight:800;">+</button>
+        <button class="btn acc" onclick="crAddStep()" style="padding:10px 14px;font-size:1rem;font-weight:900;flex-shrink:0;">＋</button>
       </div>
     </div>
 
-    <!-- ACTIONS -->
-    <div style="display:flex;gap:8px;margin-top:12px;padding-top:12px;border-top:1px solid var(--bg2);">
-      <button class="btn acc" onclick="saveCustomRecipeFull()" style="flex:2;padding:13px;font-weight:800;border-radius:14px;">💾 Enregistrer</button>
-      <button class="btn" onclick="document.getElementById('createRecipeModal').remove()" style="flex:1;padding:13px;border-radius:14px;">Annuler</button>
+    <!-- Kcal optionnel -->
+    <div style="margin-bottom:6px;">
+      <input class="inp" id="crKcal" type="number" placeholder="🔥 Calories/portion (optionnel)" min="0" style="width:100%;">
     </div>
-  </div>`;
+
+  </div>
+
+  <!-- FOOTER -->
+  <div style="padding:12px 18px calc(12px + env(safe-area-inset-bottom));border-top:1px solid var(--bg2);flex-shrink:0;display:flex;gap:8px;">
+    <button class="btn" onclick="document.getElementById('createRecipeModal').remove()" style="flex:1;padding:13px;border-radius:14px;">Annuler</button>
+    <button class="btn acc" onclick="saveCustomRecipeFull()" style="flex:2;padding:13px;border-radius:14px;font-weight:900;">💾 Enregistrer</button>
+  </div>
+
+</div>`
   
   // Reset state BEFORE appending
   window._crIngredients = [];
@@ -8062,7 +8113,17 @@ function crDeletePhoto() {
 function crSearchIngr(q) {
   const ac = document.getElementById('crIngrAC');
   if(!ac) return;
-  if(!q || q.length < 1) { ac.style.display='none'; return; }
+  if(!q || q.length < 1) { ac.style.display='none'; ac.innerHTML=''; return; }
+  // Position relative to input
+  const inp = document.getElementById('crIngrInput');
+  if(inp) {
+    const rect = inp.getBoundingClientRect();
+    ac.style.position = 'fixed';
+    ac.style.zIndex = '9999';
+    ac.style.top = (rect.bottom + 2) + 'px';
+    ac.style.left = rect.left + 'px';
+    ac.style.width = rect.width + 'px';
+  }
   // Search PRODUCTS + fridge items + common ingredients
   const allItems = [
     ...(typeof PRODUCTS!=='undefined' ? PRODUCTS : []),
@@ -8159,17 +8220,18 @@ function crRenderIngrList() {
     el.innerHTML = '<div style="text-align:center;padding:12px;color:var(--tx3);font-size:.75rem;border:1.5px dashed var(--bg2);border-radius:var(--rs);">Aucun ingrédient — ajoutez-en ci-dessous ⬇️</div>';
     return;
   }
-  el.innerHTML = ingrs.map((ing,i) =>
-    '<div style="display:flex;align-items:center;gap:8px;padding:9px 12px;background:var(--bg2);border-radius:var(--rs);border-left:3px solid var(--ac);">'
-    + '<span style="font-size:1.1rem;">' + ing.emoji + '</span>'
-    + '<div style="flex:1;">'
-    + '<div style="font-size:.82rem;font-weight:800;">' + ing.name + '</div>'
-    + '<div style="font-size:.68rem;color:var(--tx2);">' + ing.qty + '</div>'
+  el.innerHTML = ingrs.map((ing, i) =>
+    '<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--bg);border-radius:12px;box-shadow:var(--so);">'
+    + '<div style="width:34px;height:34px;border-radius:10px;background:var(--bg2);display:flex;align-items:center;justify-content:center;font-size:1.15rem;flex-shrink:0;">' + (ing.emoji || '🥗') + '</div>'
+    + '<div style="flex:1;min-width:0;">'
+    + '<div style="font-size:.84rem;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + ing.name + '</div>'
+    + '<div style="font-size:.68rem;color:var(--tl);font-weight:700;">' + (ing.qty || '') + '</div>'
     + '</div>'
-    + '<button onclick="window._crIngredients.splice('+i+',1);crRenderIngrList();crCalcAutoKcal();" '
-    + 'style="background:rgba(231,76,60,.1);border:none;border-radius:50%;width:24px;height:24px;cursor:pointer;color:var(--rd);font-size:.75rem;font-weight:900;display:flex;align-items:center;justify-content:center;">✕</button>'
+    + '<button onclick="event.stopPropagation();window._crIngredients.splice(' + i + ',1);_crIngredients=window._crIngredients;crRenderIngrList();crCalcAutoKcal();" '
+    + 'style="background:rgba(231,76,60,.12);border:none;border-radius:50%;width:28px;height:28px;cursor:pointer;color:var(--rd);font-size:.78rem;font-weight:900;flex-shrink:0;">✕</button>'
     + '</div>'
   ).join('');
+
 }
 
 // Steps (instructions) management
@@ -8198,11 +8260,11 @@ function crRenderSteps() {
   const steps = window._crSteps || [];
   if(!steps.length) { el.innerHTML = ''; return; }
   el.innerHTML = steps.map((step, i) =>
-    '<div style="display:flex;align-items:flex-start;gap:8px;padding:9px 12px;background:var(--bg2);border-radius:var(--rs);">'
-    + '<div style="width:22px;height:22px;border-radius:50%;background:var(--ac);color:#fff;font-size:.65rem;font-weight:900;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px;">' + (i+1) + '</div>'
-    + '<div style="flex:1;font-size:.8rem;line-height:1.4;">' + step + '</div>'
-    + '<button onclick="window._crSteps.splice('+i+',1);crRenderSteps();" '
-    + 'style="background:none;border:none;cursor:pointer;color:var(--tx3);font-size:.8rem;padding:2px;">✕</button>'
+    '<div style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;background:var(--bg);border-radius:12px;box-shadow:var(--so);">'
+    + '<div style="width:26px;height:26px;border-radius:50%;background:var(--ac);color:#fff;font-size:.7rem;font-weight:900;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px;">' + (i+1) + '</div>'
+    + '<div style="flex:1;font-size:.82rem;line-height:1.5;padding-top:2px;">' + step + '</div>'
+    + '<button onclick="event.stopPropagation();window._crSteps.splice('+i+',1);crRenderSteps();" '
+    + 'style="background:rgba(231,76,60,.12);border:none;border-radius:50%;width:26px;height:26px;cursor:pointer;color:var(--rd);font-size:.78rem;font-weight:900;flex-shrink:0;">✕</button>'
     + '</div>'
   ).join('');
 }
@@ -10632,13 +10694,24 @@ function showToast(icon, title, msg, duration=3500) {
 // SCAN — Sous-onglets ticket / code-barres
 // ═══════════════════════════════════════════════
 function switchScanTab(tab) {
-  document.getElementById('scan-stab-ticket').classList.toggle('on', tab === 'ticket');
-  document.getElementById('scan-stab-barcode').classList.toggle('on', tab === 'barcode');
-  document.getElementById('scanModTicket').style.display = tab === 'ticket' ? 'block' : 'none';
-  document.getElementById('scanModBarcode').style.display = tab === 'barcode' ? 'block' : 'none';
+  ['ticket', 'barcode', 'fridge'].forEach(t => {
+    const btn = document.getElementById('scan-stab-' + t);
+    const cap = t.charAt(0).toUpperCase() + t.slice(1);
+    const mod = document.getElementById('scanMod' + cap);
+    if(btn) btn.classList.toggle('on', t === tab);
+    if(mod) mod.style.display = t === tab ? 'block' : 'none';
+  });
   if(tab === 'barcode') renderBarcodeHistory();
   if(tab === 'ticket') stopBarcodeCamera();
+  if(tab === 'fridge') {
+    // Reset scan stats
+    const stats = document.getElementById('fridgeScanStats');
+    if(stats && stats.style.display !== 'none') {
+      // keep shown if just scanned
+    }
+  }
 }
+
 
 // ═══════════════════════════════════════════════
 // CODE-BARRES — Open Food Facts

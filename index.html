@@ -142,11 +142,11 @@
   background:linear-gradient(145deg,#fff8f8,#fff0f0);
 }
 [data-theme=rouge] .tabbar{background:var(--bg);box-shadow:0 8px 32px rgba(231,76,60,.2),var(--so);}
-[data-theme=rouge] .tab{color:rgba(255,255,255,.7)!important;}
-[data-theme=rouge] .tab svg{color:rgba(255,255,255,.7)!important;stroke:rgba(255,255,255,.7);}
-[data-theme=rouge] .tab.on{background:rgba(255,255,255,.2)!important;color:#fff!important;}
-[data-theme=rouge] .tab.on svg{color:#fff!important;stroke:#fff;}
-[data-theme=rouge] .tab-lb{color:inherit!important;}
+[data-theme=rouge] .tab{color:var(--tx3);}
+[data-theme=rouge] .tab svg{color:var(--tx3);}
+[data-theme=rouge] .tab.on{background:var(--grad);color:#fff;}
+[data-theme=rouge] .tab.on svg{color:#fff;}
+[data-theme=rouge] .tab-lb{color:inherit;}
 
 /* ── Violet: dark purple night ── */
 [data-theme=violet]{
@@ -373,7 +373,7 @@ svg{display:block;flex-shrink:0;}
 .vwrap{position:fixed;top:calc(62px + env(safe-area-inset-top));bottom:0;left:0;right:0;display:flex;flex-direction:column;overflow:hidden;}
 .view{display:none;flex-direction:column;position:absolute;inset:0;}
 .view.on{display:flex;}
-.vb{flex:1;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;padding:14px 18px calc(120px + env(safe-area-inset-bottom));scrollbar-width:none;}
+.vb{flex:1;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;padding:14px 18px calc(120px + env(safe-area-inset-bottom));scrollbar-width:none;overscroll-behavior:contain;overflow-anchor:none;}
 .vb::-webkit-scrollbar{display:none;}
 
 /* ══ TABBAR INNER ══ */
@@ -1487,6 +1487,7 @@ body.offline-mode .offline-banner{display:block;}
       <div class="menu-tabs" id="menuTabBar" style="margin-bottom:14px;">
         <div class="menu-tab on" id="mtab-week" onclick="switchMenuTab('week')">📅 Semaine</div>
         <div class="menu-tab" id="mtab-recipes" onclick="switchMenuTab('recipes')">👨‍🍳 Recettes</div>
+        <div class="menu-tab" id="mtab-favs" onclick="switchMenuTab('favs')">⭐ Favoris</div>
         <div class="menu-tab" id="mtab-search" onclick="switchMenuTab('search')">🔍 Explorer</div>
         <div class="menu-tab" id="mtab-nutri" onclick="switchMenuTab('nutri')">📊 Nutrition</div>
       </div>
@@ -1603,9 +1604,12 @@ body.offline-mode .offline-banner{display:block;}
         <div id="recipesGrid"></div>
       </div>
 
-      <!-- ═══ TAB: EXPLORER (Spoonacular) ═══ -->
-      <!-- ═══ TAB: FRIGO → MEALDB ═══ -->
       <!-- ═══ TAB: FAVORIS ═══ -->
+      <div id="menuPanelFavs" style="display:none;">
+        <div id="favsGrid"></div>
+      </div>
+
+      <!-- ═══ TAB: EXPLORER (Claude IA + MealDB) ═══ -->
       <div id="menuPanelSearch" style="display:none;">
         <div style="display:flex;gap:8px;margin-bottom:12px;background:var(--bg2);border-radius:var(--rs);padding:3px;">
           <button id="exptab-ai" onclick="switchExplTab('ai')" style="flex:1;padding:8px 4px;border-radius:var(--rs);border:none;font-size:.76rem;font-weight:800;cursor:pointer;background:var(--ac);color:#fff;">🤖 Claude IA</button>
@@ -1813,19 +1817,19 @@ body.offline-mode .offline-banner{display:block;}
 
     <!-- Ingrédients -->
     <div style="font-weight:800;font-size:.82rem;margin-bottom:8px;">🛒 Ingrédients</div>
-    <div id="crIngrList" style="margin-bottom:8px;"></div>
+    <div id="_old_crIngrList" style="margin-bottom:8px;"></div>
     <div style="display:flex;gap:6px;margin-bottom:12px;">
-      <input class="inp" id="crIngrName" placeholder="Ingrédient..." style="flex:2;">
-      <input class="inp" id="crIngrQty" placeholder="Qté" style="flex:.8;" inputmode="decimal">
-      <input class="inp" id="crIngrUnit" placeholder="g/mL" style="flex:.8;">
+      <input class="inp" id="_old_crIngrName" placeholder="Ingrédient..." style="flex:2;">
+      <input class="inp" id="_old_crIngrQty" placeholder="Qté" style="flex:.8;" inputmode="decimal">
+      <input class="inp" id="_old_crIngrUnit" placeholder="g/mL" style="flex:.8;">
       <button class="btn sm acc" onclick="crAddIngr()">+</button>
     </div>
 
     <!-- Étapes -->
     <div style="font-weight:800;font-size:.82rem;margin-bottom:8px;">📝 Étapes</div>
-    <div id="crStepList" style="margin-bottom:8px;"></div>
+    <div id="_old_crStepList" style="margin-bottom:8px;"></div>
     <div style="display:flex;gap:6px;margin-bottom:12px;">
-      <input class="inp" id="crStepInput" placeholder="Étape de préparation..." style="flex:1;">
+      <input class="inp" id="_old_crStepInput" placeholder="Étape de préparation..." style="flex:1;">
       <button class="btn sm acc" onclick="crAddStep()">+</button>
     </div>
 
@@ -2588,7 +2592,7 @@ async function startApp(user) {
   // Load user-specific profile from Firestore
   await loadUserProfile();
 
-  // Check if user belongs to a household (from Firestore users doc)
+  // Resolve houseId BEFORE subscribing so we listen to the correct document
   try {
     if(db) {
       const userDoc = await db.collection('users').doc(user.uid).get();
@@ -2600,8 +2604,14 @@ async function startApp(user) {
     }
   } catch(e) {}
 
-  // Start real-time listener
+  // Start real-time listener (now that houseId is resolved)
   subscribeToHousehold();
+
+  // Also do a one-shot load to get data immediately (before first snapshot fires)
+  await loadFromFirestore();
+
+  // Sync shared recipe DB from Firestore
+  syncGlobalRecipesFromFirestore().catch(()=>{});
   updateFoyerUI();
   fillProfileForm();
   updateMenuProfileCard();
@@ -3045,8 +3055,12 @@ function _doSwitchTab(tab) {
   const view = document.getElementById(viewId);
   if(view) {
     view.classList.add('on');
+    // Reset scroll AFTER render (requestAnimationFrame ensures DOM is painted)
     const vb = view.querySelector('.vb');
-    if(vb) vb.scrollTop = 0;
+    if(vb) {
+      vb.scrollTop = 0;
+      requestAnimationFrame(() => { vb.scrollTop = 0; });
+    }
   }
   if(tab === 'menu') { initMenuModule(); }
 }
@@ -4510,19 +4524,17 @@ function initMenuModule() {
 // ── Sous-onglets ────────────────────────────────────────────
 function switchMenuTab(tab) {
   _menuTab = tab;
-  // All tabs including new mealdb and favorites
-  ['week','recipes','search','nutri'].forEach(t => {
+  ['week','recipes','favs','search','nutri'].forEach(t => {
     const btn = document.getElementById('mtab-'+t);
-    // Panel ID: capitalize first letter
     const panelId = 'menuPanel' + t.charAt(0).toUpperCase() + t.slice(1);
     const panel = document.getElementById(panelId);
     if(btn) btn.classList.toggle('on', t===tab);
     if(panel) panel.style.display = t===tab ? 'block' : 'none';
   });
-  if(tab==='week')      { try { renderWeek(); } catch(e){} }
-  if(tab==='nutri')     { try { renderNutriTab(); } catch(e){} }
-  if(tab==='recipes')   { try { renderRecipesGrid(); } catch(e){} }
-  if(tab==='mealdb')    { try { renderMealDBFridgeStatus(); } catch(e){} }
+  if(tab==='week')    { try { renderWeek(); } catch(e){} }
+  if(tab==='nutri')   { try { renderNutriTab(); } catch(e){} }
+  if(tab==='recipes') { try { renderRecipesGrid(); } catch(e){} }
+  if(tab==='favs')    { try { renderFavsGrid(); } catch(e){} }
   if(tab==='search') {
     const inp = document.getElementById('spoonSearchInp');
     if(inp) setTimeout(()=>inp.focus(), 100);
@@ -7786,33 +7798,50 @@ function renderNutriPanel() {
 
 
 
-function renderNutriWeekChart(target) {
-  const chart = document.getElementById('nutriWeekChart');
+function renderNutriWeek(target) {
+  // Render the weekly calorie bar chart into #nutriWeekCard
+  const chart = document.getElementById('nutriWeekCard') || document.getElementById('nutriWeekChart');
   if(!chart) return;
   const DAYS_S = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
   const kcals  = Array.from({length:7},(_,i)=>state.weekMenu[i+1]?.nutri?.kcal||0);
   const tgt    = target||2000;
-  const maxV   = Math.max(tgt*1.3,...kcals,100);
-  const W=chart.offsetWidth||320, H=90, pad=8, barW=Math.floor((W-pad*2)/7);
-  let svg=`<svg width="100%" height="${H+34}" viewBox="0 0 ${W} ${H+34}" style="overflow:visible;">`;
-  const tgtY=H-Math.round(tgt/maxV*H);
-  svg+=`<line x1="${pad}" y1="${tgtY}" x2="${W-pad}" y2="${tgtY}" stroke="var(--tx3)" stroke-width="1" stroke-dasharray="5,4" opacity=".6"/>`;
-  svg+=`<text x="${W-pad}" y="${tgtY-4}" text-anchor="end" font-size="9" fill="var(--tx3)" opacity=".7">${tgt}</text>`;
-  kcals.forEach((v,i)=>{
-    const x=pad+i*barW+barW*.12, bw=barW*.76;
-    const bh=v?Math.max(5,Math.round(v/maxV*H)):4, y=H-bh;
-    const col=!v?'var(--bg2)':Math.abs(v-tgt)<tgt*.1?'#2ecc71':v>tgt*1.15?'#e74c3c':'#f39c12';
-    svg+=`<rect x="${x}" y="${y}" width="${bw}" height="${bh}" rx="4" fill="${col}" opacity="${v?"1":".35"}">
-      <animate attributeName="height" from="0" to="${bh}" dur=".5s" begin="${i*.06}s" fill="freeze"/>
-      <animate attributeName="y" from="${H}" to="${y}" dur=".5s" begin="${i*.06}s" fill="freeze"/>
+  const hasData = kcals.some(v => v > 0);
+
+  if(!hasData) {
+    chart.innerHTML = '<div style="text-align:center;padding:20px;color:var(--tx2);font-size:.78rem;">'
+      + '<div style="font-size:1.5rem;margin-bottom:6px;">📅</div>'
+      + '<div>Générez ou créez un menu dans l\'onglet <strong>Semaine</strong> pour voir votre bilan calorique.</div>'
+      + '<button class="btn acc sm" onclick="switchMenuTab(\'week\')" style="margin-top:10px;padding:8px 16px;border-radius:var(--rs);font-weight:800;">📅 Voir la semaine</button>'
+      + '</div>';
+    return;
+  }
+
+  const maxV = Math.max(tgt * 1.3, ...kcals, 100);
+  const W = chart.offsetWidth || 320, H = 100, pad = 8;
+  const barW = Math.floor((W - pad * 2) / 7);
+  let svg = `<svg width="100%" height="${H+38}" viewBox="0 0 ${W} ${H+38}" style="overflow:visible;">`;
+  const tgtY = H - Math.round(tgt / maxV * H);
+  svg += `<line x1="${pad}" y1="${tgtY}" x2="${W-pad}" y2="${tgtY}" stroke="var(--ac)" stroke-width="1.5" stroke-dasharray="5,4" opacity=".7"/>`;
+  svg += `<text x="${W-pad}" y="${tgtY-5}" text-anchor="end" font-size="9" fill="var(--ac)" font-weight="700" opacity=".8">${tgt} kcal</text>`;
+  kcals.forEach((v, i) => {
+    const x = pad + i * barW + barW * .12, bw = barW * .76;
+    const bh = v ? Math.max(6, Math.round(v / maxV * H)) : 4;
+    const y = H - bh;
+    const col = !v ? 'var(--bg2)' : Math.abs(v - tgt) < tgt * .1 ? '#2ecc71' : v > tgt * 1.15 ? '#e74c3c' : '#f39c12';
+    svg += `<rect x="${x}" y="${y}" width="${bw}" height="${bh}" rx="5" fill="${col}" opacity="${v ? '1' : '.3'}">
+      <animate attributeName="height" from="0" to="${bh}" dur=".45s" begin="${i*.07}s" fill="freeze"/>
+      <animate attributeName="y" from="${H}" to="${y}" dur=".45s" begin="${i*.07}s" fill="freeze"/>
     </rect>`;
-    if(v) svg+=`<text x="${x+bw/2}" y="${y-4}" text-anchor="middle" font-size="9" fill="var(--tx2)" font-weight="700">${v}</text>`;
-    svg+=`<text x="${x+bw/2}" y="${H+13}" text-anchor="middle" font-size="10" fill="${v?"var(--tx)":"var(--tx3)"}" font-weight="${v?"700":"400"}">${DAYS_S[i]}</text>`;
+    if(v) svg += `<text x="${x+bw/2}" y="${y-5}" text-anchor="middle" font-size="9" fill="var(--tx2)" font-weight="700">${v}</text>`;
+    svg += `<text x="${x+bw/2}" y="${H+15}" text-anchor="middle" font-size="10" fill="${v?'var(--tx)':'var(--tx3)'}" font-weight="${v?'700':'400'}">${DAYS_S[i]}</text>`;
   });
-  svg+='</svg>';
-  chart.innerHTML=svg;
-  chart.style.height=(H+34)+'px';
+  svg += '</svg>';
+  chart.innerHTML = svg;
+  chart.style.height = (H + 38) + 'px';
 }
+
+function renderNutriWeekChart(target) { renderNutriWeek(target); } // alias
+
 
 
 function renderMacroRings(macros) {
@@ -9096,19 +9125,29 @@ function toggleMenuDiet(el) {
 
 // ── Saison ─────────────────────────────────────────────────
 function renderSeason() {
-  const grid=document.getElementById('seasonGrid');
-  const header=document.getElementById('seasonHeader');
-  if(!grid) return;
-  const month=new Date().getMonth()+1;
-  const items=SEASONAL[month]||[];
-  const monthNames=['','Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
-  if(header) header.textContent=monthNames[month];
-  grid.innerHTML=items.map(v=>`
+  const month = new Date().getMonth() + 1;
+  const items = SEASONAL[month] || [];
+  const monthNames = ['','Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
+  const monthLabel = monthNames[month];
+
+  const html = items.map(v => `
     <div class="season-item" onclick="addItemByName('${v.n}')">
       <span class="season-item-em">${v.em}</span>
       <div class="season-item-nm">${v.n}</div>
-      ${v.t?`<div class="season-item-type">${v.t}</div>`:''}
+      ${v.t ? `<div class="season-item-type">${v.t}</div>` : ''}
     </div>`).join('');
+
+  // Render in all possible containers (different views use different IDs)
+  [
+    ['seasonGrid', 'seasonHeader'],
+    ['seasonNutriGrid', 'seasonNutriHeader'],
+  ].forEach(([gridId, headerId]) => {
+    const grid = document.getElementById(gridId);
+    const header = document.getElementById(headerId);
+    if(grid) grid.innerHTML = html;
+    if(header && headerId === 'seasonHeader') header.textContent = monthLabel;
+    if(header && headerId === 'seasonNutriHeader') header.textContent = '🌱 Produits de saison — ' + monthLabel;
+  });
 }
 
 // ── Recettes ─────────────────────────────────────────────────
@@ -9315,7 +9354,36 @@ function renderRecipesGrid() {
   panel.innerHTML = '<div style="padding:0;">' + html + '</div>';
 }
 
-function toggleFavoritesView() {
+function renderFavsGrid() {
+  const panel = document.getElementById('menuPanelFavs');
+  if(!panel) return;
+  const bookmarks = state.recipeBookmarks || [];
+  if(!bookmarks.length) {
+    panel.innerHTML = `<div style="text-align:center;padding:40px 20px;">
+      <div style="font-size:3rem;margin-bottom:12px;">⭐</div>
+      <div style="font-weight:900;font-size:.95rem;margin-bottom:6px;">Aucun favori</div>
+      <div style="font-size:.78rem;color:var(--tx2);">Appuyez sur ☆ sur une recette pour l'ajouter à vos favoris.</div>
+      <button class="btn acc" onclick="switchMenuTab('search')" style="margin-top:16px;padding:11px 20px;border-radius:var(--rs);font-weight:800;">🔍 Explorer les recettes</button>
+    </div>`;
+    return;
+  }
+  panel.innerHTML = `<div style="font-size:.68rem;font-weight:800;color:var(--tx3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:12px;">⭐ Mes favoris (${bookmarks.length})</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+      ${bookmarks.map(r => `<div style="background:var(--bg);border-radius:var(--rs);box-shadow:var(--so);overflow:hidden;position:relative;">
+        <div onclick="openRecipeDetail('${r.id||r.name}')" style="cursor:pointer;">
+          ${r.photo?`<img src="${r.photo}" style="width:100%;height:90px;object-fit:cover;" onerror="this.style.display='none'" loading="lazy">`
+                   :`<div style="height:72px;background:var(--bg2);display:flex;align-items:center;justify-content:center;font-size:2rem;">${r.emoji||'🍳'}</div>`}
+          <div style="padding:8px 8px 4px;">
+            <div style="font-size:.78rem;font-weight:800;line-height:1.3;">${r.name}</div>
+            <div style="font-size:.62rem;color:var(--tx2);margin-top:2px;">${r.time?r.time+'min · ':''}${r.kcal?r.kcal+'kcal':''}</div>
+          </div>
+        </div>
+        <button onclick="toggleBookmark('${r.id||r.name}');renderFavsGrid();" style="position:absolute;top:6px;right:6px;background:rgba(246,211,101,.3);border:none;border-radius:50%;width:26px;height:26px;cursor:pointer;font-size:.8rem;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px);">⭐</button>
+      </div>`).join('')}
+    </div>`;
+}
+
+
   const sec = document.getElementById('favoritesSection');
   if(!sec) return;
   const isHidden = sec.style.display === 'none';
@@ -9755,10 +9823,9 @@ function renderNutriTab() {
 
 function renderSportPieChart(p, totalCals) {
   const el = document.getElementById('sportPieChart');
-  if (!el) return;
-
+  if(!el) return;
   const sport = getSportBurnSummary(p);
-  if (!sport || !totalCals) {
+  if(!sport || !totalCals) {
     el.innerHTML = '<div style="text-align:center;padding:16px;color:var(--tx2);font-size:.78rem;">Configurez votre profil et votre activité sportive pour voir ce graphique.</div>';
     return;
   }
@@ -9774,104 +9841,72 @@ function renderSportPieChart(p, totalCals) {
   ].filter(s => s.val > 0);
 
   const total = segments.reduce((s, seg) => s + seg.val, 0);
-  if (!total) { el.innerHTML = ''; return; }
+  if(!total) { el.innerHTML = ''; return; }
 
+  // SVG donut
   const R = 52, CX = 64, CY = 64, SW = 20;
   const CIRC = 2 * Math.PI * R;
   let offset = CIRC / 4;
-
   const paths = segments.map(seg => {
     const pct = seg.val / total;
     const dashlen = pct * CIRC;
-
-    const path = `<circle cx="${CX}" cy="${CY}" r="${R}" fill="none"
-      stroke="${seg.color}" stroke-width="${SW}"
+    const path = `<circle cx="${CX}" cy="${CY}" r="${R}" fill="none" stroke="${seg.color}" stroke-width="${SW}"
       stroke-dasharray="${dashlen.toFixed(2)} ${(CIRC - dashlen).toFixed(2)}"
-      stroke-dashoffset="${offset.toFixed(2)}"
-      stroke-linecap="butt"/>`;
-
+      stroke-dashoffset="${offset.toFixed(2)}" stroke-linecap="butt"/>`;
     offset -= dashlen;
     return path;
   }).join('');
 
   const legend = segments.map(seg => {
-    const pct = Math.round((seg.val / total) * 100);
+    const pct = Math.round(seg.val / total * 100);
     return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-      <div style="width:12px;height:12px;border-radius:3px;background:${seg.color};"></div>
+      <div style="width:12px;height:12px;border-radius:3px;background:${seg.color};flex-shrink:0;"></div>
       <div style="flex:1;font-size:.74rem;font-weight:700;">${seg.icon} ${seg.label}</div>
       <div style="font-size:.82rem;font-weight:900;color:${seg.color};">${seg.val} kcal</div>
       <div style="font-size:.62rem;color:var(--tx3);min-width:28px;text-align:right;">${pct}%</div>
     </div>`;
   }).join('');
 
-  el.innerHTML = `
-    <div style="display:flex;align-items:center;gap:18px;">
-      <svg width="128" height="128" viewBox="0 0 128 128">
-        <circle cx="${CX}" cy="${CY}" r="${R}" fill="none" stroke="var(--bg2)" stroke-width="${SW}"/>
-        ${paths}
-        <text x="${CX}" y="${CY-6}" text-anchor="middle" font-size="13" font-weight="900" fill="var(--tx)">
-          ${totalCals}
-        </text>
-        <text x="${CX}" y="${CY+10}" text-anchor="middle" font-size="9" fill="var(--tx2)">
-          kcal/jour
-        </text>
-      </svg>
-
-      <div style="flex:1;">
-        ${legend}
-        <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--bg2);">
-          <div style="font-size:.68rem;color:var(--tx3);">
-            Sport pratiqué: <strong style="color:var(--tx);">${p.sport || 'Non défini'}</strong>
-          </div>
-          <div style="font-size:.68rem;color:var(--tx3);">
-            Niveau: <strong style="color:var(--tl);">${sport.label}</strong>
-          </div>
-        </div>
+  el.innerHTML = `<div style="display:flex;align-items:center;gap:18px;">
+    <svg width="128" height="128" viewBox="0 0 128 128" style="flex-shrink:0;">
+      <circle cx="${CX}" cy="${CY}" r="${R}" fill="none" stroke="var(--bg2)" stroke-width="${SW}"/>
+      ${paths}
+      <text x="${CX}" y="${CY-6}" text-anchor="middle" font-size="13" font-weight="900" fill="var(--tx)">${totalCals}</text>
+      <text x="${CX}" y="${CY+10}" text-anchor="middle" font-size="9" fill="var(--tx2)">kcal/jour</text>
+    </svg>
+    <div style="flex:1;">${legend}
+      <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--bg2);">
+        <div style="font-size:.68rem;color:var(--tx3);">Sport pratiqué: <strong style="color:var(--tx);">${p.sport||'Non défini'}</strong></div>
+        <div style="font-size:.68rem;color:var(--tx3);">Niveau: <strong style="color:var(--tl);">${sport.label}</strong></div>
       </div>
     </div>
-  `;
+  </div>`;
 }
 
 
-/* =======================
-   ⚠️ PARTIE CORRIGÉE
-   (à mettre dans une fonction)
-   ======================= */
-
-function renderNutriWeek() {
-  const card = document.getElementById('nutriWeekCard');
-  if (!card) return;
-
-  if (!Object.keys(state.weekMenu).length) {
-    card.innerHTML = `<div style="text-align:center;padding:20px;color:var(--tx2);font-size:.82rem;">Générez un menu pour voir le bilan nutritionnel</div>`;
+  const card=document.getElementById('nutriWeekCard');
+  if(!card) return;
+  if(!Object.keys(state.weekMenu).length) {
+    card.innerHTML=`<div style="text-align:center;padding:20px;color:var(--tx2);font-size:.82rem;">Générez un menu pour voir le bilan nutritionnel</div>`;
     return;
   }
-
-  card.innerHTML = DAYS.map((d, i) => {
-    const dn = i + 1;
-    const menu = state.weekMenu[dn];
-    const kcal = menu?.nutri?.kcal || 0;
-    const pct = calTarget && kcal ? Math.min(100, Math.round(kcal / calTarget * 100)) : 0;
-
-    const color =
-      pct >= 85 && pct <= 105 ? 'var(--gn)' :
-      pct > 110 ? 'var(--rd)' :
-      'var(--yl)';
-
+  card.innerHTML=DAYS.map((d,i)=>{
+    const dn=i+1;
+    const menu=state.weekMenu[dn];
+    const kcal=menu?.nutri?.kcal||0;
+    const pct=calTarget&&kcal?Math.min(100,Math.round(kcal/calTarget*100)):0;
+    const color=pct>=85&&pct<=105?'var(--gn)':pct>110?'var(--rd)':'var(--yl)';
     return `<div class="nutri-week-row">
       <div class="nutri-week-day">${d}</div>
-      <div class="nutri-week-bar-wrap">
-        <div class="nutri-week-bar">
-          <div class="nutri-week-bar-fill" style="width:${pct}%;background:${color};"></div>
-        </div>
-      </div>
-      <div class="nutri-week-kcal">${kcal ? kcal + ' kcal' : '—'}</div>
-      <span style="font-size:.7rem;margin-left:4px;">
-        ${pct >= 85 && pct <= 105 ? '✅' : pct > 110 ? '⚠️' : kcal ? '🔵' : '➖'}
-      </span>
+      <div class="nutri-week-bar-wrap"><div class="nutri-week-bar">
+        <div class="nutri-week-bar-fill" style="width:${pct}%;background:${color};"></div>
+      </div></div>
+      <div class="nutri-week-kcal">${kcal?kcal+' kcal':'—'}</div>
+      <span style="font-size:.7rem;margin-left:4px;">${pct>=85&&pct<=105?'✅':pct>110?'⚠️':kcal?"🔵":"➖"}</span>
     </div>`;
   }).join('');
 }
+
 async function generateNutriAdvice() {
   const zone=document.getElementById('nutriAdviceZone');
   if(!zone) return;
@@ -10827,11 +10862,6 @@ function scanFridgeWithPhoto() {
 }
 
 async function _runFridgeScan(file) {
-  // Show scan module if we're in frigo view
-  const resultsZone = document.getElementById('fridgeScanResults');
-  const statsZone   = document.getElementById('fridgeScanStats');
-
-  // Show a loading overlay
   const loadingOv = document.createElement('div');
   loadingOv.id = '_fridgeScanLoading';
   loadingOv.style.cssText = 'position:fixed;inset:0;z-index:8000;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;';
@@ -10841,7 +10871,6 @@ async function _runFridgeScan(file) {
     <div style="color:rgba(255,255,255,.7);font-size:.8rem;" id="_fridgeScanStatus">Envoi de la photo à l'IA</div>
   `;
   document.body.appendChild(loadingOv);
-
   const setStatus = msg => { const el=document.getElementById('_fridgeScanStatus'); if(el) el.textContent=msg; };
 
   try {
@@ -10853,58 +10882,61 @@ async function _runFridgeScan(file) {
       r.readAsDataURL(file);
     });
 
-    setStatus('Identification des aliments…');
+    setStatus('Identification des aliments par Gemini Vision…');
 
-    // Call Anthropic API
-    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+    // Use /api/gemini-vision (Edge Function with GEMINI_API_KEY)
+    const resp = await fetch('/api/gemini-vision', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 800,
-        messages: [{
-          role: 'user',
-          content: [
-            {
-              type: 'image',
-              source: { type: 'base64', media_type: file.type || 'image/jpeg', data: b64 }
-            },
-            {
-              type: 'text',
-              text: 'Tu es un expert en identification des aliments. Analyse cette photo et liste TOUS les aliments visibles. Réponds UNIQUEMENT en JSON valide, sans texte autour:\n{"aliments":[{"nom":"Tomates","emoji":"🍅","quantite":"6","categorie":"légumes"},...]}\nSois précis et exhaustif. Inclus toutes les denrées alimentaires visibles (légumes, fruits, viandes, produits laitiers, boissons, condiments, etc.). Maximum 20 aliments.'
-            }
-          ]
-        }]
+        imageBase64: b64,
+        mimeType: file.type || 'image/jpeg',
+        prompt: `Analyse cette photo de frigo ou d'aliments. Liste TOUS les aliments visibles.
+Réponds UNIQUEMENT en JSON valide sans balises markdown:
+{"aliments":[{"nom":"Lait","emoji":"🥛","quantite":"1 litre","categorie":"laitage"},{"nom":"Tomates","emoji":"🍅","quantite":"4","categorie":"légumes"}]}
+Maximum 20 aliments. Sois exhaustif: légumes, fruits, viandes, laitages, boissons, condiments, restes...`
       })
     });
 
+    if(!resp.ok) {
+      const errText = await resp.text().catch(()=>'');
+      throw new Error('Erreur serveur ' + resp.status + ' — ' + errText.slice(0, 150));
+    }
+
     const data = await resp.json();
-    const text = (data.content || []).find(c => c.type === 'text')?.text || '';
-    let parsed = { aliments: [] };
+    // gemini-vision returns { text, raw }
+    let rawText = data.text || data.raw?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    if(!rawText) throw new Error('Réponse Gemini vide. Vérifiez GEMINI_API_KEY dans Vercel → Settings → Environment Variables.');
+
+    let aliments = [];
     try {
-      const clean = text.replace(/```json|```/g, '').trim();
-      parsed = JSON.parse(clean);
+      const clean = rawText.replace(/```json|```/g, '').trim();
+      const parsed = JSON.parse(clean);
+      // Handle both {aliments:[...]} and {items:[...]} formats
+      aliments = parsed.aliments || parsed.items?.map(i => ({
+        nom: i.name, emoji: i.emoji, quantite: i.qty, categorie: ''
+      })) || [];
     } catch(e) {
-      // Try to extract JSON from text
-      const match = text.match(/\{[\s\S]*\}/);
-      if(match) parsed = JSON.parse(match[0]);
+      const match = rawText.match(/\{[\s\S]*\}/);
+      if(match) {
+        const parsed = JSON.parse(match[0]);
+        aliments = parsed.aliments || parsed.items?.map(i => ({
+          nom: i.name, emoji: i.emoji, quantite: i.qty, categorie: ''
+        })) || [];
+      }
     }
 
     loadingOv.remove();
-
-    const aliments = parsed.aliments || [];
     if(!aliments.length) {
-      showToast('ℹ️', 'Aucun aliment', 'Aucun aliment détecté dans cette photo. Réessayez avec une meilleure photo.');
+      showToast('ℹ️', 'Aucun aliment détecté', 'Réessayez avec une photo plus nette et mieux éclairée.');
       return;
     }
-
-    setStatus('');
     _showFridgeScanResults(aliments);
 
   } catch(e) {
     loadingOv.remove();
     console.error('Fridge scan error:', e);
-    showToast('❌', 'Erreur', 'Impossible d\'analyser la photo. Vérifiez votre connexion.');
+    showToast('❌', 'Erreur Gemini Vision', e.message || 'Vérifiez GEMINI_API_KEY dans Vercel.');
   }
 }
 

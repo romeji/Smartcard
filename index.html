@@ -10,37 +10,112 @@
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 44 44'%3E%3Crect width='44' height='44' rx='10' fill='%23ff6b6b'/%3E%3Cpath d='M7 11h5l6 17h11l4-11H13' stroke='white' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round' fill='none'/%3E%3Ccircle cx='17' cy='33' r='2.5' fill='white'/%3E%3Ccircle cx='28' cy='33' r='2.5' fill='white'/%3E%3C/svg%3E">
 <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'%3E%3Crect width='180' height='180' rx='40' fill='%23ff6b6b'/%3E%3Cpath d='M30 45h20l24 69h44l16-44H52' stroke='white' stroke-width='10' stroke-linecap='round' stroke-linejoin='round' fill='none'/%3E%3Ccircle cx='70' cy='135' r='10' fill='white'/%3E%3Ccircle cx='114' cy='135' r='10' fill='white'/%3E%3C/svg%3E">
 <script>
-(function(){
-  function buildIcon(color){
+(function () {
+
+  function buildIcon(color) {
     return "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'%3E%3Crect width='180' height='180' rx='40' fill='" + encodeURIComponent(color) + "'/%3E%3Cpath d='M24 44h24l28 70h48l20-50H48' stroke='white' stroke-width='12' stroke-linecap='round' stroke-linejoin='round' fill='none'/%3E%3Ccircle cx='71' cy='138' r='12' fill='white'/%3E%3Ccircle cx='118' cy='138' r='12' fill='white'/%3E%3C/svg%3E";
   }
-  try{
+
+  try {
     const savedTheme = localStorage.getItem('sc_theme');
-    if(savedTheme && savedTheme !== 'light') document.documentElement.dataset.theme = savedTheme;
-    const darkThemes = ['dark','anthracite'];
-    const isDark = darkThemes.includes(savedTheme) || (!savedTheme && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
-    const accentMap = {dark:'#ff8e53',anthracite:'#6c8ebf',rouge:'#e74c3c',violet:'#8e44ad',ocean:'#2980b9',green:'#27ae60',};
+
+    if (savedTheme && savedTheme !== 'light') {
+      document.documentElement.dataset.theme = savedTheme;
+    }
+
+    const darkThemes = ['dark', 'anthracite'];
+
+    const isDark =
+      darkThemes.includes(savedTheme) ||
+      (!savedTheme &&
+        window.matchMedia &&
+        window.matchMedia('(prefers-color-scheme: dark)').matches);
+
+    const accentMap = {
+      dark: '#ff8e53',
+      anthracite: '#6c8ebf',
+      rouge: '#e74c3c',
+      violet: '#8e44ad',
+      ocean: '#2980b9',
+      green: '#27ae60'
+    };
+
     const iconColor = accentMap[savedTheme] || '#ff6b6b';
     const themeColor = isDark ? '#14161a' : iconColor;
     const icon = buildIcon(iconColor);
-    // Update existing favicon
+
     const existing = document.querySelector('link[rel="icon"]');
-    if(existing) existing.href = icon;
+    if (existing) existing.href = icon;
+
     const apple = document.querySelector('link[rel="apple-touch-icon"]');
-    if(apple) apple.href = icon;
-    // Update theme-color meta
+    if (apple) apple.href = icon;
+
     const tc = document.querySelector('meta[name="theme-color"]');
-    if(tc) tc.content = themeColor;
-    // Build manifest
-    const m = {name:'SmartCard',short_name:'SmartCard',start_url:'.',display:'standalone',
-      background_color: isDark ? '#1a1225' : '#fff6f9',theme_color: themeColor,
-      icons:[{src:icon,sizes:'180x180',type:'image/svg+xml',purpose:'any maskable'}]};
-    const b = new Blob([JSON.stringify(m)],{type:'application/manifest+json'});
-    const l = document.createElement('link'); l.rel='manifest'; l.href=URL.createObjectURL(b);
+    if (tc) tc.content = themeColor;
+
+    const m = {
+      name: 'SmartCard',
+      short_name: 'SmartCard',
+      start_url: '.',
+      display: 'standalone',
+      background_color: isDark ? '#1a1225' : '#fff6f9',
+      theme_color: themeColor,
+      icons: [
+        {
+          src: icon,
+          sizes: '180x180',
+          type: 'image/svg+xml',
+          purpose: 'any maskable'
+        }
+      ]
+    };
+
+    const b = new Blob([JSON.stringify(m)], {
+      type: 'application/manifest+json'
+    });
+
+    const l = document.createElement('link');
+    l.rel = 'manifest';
+    l.href = URL.createObjectURL(b);
     document.head.appendChild(l);
-  } catch(e) {}
-  // Register SW for offline mode
-  if('serviceWorker' in navigator){try{const swBlob=new Blob([`const CACHE='sc-v1';self.addEventListener('install',e=>self.skipWaiting());self.addEventListener('activate',e=>e.waitUntil(caches.keys().then(k=>Promise.all(k.filter(n=>n!==CACHE).map(n=>caches.delete(n)))).then(()=>self.clients.claim())));self.addEventListener('fetch',e=>{const u=new URL(e.request.url);if(u.hostname.includes('firebase')||u.hostname.includes('anthropic')||u.hostname.includes('googleapis')||u.hostname.includes('themealdb')||u.hostname.includes('openfoodfacts')||u.hostname.includes('gstatic'))return;if(e.request.mode==='navigate'){e.respondWith(fetch(e.request).then(r=>{const c=r.clone();caches.open(CACHE).then(cache=>cache.put(e.request,c));return r;}).catch(()=>caches.match(e.request)));return;}if(e.request.destination==='image'){e.respondWith(caches.match(e.request).then(c=>c||fetch(e.request).then(r=>{if(r.ok){const cl=r.clone();caches.open(CACHE).then(cache=>cache.put(e.request,cl));}return r;}).catch(()=>new Response('',{status:404}))));return;}e.respondWith(fetch(e.request).then(r=>{if(r.ok&&e.request.method==='GET'){const c=r.clone();caches.open(CACHE).then(cache=>cache.put(e.request,c));}return r;}).catch(()=>caches.match(e.request)));});`],{type:'application/javascript'});const swUrl=URL.createObjectURL(swBlob);navigator.serviceWorker.register(swUrl,{scope:'/'}).then(reg=>{window._swReg=reg;console.log('[SW] ok');}).catch(e=>console.warn('[SW]',e));window.addEventListener('online',()=>{document.body.classList.remove('offline-mode');if(typeof showToast==='function')showToast('✅','En ligne','Connexion rétablie');});window.addEventListener('offline',()=>{document.body.classList.add('offline-mode');if(typeof showToast==='function')showToast('📵','Hors ligne','Mode local activé');});if(!navigator.onLine)document.body.classList.add('offline-mode');}catch(e){console.warn('[SW]',e);}}
+
+  } catch (e) {
+    console.warn('[APP INIT]', e);
+  }
+
+  // ✅ SERVICE WORKER CLEAN (IMPORTANT)
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/service-worker.js')
+        .then((reg) => {
+          window._swReg = reg;
+          console.log('[SW] registered');
+        })
+        .catch((err) => {
+          console.warn('[SW] error', err);
+        });
+    });
+  }
+
+  // Online / Offline UI
+  window.addEventListener('online', () => {
+    document.body.classList.remove('offline-mode');
+    if (typeof showToast === 'function') {
+      showToast('✅', 'En ligne', 'Connexion rétablie');
+    }
+  });
+
+  window.addEventListener('offline', () => {
+    document.body.classList.add('offline-mode');
+    if (typeof showToast === 'function') {
+      showToast('📵', 'Hors ligne', 'Mode local activé');
+    }
+  });
+
+  if (!navigator.onLine) {
+    document.body.classList.add('offline-mode');
+  }
+
 })();
 </script>
 <title>SmartCard 🛒</title>

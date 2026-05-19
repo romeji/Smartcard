@@ -188,13 +188,16 @@
 /* green tab icons use --ac naturally */
 
 [data-theme=dark]{
---bg:#22243a;--bg2:#2c2f4a;--bg3:#1a1c30;
---so:6px 6px 14px rgba(0,0,0,.55),-4px -4px 10px rgba(255,255,255,.05);
---si:inset 4px 4px 9px rgba(0,0,0,.45),inset -4px -4px 9px rgba(255,255,255,.05);
---ss:inset 2px 2px 5px rgba(0,0,0,.4),inset -2px -2px 5px rgba(255,255,255,.05);
---sf:8px 8px 20px rgba(0,0,0,.55),-5px -5px 14px rgba(255,255,255,.04);
---sp:inset 3px 3px 8px rgba(0,0,0,.5),inset -3px -3px 8px rgba(255,255,255,.04);
---tx:#eef0ff;--tx2:#a8aed4;--tx3:#5a6080;
+--bg:#1e2030;--bg2:#272a3d;--bg3:#16192a;
+--so:6px 6px 14px rgba(0,0,0,.6),-3px -3px 10px rgba(255,255,255,.04);
+--si:inset 4px 4px 9px rgba(0,0,0,.5),inset -4px -4px 9px rgba(255,255,255,.04);
+--ss:inset 2px 2px 5px rgba(0,0,0,.4),inset -2px -2px 5px rgba(255,255,255,.04);
+--sf:8px 8px 20px rgba(0,0,0,.6),-4px -4px 14px rgba(255,255,255,.03);
+--sp:inset 3px 3px 8px rgba(0,0,0,.55),inset -3px -3px 8px rgba(255,255,255,.03);
+--tx:#eef0ff;--tx2:#a0a8d4;--tx3:#555875;
+--ac:#ff8e53;--ac2:#ff6b6b;
+--grad:linear-gradient(135deg,#ff8e53,#ff6b6b);
+--grad2:linear-gradient(135deg,#ff6b9d,#ff8e53);
 }
 [data-theme=green]{
 --bg:#f0faf4;--bg2:#d8f3e3;--bg3:#e8f8ee;
@@ -466,9 +469,8 @@ svg{display:block;flex-shrink:0;}
 .hist-item{display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--bg2);font-size:.82rem;}
 .hist-item-em{font-size:1rem;}
 
-/* ══ AUTOCOMPLETE ══ */
 .ac-wrap{position:relative;flex:1;}
-.ac-list{position:fixed;z-index:9999;background:var(--bg);border-radius:var(--rs);box-shadow:0 12px 40px rgba(0,0,0,.25),0 2px 8px rgba(0,0,0,.12);max-height:220px;overflow-y:auto;display:none;}
+.ac-list{position:absolute;z-index:9999;background:var(--bg);border-radius:var(--rs);box-shadow:0 12px 40px rgba(0,0,0,.25),0 2px 8px rgba(0,0,0,.12);max-height:220px;overflow-y:auto;display:none;left:0;right:0;top:calc(100% + 4px);}
 .ac-item{display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;transition:background .12s;}
 .ac-item:active{background:var(--bg2);}
 .ac-item-em{font-size:1.2rem;flex-shrink:0;}
@@ -606,17 +608,20 @@ svg{display:block;flex-shrink:0;}
 .cr-step-row{display:flex;align-items:flex-start;gap:10px;padding:8px 10px;background:var(--bg2);border-radius:var(--rx);margin-bottom:5px;}
 .cr-step-num{width:20px;height:20px;border-radius:50%;background:var(--grad);color:#fff;font-size:.62rem;font-weight:900;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px;}
 .cr-step-txt{font-size:.8rem;flex:1;line-height:1.5;}
-/* Nutrition tab */
-.nutri-hero{background:var(--grad);border-radius:var(--r);padding:20px 16px;text-align:center;margin-bottom:14px;color:#fff;}
-.nutri-hero-val{font-size:2.4rem;font-weight:900;letter-spacing:-1px;}
-.nutri-hero-label{font-size:.78rem;opacity:.85;margin-top:2px;}
-.nutri-hero-sub{font-size:.68rem;opacity:.7;margin-top:6px;line-height:1.5;}
-.nutri-macros-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;}
-.nutri-macro-card{background:var(--bg);border-radius:var(--rs);box-shadow:var(--so);padding:14px 12px;text-align:center;}
-.nutri-macro-val{font-size:1.4rem;font-weight:900;}
+/* Nutrition tab enhanced */
+.nutri-hero{border-radius:var(--r);padding:22px 18px;text-align:center;margin-bottom:14px;color:#fff;position:relative;overflow:hidden;}
+.nutri-hero::before{content:'';position:absolute;top:-30px;right:-30px;width:120px;height:120px;border-radius:50%;background:rgba(255,255,255,.1);}
+.nutri-hero::after{content:'';position:absolute;bottom:-20px;left:-20px;width:80px;height:80px;border-radius:50%;background:rgba(255,255,255,.07);}
+.nutri-hero-val{font-size:2.8rem;font-weight:900;letter-spacing:-2px;position:relative;}
+.nutri-hero-label{font-size:.78rem;opacity:.85;margin-top:2px;position:relative;}
+.nutri-hero-sub{font-size:.68rem;opacity:.75;margin-top:8px;line-height:1.6;position:relative;}
+.nutri-macros-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;}
+.nutri-macro-card{background:var(--bg);border-radius:var(--rs);box-shadow:var(--so);padding:14px 12px;text-align:center;transition:transform .15s;}
+.nutri-macro-card:active{transform:scale(.97);}
+.nutri-macro-val{font-size:1.5rem;font-weight:900;}
 .nutri-macro-label{font-size:.6rem;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--tx3);margin-top:3px;}
 .nutri-macro-pct{font-size:.65rem;font-weight:700;margin-top:4px;}
-.nutri-macro-bar{height:4px;border-radius:var(--rp);background:var(--bg2);overflow:hidden;margin-top:6px;}
+.nutri-macro-bar{height:5px;border-radius:var(--rp);background:var(--bg2);overflow:hidden;margin-top:7px;}
 .nutri-macro-fill{height:100%;border-radius:var(--rp);transition:width .6s ease;}
 /* Week nutrition chart */
 .nutri-week-card{background:var(--bg);border-radius:var(--r);box-shadow:var(--so);padding:14px;}
@@ -1150,8 +1155,7 @@ body.offline-mode .offline-banner{display:block;}
               oninput="onSearchInput(this.value)" onkeydown="if(event.key==='Enter')addItemFromInput()">
             <div class="ac-list" id="acList" style="display:none;"></div>
           </div>
-          <button class="btn acc" onclick="addItemFromInput()">+</button>
-        </div>
+          <button class="btn acc" onclick="addItemFromInput()">+</button>        </div>
 
         <div class="cats" id="catChips">
           <div class="chip on" data-cat="all" onclick="filterCat(this)">Tout</div>
@@ -1308,15 +1312,16 @@ body.offline-mode .offline-banner{display:block;}
 
         </div>
 
-        <!-- ═══ MODULE FRIGO IA (Gemini Vision) ═══ -->
+        <!-- ═══ MODULE FRIGO IA (Anthropic Vision) ═══ -->
         <div id="scanModFridge" style="display:none;">
 
           <!-- Hero card -->
           <div style="background:var(--grad);border-radius:var(--r);padding:20px 18px;color:#fff;margin-bottom:16px;position:relative;overflow:hidden;">
             <div style="position:absolute;top:-20px;right:-20px;width:100px;height:100px;border-radius:50%;background:rgba(255,255,255,.1);"></div>
-            <div style="font-size:1.8rem;margin-bottom:8px;">📸</div>
-            <div style="font-weight:900;font-size:1.05rem;margin-bottom:6px;">Scanner mon frigo avec l'IA</div>
-            <div style="font-size:.78rem;opacity:.88;line-height:1.5;">Prenez une photo de votre frigo ou de vos aliments — Gemini Vision identifie automatiquement tout ce qu'il voit et l'ajoute à votre inventaire.</div>
+            <div style="position:absolute;bottom:-10px;left:-10px;width:60px;height:60px;border-radius:50%;background:rgba(255,255,255,.07);"></div>
+            <div style="font-size:1.8rem;margin-bottom:8px;">🧊</div>
+            <div style="font-weight:900;font-size:1.05rem;margin-bottom:6px;">Frigo IA — Scanner mes aliments</div>
+            <div style="font-size:.78rem;opacity:.88;line-height:1.5;">Photographiez votre frigo, vos courses ou vos aliments — l'IA identifie automatiquement ce qu'elle voit et vous propose de les ajouter à votre inventaire.</div>
           </div>
 
           <!-- Instructions -->
@@ -1325,16 +1330,16 @@ body.offline-mode .offline-banner{display:block;}
             <div style="font-size:.75rem;color:var(--tx2);line-height:1.7;">
               • <strong>Ouvrez la porte</strong> du frigo et reculez un peu pour tout voir<br>
               • <strong>Bonne lumière</strong> — la lumière du frigo suffit souvent<br>
-              • Vous pouvez aussi photographier <strong>une tablette ou vos courses</strong>
+              • Vous pouvez aussi photographier <strong>une tablette, vos courses ou un panier</strong>
             </div>
           </div>
 
           <!-- Bouton principal -->
           <div id="fridgeScanStartZone">
-            <div class="scan-c" onclick="scanFridgeWithPhoto()" style="margin-bottom:12px;">
+            <div class="scan-c" onclick="scanFridgeWithPhoto()" style="margin-bottom:12px;background:linear-gradient(135deg,rgba(0,210,198,.08),rgba(52,152,219,.08));border:1.5px solid rgba(0,210,198,.25);">
               <div class="scan-c-ic">📸</div>
-              <div class="scan-c-ti">Photographier mon frigo</div>
-              <div class="scan-c-su">Gemini Vision identifie tous les aliments visibles</div>
+              <div class="scan-c-ti">Photographier mes aliments</div>
+              <div class="scan-c-su">L'IA identifie tous les aliments et les ajoute un à un à votre frigo</div>
             </div>
           </div>
 
@@ -1350,8 +1355,6 @@ body.offline-mode .offline-banner{display:block;}
           </div>
 
         </div>
-
-          <!-- Historique des derniers scans -->
           <div id="barcodeHistory" style="display:none;">
             <div class="sechd" style="margin-bottom:8px;">
               <span class="sec-ti">Derniers scans</span>
@@ -1398,7 +1401,7 @@ body.offline-mode .offline-banner{display:block;}
             </div>
             <button class="btn ico voice-btn" onclick="toggleVoice('frigo')" title="Ajouter par la voix" style="padding:11px 12px;">🎤</button>
           <button class="btn acc3" onclick="addFridgeItem()" style="padding:11px 16px;font-weight:900;">＋</button>
-            <button class="btn" onclick="scanFridgeWithPhoto()" title="Scanner avec la caméra" style="padding:11px 12px;font-size:.9rem;flex-shrink:0;">📸</button>
+            <button class="btn acc" onclick="scanFridgeWithPhoto()" title="Scanner avec la caméra IA" style="padding:11px 12px;font-size:.9rem;flex-shrink:0;">📸</button>
           </div>
         </div>
 
@@ -1638,11 +1641,11 @@ body.offline-mode .offline-banner{display:block;}
       <div id="menuPanelNutri" style="display:none;">
 
         <!-- HERO CALORIES PERSONNALISÉ -->
-        <div class="nutri-hero mb14" id="nutriHeroCard">
-          <div style="font-size:.72rem;opacity:.8;margin-bottom:4px;">🎯 Votre objectif calorique journalier</div>
+        <div class="nutri-hero mb14" id="nutriHeroCard" style="background:var(--grad);">
+          <div style="font-size:.72rem;opacity:.85;margin-bottom:4px;position:relative;">🎯 Votre objectif calorique journalier</div>
           <div class="nutri-hero-val" id="nutriHeroKcal">— kcal</div>
           <div class="nutri-hero-sub" id="nutriHeroSub">Complétez votre profil pour personnaliser</div>
-          <button onclick="openMenuProfile()" style="margin-top:10px;background:rgba(255,255,255,.2);border:none;border-radius:var(--rp);padding:6px 16px;font-size:.72rem;font-weight:800;color:#fff;cursor:pointer;">⚙️ Modifier le profil</button>
+          <button onclick="openMenuProfile()" style="margin-top:12px;background:rgba(255,255,255,.22);border:none;border-radius:var(--rp);padding:7px 18px;font-size:.73rem;font-weight:800;color:#fff;cursor:pointer;position:relative;backdrop-filter:blur(4px);">⚙️ Modifier mon profil</button>
         </div>
 
         <!-- STATS PROFIL GRID -->
@@ -1673,6 +1676,12 @@ body.offline-mode .offline-banner{display:block;}
           <div id="aiNutriAnalysis" style="font-size:.78rem;color:var(--tx2);margin-bottom:10px;">Analysez votre semaine pour des conseils personnalisés.</div>
           <button class="btn acc" onclick="generateNutriAdvice()" style="width:100%;padding:12px;border-radius:var(--rs);font-weight:800;" id="nutriAdviceBtn">✨ Analyser ma semaine</button>
           <div id="nutriAdviceZone" style="margin-top:10px;"></div>
+        </div>
+
+        <!-- CAMEMBERT SPORT -->
+        <div class="card mb14" id="sportPieCard">
+          <div style="font-weight:900;font-size:.88rem;margin-bottom:12px;">🏃 Calories & Sport</div>
+          <div id="sportPieChart"></div>
         </div>
 
         <!-- Produits de saison -->
@@ -3370,14 +3379,13 @@ function showAC(listId, inputId, products) {
   if(!products.length || !products) { if(list) list.style.display = 'none'; return; }
   const inp = document.getElementById(inputId);
   if(!inp || !list) return;
-  const rect = inp.getBoundingClientRect();
-  // Always position relative to viewport (fixed positioning)
-  list.style.position = 'fixed';
-  list.style.zIndex = '9999';
-  list.style.top = (rect.bottom + 2) + 'px';
-  list.style.left = rect.left + 'px';
-  list.style.width = rect.width + 'px';
-  list.style.minWidth = '200px';
+  // Use CSS absolute positioning (defined in .ac-list)
+  list.style.position = '';
+  list.style.zIndex = '';
+  list.style.top = '';
+  list.style.left = '';
+  list.style.width = '';
+  list.style.minWidth = '';
   list.style.display = 'block';
   list.innerHTML = products.map(p => {
     const safeName = (p.name||'').replace(/'/g,"&#39;");
@@ -4531,17 +4539,16 @@ function renderThemePicker() {
 
   // Swatch colours per theme [bg, accent]
   const swatches = {
-    light:      ['#f5f0eb','#ff6b6b'],
-    dark:       ['#1a1225','#ff8e53'],
-    anthracite: ['#1c1e22','#6c8ebf'],
-    rouge:      ['#fff5f5','#e74c3c'],
-    violet:     ['#fdf5ff','#8e44ad'],
-    ocean:      ['#f0faff','#2980b9'],
-    green:      ['#f0fff4','#27ae60'],
+    light:  ['#f5f0eb','#ff6b6b'],
+    dark:   ['#1a1225','#ff8e53'],
+    rouge:  ['#fff5f5','#e74c3c'],
+    violet: ['#fdf5ff','#8e44ad'],
+    ocean:  ['#f0faff','#2980b9'],
+    green:  ['#f0fff4','#27ae60'],
   };
 
   const labels = {
-    light:'☀️ Clair', dark:'🌑 Sombre', anthracite:'⬛ Anthracite',
+    light:'☀️ Clair', dark:'🌑 Sombre',
     rouge:'🔴 Rouge', violet:'🟣 Violet', ocean:'🔵 Océan',
     green:'🌿 Vert',
   };
@@ -7977,7 +7984,7 @@ function openCreateRecipeModal(editRecipe) {
             oninput="crSearchIngr(this.value)"
             onkeydown="if(event.key==='Enter'){event.preventDefault();crAddIngrFromInput();}"
             onblur="setTimeout(()=>{const a=document.getElementById('crIngrAC');if(a)a.style.display='none';},200)">
-          <div id="crIngrAC" style="display:none;position:fixed;z-index:3000;background:var(--bg);border:1px solid var(--bg2);border-radius:var(--rs);box-shadow:0 8px 32px rgba(0,0,0,.2);max-height:180px;overflow-y:auto;"></div>
+          <div id="crIngrAC" style="display:none;position:absolute;z-index:3000;background:var(--bg);border:1px solid var(--bg2);border-radius:var(--rs);box-shadow:0 8px 32px rgba(0,0,0,.2);max-height:180px;overflow-y:auto;left:0;right:0;top:calc(100% + 2px);"></div>
         </div>
         <div style="display:flex;gap:6px;">
           <input class="inp" id="crIngrQtyNum" type="number" placeholder="Qté" min="0.1" step="0.1" style="width:64px;background:var(--bg);text-align:center;">
@@ -8114,16 +8121,6 @@ function crSearchIngr(q) {
   const ac = document.getElementById('crIngrAC');
   if(!ac) return;
   if(!q || q.length < 1) { ac.style.display='none'; ac.innerHTML=''; return; }
-  // Position relative to input
-  const inp = document.getElementById('crIngrInput');
-  if(inp) {
-    const rect = inp.getBoundingClientRect();
-    ac.style.position = 'fixed';
-    ac.style.zIndex = '9999';
-    ac.style.top = (rect.bottom + 2) + 'px';
-    ac.style.left = rect.left + 'px';
-    ac.style.width = rect.width + 'px';
-  }
   // Search PRODUCTS + fridge items + common ingredients
   const allItems = [
     ...(typeof PRODUCTS!=='undefined' ? PRODUCTS : []),
@@ -9182,17 +9179,18 @@ const RECIPES_FR = [
 
 // Merged recipe getter - includes all sources
 function getAllRecipes() {
-  // Include global DB (AI-generated + MealDB translated) + custom + bookmarks
-  // Exclude static RECIPES_FR/DB in favour of global DB only
+  // Include ALL recipe sources: custom + global DB + bookmarks + static RECIPES_FR/RECIPES_DB
   const globalDB = typeof getGlobalRecipeDB === 'function' ? getGlobalRecipeDB() : [];
   const custom = state.customRecipes || [];
   const bookmarks = state.recipeBookmarks || [];
-  // Merge: custom first (user-created), then globalDB, then bookmarks
-  const all = [...custom, ...globalDB, ...bookmarks];
+  const staticFR = window.RECIPES_FR || [];
+  const staticDB = window.RECIPES_DB || [];
+  // Merge: custom first (user-created), then globalDB, then bookmarks, then static
+  const all = [...custom, ...globalDB, ...bookmarks, ...staticFR, ...staticDB];
   const seen = new Set();
   return all.filter(r => {
     if(!r || !r.name) return false;
-    const key = r.id || r.name;
+    const key = r.id || r.name.toLowerCase();
     if(seen.has(key)) return false;
     seen.add(key);
     return true;
@@ -9729,6 +9727,9 @@ function renderNutriTab() {
   // Bilan semaine
   renderNutriWeek(cals);
 
+  // Sport pie chart
+  renderSportPieChart(p, cals);
+
   // Season suggestions
   const snGrid = document.getElementById('seasonNutriGrid');
   const snHeader = document.getElementById('seasonNutriHeader');
@@ -9752,7 +9753,69 @@ function renderNutriTab() {
   }
 }
 
-function renderNutriWeek(calTarget) {
+function renderSportPieChart(p, totalCals) {
+  const el = document.getElementById('sportPieChart');
+  if(!el) return;
+  const sport = getSportBurnSummary(p);
+  if(!sport || !totalCals) {
+    el.innerHTML = '<div style="text-align:center;padding:16px;color:var(--tx2);font-size:.78rem;">Configurez votre profil et votre activité sportive pour voir ce graphique.</div>';
+    return;
+  }
+
+  const baseBMR = totalCals - sport.totalBurn;
+  const activityBurn = sport.burn;
+  const extraBurn = sport.extraKcal;
+
+  const segments = [
+    { label: 'Métabolisme de base', val: Math.max(0, baseBMR), color: '#3498db', icon: '❤️' },
+    { label: 'Activité quotidienne', val: activityBurn, color: '#2ecc71', icon: '🚶' },
+    { label: 'Sport supplémentaire', val: extraBurn, color: '#e74c3c', icon: '🏃' },
+  ].filter(s => s.val > 0);
+
+  const total = segments.reduce((s, seg) => s + seg.val, 0);
+  if(!total) { el.innerHTML = ''; return; }
+
+  // SVG donut
+  const R = 52, CX = 64, CY = 64, SW = 20;
+  const CIRC = 2 * Math.PI * R;
+  let offset = CIRC / 4;
+  const paths = segments.map(seg => {
+    const pct = seg.val / total;
+    const dashlen = pct * CIRC;
+    const path = `<circle cx="${CX}" cy="${CY}" r="${R}" fill="none" stroke="${seg.color}" stroke-width="${SW}"
+      stroke-dasharray="${dashlen.toFixed(2)} ${(CIRC - dashlen).toFixed(2)}"
+      stroke-dashoffset="${offset.toFixed(2)}" stroke-linecap="butt"/>`;
+    offset -= dashlen;
+    return path;
+  }).join('');
+
+  const legend = segments.map(seg => {
+    const pct = Math.round(seg.val / total * 100);
+    return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+      <div style="width:12px;height:12px;border-radius:3px;background:${seg.color};flex-shrink:0;"></div>
+      <div style="flex:1;font-size:.74rem;font-weight:700;">${seg.icon} ${seg.label}</div>
+      <div style="font-size:.82rem;font-weight:900;color:${seg.color};">${seg.val} kcal</div>
+      <div style="font-size:.62rem;color:var(--tx3);min-width:28px;text-align:right;">${pct}%</div>
+    </div>`;
+  }).join('');
+
+  el.innerHTML = `<div style="display:flex;align-items:center;gap:18px;">
+    <svg width="128" height="128" viewBox="0 0 128 128" style="flex-shrink:0;">
+      <circle cx="${CX}" cy="${CY}" r="${R}" fill="none" stroke="var(--bg2)" stroke-width="${SW}"/>
+      ${paths}
+      <text x="${CX}" y="${CY-6}" text-anchor="middle" font-size="13" font-weight="900" fill="var(--tx)">${totalCals}</text>
+      <text x="${CX}" y="${CY+10}" text-anchor="middle" font-size="9" fill="var(--tx2)">kcal/jour</text>
+    </svg>
+    <div style="flex:1;">${legend}
+      <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--bg2);">
+        <div style="font-size:.68rem;color:var(--tx3);">Sport pratiqué: <strong style="color:var(--tx);">${p.sport||'Non défini'}</strong></div>
+        <div style="font-size:.68rem;color:var(--tx3);">Niveau: <strong style="color:var(--tl);">${sport.label}</strong></div>
+      </div>
+    </div>
+  </div>`;
+}
+
+
   const card=document.getElementById('nutriWeekCard');
   if(!card) return;
   if(!Object.keys(state.weekMenu).length) {
@@ -10617,13 +10680,12 @@ function saveBudget() {
 // ═══════════════════════════════════════════════
 // Theme config: id, label, accent color, bg dark?
 const THEMES = [
-  {id:'light',      label:'☀️ Clair',       accent:'#ff6b6b', dark:false},
-  {id:'dark',       label:'🌑 Sombre',       accent:'#ff8e53', dark:true},
-  {id:'anthracite', label:'⬛ Anthracite',   accent:'#6c8ebf', dark:true},
-  {id:'rouge',      label:'🔴 Rouge',        accent:'#e74c3c', dark:false},
-  {id:'violet',     label:'🟣 Violet',       accent:'#8e44ad', dark:false},
-  {id:'ocean',      label:'🔵 Océan',        accent:'#2980b9', dark:false},
-  {id:'green',      label:'🌿 Vert',         accent:'#27ae60', dark:false},
+  {id:'light',  label:'☀️ Clair',   accent:'#ff6b6b', dark:false},
+  {id:'dark',   label:'🌑 Sombre',  accent:'#ff8e53', dark:true},
+  {id:'rouge',  label:'🔴 Rouge',   accent:'#e74c3c', dark:false},
+  {id:'violet', label:'🟣 Violet',  accent:'#8e44ad', dark:false},
+  {id:'ocean',  label:'🔵 Océan',   accent:'#2980b9', dark:false},
+  {id:'green',  label:'🌿 Vert',    accent:'#27ae60', dark:false},
 ];
 
 function toggleTheme() {
@@ -10691,8 +10753,233 @@ function showToast(icon, title, msg, duration=3500) {
 // PRODUCTS DATABASE
 // ═══════════════════════════════════════════════
 // ═══════════════════════════════════════════════
-// SCAN — Sous-onglets ticket / code-barres
+// SCAN FRIGO IA — Anthropic Vision
 // ═══════════════════════════════════════════════
+function scanFridgeWithPhoto() {
+  // Create a hidden file input and trigger it
+  let fi = document.getElementById('_fridgeCamInput');
+  if(!fi) {
+    fi = document.createElement('input');
+    fi.type = 'file'; fi.id = '_fridgeCamInput'; fi.accept = 'image/*';
+    fi.style.display = 'none';
+    document.body.appendChild(fi);
+  }
+  fi.value = '';
+  fi.onchange = async function() {
+    const file = fi.files[0];
+    if(!file) return;
+    await _runFridgeScan(file);
+  };
+
+  // On mobile show picker (camera or gallery), on desktop just file picker
+  const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+  if(isMobile) {
+    // Show choice overlay
+    const ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,.55);display:flex;align-items:flex-end;justify-content:center;';
+    ov.innerHTML = `<div style="background:var(--bg);border-radius:20px 20px 0 0;padding:20px;width:100%;max-width:480px;">
+      <div style="width:36px;height:4px;background:var(--bg2);border-radius:2px;margin:0 auto 16px;"></div>
+      <div style="font-weight:900;font-size:.95rem;margin-bottom:4px;">📸 Scanner le frigo</div>
+      <div style="font-size:.75rem;color:var(--tx2);margin-bottom:16px;">Choisissez comment photographier vos aliments</div>
+      <button onclick="document.getElementById('_fridgeCamInput').setAttribute('capture','environment');document.getElementById('_fridgeCamInput').click();this.closest('[style*=fixed]').remove();" class="btn acc" style="width:100%;padding:13px;margin-bottom:8px;border-radius:14px;font-weight:800;">📷 Prendre une photo</button>
+      <button onclick="document.getElementById('_fridgeCamInput').removeAttribute('capture');document.getElementById('_fridgeCamInput').click();this.closest('[style*=fixed]').remove();" class="btn" style="width:100%;padding:12px;margin-bottom:8px;border-radius:14px;">🖼️ Choisir depuis la galerie</button>
+      <button onclick="this.closest('[style*=fixed]').remove();" class="btn ghost" style="width:100%;padding:10px;color:var(--tx3);">Annuler</button>
+    </div>`;
+    ov.onclick = e => { if(e.target===ov) ov.remove(); };
+    document.body.appendChild(ov);
+  } else {
+    fi.removeAttribute('capture');
+    fi.click();
+  }
+}
+
+async function _runFridgeScan(file) {
+  // Show scan module if we're in frigo view
+  const resultsZone = document.getElementById('fridgeScanResults');
+  const statsZone   = document.getElementById('fridgeScanStats');
+
+  // Show a loading overlay
+  const loadingOv = document.createElement('div');
+  loadingOv.id = '_fridgeScanLoading';
+  loadingOv.style.cssText = 'position:fixed;inset:0;z-index:8000;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;';
+  loadingOv.innerHTML = `
+    <div style="width:70px;height:70px;border-radius:50%;border:4px solid rgba(255,255,255,.2);border-top-color:var(--ac);animation:spin .8s linear infinite;"></div>
+    <div style="color:#fff;font-weight:800;font-size:1rem;">🤖 Analyse en cours…</div>
+    <div style="color:rgba(255,255,255,.7);font-size:.8rem;" id="_fridgeScanStatus">Envoi de la photo à l'IA</div>
+  `;
+  document.body.appendChild(loadingOv);
+
+  const setStatus = msg => { const el=document.getElementById('_fridgeScanStatus'); if(el) el.textContent=msg; };
+
+  try {
+    // Convert image to base64
+    const b64 = await new Promise((res, rej) => {
+      const r = new FileReader();
+      r.onload = () => res(r.result.split(',')[1]);
+      r.onerror = rej;
+      r.readAsDataURL(file);
+    });
+
+    setStatus('Identification des aliments…');
+
+    // Call Anthropic API
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 800,
+        messages: [{
+          role: 'user',
+          content: [
+            {
+              type: 'image',
+              source: { type: 'base64', media_type: file.type || 'image/jpeg', data: b64 }
+            },
+            {
+              type: 'text',
+              text: 'Tu es un expert en identification des aliments. Analyse cette photo et liste TOUS les aliments visibles. Réponds UNIQUEMENT en JSON valide, sans texte autour:\n{"aliments":[{"nom":"Tomates","emoji":"🍅","quantite":"6","categorie":"légumes"},...]}\nSois précis et exhaustif. Inclus toutes les denrées alimentaires visibles (légumes, fruits, viandes, produits laitiers, boissons, condiments, etc.). Maximum 20 aliments.'
+            }
+          ]
+        }]
+      })
+    });
+
+    const data = await resp.json();
+    const text = (data.content || []).find(c => c.type === 'text')?.text || '';
+    let parsed = { aliments: [] };
+    try {
+      const clean = text.replace(/```json|```/g, '').trim();
+      parsed = JSON.parse(clean);
+    } catch(e) {
+      // Try to extract JSON from text
+      const match = text.match(/\{[\s\S]*\}/);
+      if(match) parsed = JSON.parse(match[0]);
+    }
+
+    loadingOv.remove();
+
+    const aliments = parsed.aliments || [];
+    if(!aliments.length) {
+      showToast('ℹ️', 'Aucun aliment', 'Aucun aliment détecté dans cette photo. Réessayez avec une meilleure photo.');
+      return;
+    }
+
+    setStatus('');
+    _showFridgeScanResults(aliments);
+
+  } catch(e) {
+    loadingOv.remove();
+    console.error('Fridge scan error:', e);
+    showToast('❌', 'Erreur', 'Impossible d\'analyser la photo. Vérifiez votre connexion.');
+  }
+}
+
+function _showFridgeScanResults(aliments) {
+  // Create a bottom sheet with the detected items
+  const existing = document.getElementById('_fridgeScanSheet');
+  if(existing) existing.remove();
+
+  const sheet = document.createElement('div');
+  sheet.id = '_fridgeScanSheet';
+  sheet.style.cssText = 'position:fixed;inset:0;z-index:8500;background:rgba(0,0,0,.55);display:flex;align-items:flex-end;justify-content:center;';
+
+  const selected = new Set(aliments.map((_, i) => i));
+
+  sheet.innerHTML = `<div style="background:var(--bg);border-radius:20px 20px 0 0;width:100%;max-width:480px;max-height:85vh;display:flex;flex-direction:column;">
+    <div style="padding:16px 18px 10px;border-bottom:1px solid var(--bg2);flex-shrink:0;">
+      <div style="width:36px;height:4px;background:var(--bg2);border-radius:2px;margin:0 auto 12px;"></div>
+      <div style="display:flex;align-items:center;justify-content:space-between;">
+        <div>
+          <div style="font-weight:900;font-size:1rem;">🤖 ${aliments.length} aliment${aliments.length>1?'s':''} détecté${aliments.length>1?'s':''}</div>
+          <div style="font-size:.72rem;color:var(--tx2);margin-top:2px;">Sélectionnez les aliments à ajouter à votre frigo</div>
+        </div>
+        <button onclick="document.getElementById('_fridgeScanSheet').remove()" style="width:30px;height:30px;border-radius:50%;background:var(--bg2);border:none;cursor:pointer;font-size:.9rem;">✕</button>
+      </div>
+    </div>
+    <div style="overflow-y:auto;flex:1;padding:12px 14px;" id="_fridgeScanList">
+      ${aliments.map((a, i) => `
+        <div id="_fridgeItem_${i}" onclick="_toggleFridgeItem(${i})" style="display:flex;align-items:center;gap:12px;padding:11px 12px;border-radius:12px;margin-bottom:6px;cursor:pointer;background:rgba(0,210,198,.1);border:1.5px solid rgba(0,210,198,.3);transition:all .15s;">
+          <div style="font-size:1.4rem;flex-shrink:0;">${a.emoji||'🥗'}</div>
+          <div style="flex:1;">
+            <div style="font-weight:800;font-size:.88rem;">${a.nom}</div>
+            ${a.quantite?`<div style="font-size:.68rem;color:var(--tx2);">${a.quantite}</div>`:''}
+          </div>
+          <div id="_fridgeCheck_${i}" style="width:22px;height:22px;border-radius:50%;background:var(--tl);display:flex;align-items:center;justify-content:center;color:#fff;font-size:.75rem;font-weight:900;flex-shrink:0;">✓</div>
+        </div>
+      `).join('')}
+    </div>
+    <div style="padding:12px 14px calc(12px + env(safe-area-inset-bottom));border-top:1px solid var(--bg2);flex-shrink:0;display:flex;gap:8px;">
+      <button onclick="_selectAllFridgeItems(${aliments.length})" class="btn" style="flex:1;padding:11px;border-radius:12px;font-size:.8rem;">Tout sélectionner</button>
+      <button onclick="_addSelectedFridgeItems(${JSON.stringify(aliments).replace(/"/g,'&quot;')})" class="btn acc" style="flex:2;padding:13px;border-radius:12px;font-weight:900;">🧊 Ajouter au frigo</button>
+    </div>
+  </div>`;
+  sheet.onclick = e => { if(e.target===sheet) sheet.remove(); };
+  document.body.appendChild(sheet);
+
+  // Track selected
+  window._fridgeScanSelected = selected;
+  window._fridgeScanCount = aliments.length;
+}
+
+function _toggleFridgeItem(i) {
+  const sel = window._fridgeScanSelected || new Set();
+  const item = document.getElementById('_fridgeItem_'+i);
+  const check = document.getElementById('_fridgeCheck_'+i);
+  if(sel.has(i)) {
+    sel.delete(i);
+    if(item) { item.style.background='var(--bg2)'; item.style.border='1.5px solid transparent'; }
+    if(check) { check.style.background='var(--tx3)'; check.textContent=''; }
+  } else {
+    sel.add(i);
+    if(item) { item.style.background='rgba(0,210,198,.1)'; item.style.border='1.5px solid rgba(0,210,198,.3)'; }
+    if(check) { check.style.background='var(--tl)'; check.textContent='✓'; }
+  }
+  window._fridgeScanSelected = sel;
+}
+
+function _selectAllFridgeItems(count) {
+  const sel = new Set();
+  for(let i = 0; i < count; i++) {
+    sel.add(i);
+    const item = document.getElementById('_fridgeItem_'+i);
+    const check = document.getElementById('_fridgeCheck_'+i);
+    if(item) { item.style.background='rgba(0,210,198,.1)'; item.style.border='1.5px solid rgba(0,210,198,.3)'; }
+    if(check) { check.style.background='var(--tl)'; check.textContent='✓'; }
+  }
+  window._fridgeScanSelected = sel;
+}
+
+function _addSelectedFridgeItems(aliments) {
+  if(typeof aliments === 'string') {
+    try { aliments = JSON.parse(aliments); } catch(e) { return; }
+  }
+  const sel = window._fridgeScanSelected || new Set();
+  let added = 0;
+  aliments.forEach((a, i) => {
+    if(!sel.has(i)) return;
+    const existing = state.fridge.find(f => f.name.toLowerCase() === a.nom.toLowerCase());
+    if(existing) {
+      existing.qty = (parseInt(existing.qty)||1) + 1;
+    } else {
+      state.fridge.push({
+        id: 'f'+Date.now()+Math.random().toString(36).slice(2,5),
+        name: a.nom, emoji: a.emoji||'🥗', qty: a.quantite||1,
+        cat: '🥦 Légumes'
+      });
+      added++;
+    }
+  });
+  saveFridge();
+  renderFridge();
+  document.getElementById('_fridgeScanSheet')?.remove();
+  const total = sel.size;
+  showToast('🧊', total+' aliment'+(total>1?'s':'')+' ajouté'+(total>1?'s':''), 'Votre frigo a été mis à jour !');
+  // Switch to frigo tab to see results
+  if(typeof switchTab === 'function') switchTab('frigo');
+}
+
+
 function switchScanTab(tab) {
   ['ticket', 'barcode', 'fridge'].forEach(t => {
     const btn = document.getElementById('scan-stab-' + t);

@@ -9909,11 +9909,19 @@ function renderNutriTab() {
 }
 
 function renderSportPieChart(p, totalCals) {
+
   const el = document.getElementById('sportPieChart');
-  if(!el) return;
+
+  if (!el) return;
+
   const sport = getSportBurnSummary(p);
-  if(!sport || !totalCals) {
-    el.innerHTML = '<div style="text-align:center;padding:16px;color:var(--tx2);font-size:.78rem;">Configurez votre profil et votre activité sportive pour voir ce graphique.</div>';
+
+  if (!sport || !totalCals) {
+    el.innerHTML = `
+      <div style="text-align:center;padding:16px;color:var(--tx2);font-size:.78rem;">
+        Configurez votre profil et votre activité sportive pour voir ce graphique.
+      </div>
+    `;
     return;
   }
 
@@ -9922,75 +9930,255 @@ function renderSportPieChart(p, totalCals) {
   const extraBurn = sport.extraKcal;
 
   const segments = [
-    { label: 'Métabolisme de base', val: Math.max(0, baseBMR), color: '#3498db', icon: '❤️' },
-    { label: 'Activité quotidienne', val: activityBurn, color: '#2ecc71', icon: '🚶' },
-    { label: 'Sport supplémentaire', val: extraBurn, color: '#e74c3c', icon: '🏃' },
+    {
+      label: 'Métabolisme de base',
+      val: Math.max(0, baseBMR),
+      color: '#3498db',
+      icon: '❤️'
+    },
+    {
+      label: 'Activité quotidienne',
+      val: activityBurn,
+      color: '#2ecc71',
+      icon: '🚶'
+    },
+    {
+      label: 'Sport supplémentaire',
+      val: extraBurn,
+      color: '#e74c3c',
+      icon: '🏃'
+    },
   ].filter(s => s.val > 0);
 
   const total = segments.reduce((s, seg) => s + seg.val, 0);
-  if(!total) { el.innerHTML = ''; return; }
 
-  // SVG donut
-  const R = 52, CX = 64, CY = 64, SW = 20;
+  if (!total) {
+    el.innerHTML = '';
+    return;
+  }
+
+  const R = 52;
+  const CX = 64;
+  const CY = 64;
+  const SW = 20;
+
   const CIRC = 2 * Math.PI * R;
+
   let offset = CIRC / 4;
+
   const paths = segments.map(seg => {
+
     const pct = seg.val / total;
     const dashlen = pct * CIRC;
-    const path = `<circle cx="${CX}" cy="${CY}" r="${R}" fill="none" stroke="${seg.color}" stroke-width="${SW}"
-      stroke-dasharray="${dashlen.toFixed(2)} ${(CIRC - dashlen).toFixed(2)}"
-      stroke-dashoffset="${offset.toFixed(2)}" stroke-linecap="butt"/>`;
+
+    const path = `
+      <circle
+        cx="${CX}"
+        cy="${CY}"
+        r="${R}"
+        fill="none"
+        stroke="${seg.color}"
+        stroke-width="${SW}"
+        stroke-dasharray="${dashlen.toFixed(2)} ${(CIRC - dashlen).toFixed(2)}"
+        stroke-dashoffset="${offset.toFixed(2)}"
+        stroke-linecap="butt"
+      />
+    `;
+
     offset -= dashlen;
+
     return path;
+
   }).join('');
 
   const legend = segments.map(seg => {
+
     const pct = Math.round(seg.val / total * 100);
-    return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-      <div style="width:12px;height:12px;border-radius:3px;background:${seg.color};flex-shrink:0;"></div>
-      <div style="flex:1;font-size:.74rem;font-weight:700;">${seg.icon} ${seg.label}</div>
-      <div style="font-size:.82rem;font-weight:900;color:${seg.color};">${seg.val} kcal</div>
-      <div style="font-size:.62rem;color:var(--tx3);min-width:28px;text-align:right;">${pct}%</div>
-    </div>`;
+
+    return `
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+
+        <div style="
+          width:12px;
+          height:12px;
+          border-radius:3px;
+          background:${seg.color};
+          flex-shrink:0;
+        "></div>
+
+        <div style="flex:1;font-size:.74rem;font-weight:700;">
+          ${seg.icon} ${seg.label}
+        </div>
+
+        <div style="
+          font-size:.82rem;
+          font-weight:900;
+          color:${seg.color};
+        ">
+          ${seg.val} kcal
+        </div>
+
+        <div style="
+          font-size:.62rem;
+          color:var(--tx3);
+          min-width:28px;
+          text-align:right;
+        ">
+          ${pct}%
+        </div>
+
+      </div>
+    `;
+
   }).join('');
 
-  el.innerHTML = `<div style="display:flex;align-items:center;gap:18px;">
-    <svg width="128" height="128" viewBox="0 0 128 128" style="flex-shrink:0;">
-      <circle cx="${CX}" cy="${CY}" r="${R}" fill="none" stroke="var(--bg2)" stroke-width="${SW}"/>
-      ${paths}
-      <text x="${CX}" y="${CY-6}" text-anchor="middle" font-size="13" font-weight="900" fill="var(--tx)">${totalCals}</text>
-      <text x="${CX}" y="${CY+10}" text-anchor="middle" font-size="9" fill="var(--tx2)">kcal/jour</text>
-    </svg>
-    <div style="flex:1;">${legend}
-      <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--bg2);">
-        <div style="font-size:.68rem;color:var(--tx3);">Sport pratiqué: <strong style="color:var(--tx);">${p.sport||'Non défini'}</strong></div>
-        <div style="font-size:.68rem;color:var(--tx3);">Niveau: <strong style="color:var(--tl);">${sport.label}</strong></div>
+  el.innerHTML = `
+    <div style="display:flex;align-items:center;gap:18px;">
+
+      <svg width="128" height="128" viewBox="0 0 128 128" style="flex-shrink:0;">
+
+        <circle
+          cx="${CX}"
+          cy="${CY}"
+          r="${R}"
+          fill="none"
+          stroke="var(--bg2)"
+          stroke-width="${SW}"
+        />
+
+        ${paths}
+
+        <text
+          x="${CX}"
+          y="${CY-6}"
+          text-anchor="middle"
+          font-size="13"
+          font-weight="900"
+          fill="var(--tx)"
+        >
+          ${totalCals}
+        </text>
+
+        <text
+          x="${CX}"
+          y="${CY+10}"
+          text-anchor="middle"
+          font-size="9"
+          fill="var(--tx2)"
+        >
+          kcal/jour
+        </text>
+
+      </svg>
+
+      <div style="flex:1;">
+
+        ${legend}
+
+        <div style="
+          margin-top:8px;
+          padding-top:8px;
+          border-top:1px solid var(--bg2);
+        ">
+
+          <div style="font-size:.68rem;color:var(--tx3);">
+            Sport pratiqué:
+            <strong style="color:var(--tx);">
+              ${p.sport || 'Non défini'}
+            </strong>
+          </div>
+
+          <div style="font-size:.68rem;color:var(--tx3);">
+            Niveau:
+            <strong style="color:var(--tl);">
+              ${sport.label}
+            </strong>
+          </div>
+
+        </div>
+
       </div>
+
     </div>
-  </div>`;
+  `;
 }
 
 
-  const card=document.getElementById('nutriWeekCard');
-  if(!card) return;
-  if(!Object.keys(state.weekMenu).length) {
-    card.innerHTML=`<div style="text-align:center;padding:20px;color:var(--tx2);font-size:.82rem;">Générez un menu pour voir le bilan nutritionnel</div>`;
+
+function renderNutriWeekCard(calTarget) {
+
+  const card = document.getElementById('nutriWeekCard');
+
+  if (!card) return;
+
+  if (!Object.keys(state.weekMenu).length) {
+
+    card.innerHTML = `
+      <div style="text-align:center;padding:20px;color:var(--tx2);font-size:.82rem;">
+        Générez un menu pour voir le bilan nutritionnel
+      </div>
+    `;
+
     return;
   }
-  card.innerHTML=DAYS.map((d,i)=>{
-    const dn=i+1;
-    const menu=state.weekMenu[dn];
-    const kcal=menu?.nutri?.kcal||0;
-    const pct=calTarget&&kcal?Math.min(100,Math.round(kcal/calTarget*100)):0;
-    const color=pct>=85&&pct<=105?'var(--gn)':pct>110?'var(--rd)':'var(--yl)';
-    return `<div class="nutri-week-row">
-      <div class="nutri-week-day">${d}</div>
-      <div class="nutri-week-bar-wrap"><div class="nutri-week-bar">
-        <div class="nutri-week-bar-fill" style="width:${pct}%;background:${color};"></div>
-      </div></div>
-      <div class="nutri-week-kcal">${kcal?kcal+' kcal':'—'}</div>
-      <span style="font-size:.7rem;margin-left:4px;">${pct>=85&&pct<=105?'✅':pct>110?'⚠️':kcal?"🔵":"➖"}</span>
-    </div>`;
+
+  card.innerHTML = DAYS.map((d, i) => {
+
+    const dn = i + 1;
+
+    const menu = state.weekMenu[dn];
+
+    const kcal = menu?.nutri?.kcal || 0;
+
+    const pct =
+      calTarget && kcal
+        ? Math.min(100, Math.round(kcal / calTarget * 100))
+        : 0;
+
+    const color =
+      pct >= 85 && pct <= 105
+        ? 'var(--gn)'
+        : pct > 110
+          ? 'var(--rd)'
+          : 'var(--yl)';
+
+    return `
+      <div class="nutri-week-row">
+
+        <div class="nutri-week-day">${d}</div>
+
+        <div class="nutri-week-bar-wrap">
+          <div class="nutri-week-bar">
+
+            <div
+              class="nutri-week-bar-fill"
+              style="width:${pct}%;background:${color};"
+            ></div>
+
+          </div>
+        </div>
+
+        <div class="nutri-week-kcal">
+          ${kcal ? kcal + ' kcal' : '—'}
+        </div>
+
+        <span style="font-size:.7rem;margin-left:4px;">
+
+          ${
+            pct >= 85 && pct <= 105
+              ? '✅'
+              : pct > 110
+                ? '⚠️'
+                : kcal
+                  ? '🔵'
+                  : '➖'
+          }
+
+        </span>
+
+      </div>
+    `;
+
   }).join('');
 }
 

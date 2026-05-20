@@ -6692,30 +6692,48 @@ async function saveToGlobalDB(recipes) {
   const existingIds = new Set(existing.map(r => r.id));
   const existingNames = new Set(existing.map(r => (r.name||'').toLowerCase()));
   let added = 0;
+  const firestoreErrors = [];
+
   for(const r of recipes) {
     if(!r.name || !r.id) continue;
-    if(existingIds.has(r.id) || existingNames.has(r.name.toLowerCase())) continue;
-    const clean = {...r, _rawMeal:undefined, _savedAt:Date.now()};
-    delete clean._rawMeal;
-    existing.unshift(clean);
-    existingIds.add(r.id);
-    existingNames.add(r.name.toLowerCase());
-    added++;
-    // Persist to Firestore shared collection
-    if(typeof db !== 'undefined' && db) {
+    // Skip if already in local cache (by ID or name)
+    if(existingIds.has(r.id) || existingNames.has(r.name.toLowerCase())) {
+      // Still try to push to Firestore in case it wasn't saved there yet
+    } else {
+      const clean = {...r};
+      delete clean._rawMeal;
+      clean._savedAt = Date.now();
+      existing.unshift(clean);
+      existingIds.add(r.id);
+      existingNames.add(r.name.toLowerCase());
+      added++;
+    }
+
+    // Always persist to Firestore shared collection
+    if(typeof db !== 'undefined' && db && typeof currentUser !== 'undefined' && currentUser) {
       try {
-        const firestoreData = {...clean};
-        // Don't store base64 photos in Firestore (too large)
+        const firestoreData = {...r};
+        delete firestoreData._rawMeal;
+        // Strip base64 photos — too large for Firestore (1MB doc limit)
         if(firestoreData.photo && firestoreData.photo.startsWith('data:')) delete firestoreData.photo;
         await db.collection('recipes').doc(r.id).set({
           ...firestoreData,
-          savedBy: (typeof currentUser !== 'undefined' && currentUser) ? currentUser.uid : 'anonymous',
+          savedBy: currentUser.uid,
+          savedByEmail: currentUser.email || '',
           savedAt: firebase.firestore.FieldValue.serverTimestamp(),
         }, {merge: true});
-      } catch(e) { /* offline — local cache is fine */ }
+        console.log('[DB] ✅ Recipe saved to Firestore:', r.name);
+      } catch(e) {
+        console.error('[DB] ❌ Firestore save failed for', r.name, ':', e.code, e.message);
+        firestoreErrors.push(e.message);
+      }
+    } else if(!currentUser) {
+      console.warn('[DB] Not logged in — recipe saved to local cache only');
     }
   }
+
   if(added > 0) localStorage.setItem('sc_global_recipes', JSON.stringify(existing.slice(0, 300)));
+  if(firestoreErrors.length) console.warn('[DB] Firestore errors:', firestoreErrors);
   return added;
 }
 
@@ -9406,107 +9424,96 @@ function filterRecipesDiet(el, val) {
 }
 
 function renderRecipesGrid() {
-  const grid  = document.getElementById('recipesGrid2') || document.getElementById('menuRecipesGrid');
-  const grid2 = grid;
-  // Utiliser le bon conteneur selon la vue
-  const menuGrid = document.getElementById('menuRecipesGrid') || document.getElementById('recipesGridMenu');
-  const targetGrid = menuGrid || document.querySelector('#menuPanelRecipes .rc-grid') || document.querySelector('#menuPanelRecipes [id*="Grid"]');
-  const container = targetGrid;
-  if(!container) {
-    // Chercher le conteneur dans le panel recettes du menu
-    const panel = document.getElementById('menuPanelRecipes');
-    if(!panel) return;
-  }
-
-  const all = getAllRecipes ? getAllRecipes() : [...(RECIPES_DB||[]), ...(state.customRecipes||[])];
-  const customOnly = state.customRecipes || [];
-  const bookmarks  = state.recipeBookmarks || [];
-
-  // Rendu dans le panel recettes du menu
   const panel = document.getElementById('menuPanelRecipes');
   if(!panel) return;
 
-  // Construire le HTML complet du panel
-  const hasFavs = bookmarks.length > 0;
-  const hasCustom = customOnly.length > 0;
+  const customRecipes = state.customRecipes || [];
+  const bookmarks     = state.recipeBookmarks || [];
+  const globalDB      = getGlobalRecipeDB ? getGlobalRecipeDB() : [];
+  const q             = (window._recipeSearch || '').toLowerCase();
+
+  function matchSearch(r) {
+    if(!q) return true;
+    return (r.name||'').toLowerCase().includes(q)
+      || (r.ingredients||[]).some(i => (typeof i==='string'?i:i.name||'').toLowerCase().includes(q));
+  }
 
   let html = '';
 
-  // ── Bouton + Favoris en haut ──
-  html += '<div style="display:flex;gap:8px;margin-bottom:14px;">'
-    + '<button class="btn acc" style="flex:1;padding:11px;font-size:.82rem;" onclick="openCreateRecipeModal()">✏️ Créer une recette</button>'
-    + (hasFavs ? '<button class="btn" style="padding:11px 14px;" onclick="toggleFavoritesView()" id="favToggleBtn" title="Voir mes favoris">⭐ '+bookmarks.length+'</button>' : '')
-    + '</div>';
+  // ── Barre de recherche ──
+  html += `<div style="display:flex;gap:8px;margin-bottom:12px;">
+    <div style="flex:1;position:relative;">
+      <input class="inp" placeholder="🔍 Chercher une recette…" value="${q.replace(/"/g,'&quot;')}"
+        oninput="window._recipeSearch=this.value;renderRecipesGrid()"
+        style="width:100%;padding-left:36px;">
+      <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:.9rem;pointer-events:none;">🔍</span>
+    </div>
+    <button class="btn acc" style="padding:10px 14px;font-size:.82rem;flex-shrink:0;" onclick="openCreateRecipeModal()">✏️ Créer</button>
+  </div>`;
 
-  // ── Section Favoris (masquée par défaut) ──
-  if(hasFavs) {
-    html += '<div id="favoritesSection" style="display:none;margin-bottom:16px;">'
-      + '<div style="font-weight:800;font-size:.82rem;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;">'
-      + '<span>⭐ Mes favoris ('+bookmarks.length+')</span>'
-      + '<button onclick="toggleFavoritesView()" style="background:none;border:none;font-size:.75rem;color:var(--tx2);cursor:pointer;">Masquer</button>'
-      + '</div>'
-      + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">'
-      + bookmarks.map(r => `<div onclick="openFavRecipe('${r.id}')" style="background:var(--bg);border-radius:var(--rs);box-shadow:var(--so);overflow:hidden;cursor:pointer;">
-          ${r.photo?`<img src="${r.photo}" style="width:100%;height:72px;object-fit:cover;" onerror="this.style.display='none'" loading="lazy">`
-                   :`<div style="height:56px;background:var(--bg2);display:flex;align-items:center;justify-content:center;font-size:1.5rem;">${r.emoji||'🍽️'}</div>`}
-          <div style="padding:8px;">
-            <div style="font-size:.75rem;font-weight:800;line-height:1.3;">${r.name}</div>
-            <button onclick="event.stopPropagation();toggleBookmark('${r.id}')" style="font-size:.7rem;background:none;border:none;cursor:pointer;color:var(--yl);padding:2px;">⭐ Retirer</button>
+  // ── Mes recettes perso ──
+  const myFiltered = customRecipes.filter(matchSearch);
+  if(myFiltered.length > 0) {
+    html += `<div style="font-size:.68rem;font-weight:800;color:var(--ac);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px;">✏️ Mes recettes (${myFiltered.length})</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:18px;">`;
+    html += myFiltered.map(r => {
+      const isBm = bookmarks.some(b=>b.id===r.id);
+      return `<div style="background:var(--bg);border-radius:var(--rs);box-shadow:var(--so);overflow:hidden;position:relative;">
+        <div onclick="openCustomRecipeDetail('${r.id}')" style="cursor:pointer;">
+          ${r.photo?`<img src="${r.photo}" style="width:100%;height:80px;object-fit:cover;" onerror="this.style.display='none'" loading="lazy">`
+                   :`<div style="height:64px;background:var(--bg2);display:flex;align-items:center;justify-content:center;font-size:1.8rem;">${r.emoji||'🍳'}</div>`}
+          <div style="padding:8px 8px 4px;">
+            <div style="font-size:.76rem;font-weight:800;line-height:1.3;">${r.name}</div>
+            <div style="font-size:.6rem;color:var(--tx2);margin-top:2px;">${r.time?r.time+'min · ':''}${r.kcal?r.kcal+'kcal':''}</div>
           </div>
-        </div>`).join('')
-      + '</div></div>';
+        </div>
+        <div style="display:flex;gap:4px;padding:0 8px 8px;">
+          <button onclick="editCustomRecipe('${r.id}')" style="flex:1;font-size:.6rem;padding:4px;background:var(--bg2);border:none;border-radius:var(--rx);cursor:pointer;font-weight:700;color:var(--tx2);">✏️</button>
+          <button onclick="deleteCustomRecipe('${r.id}')" style="flex:1;font-size:.6rem;padding:4px;background:rgba(231,76,60,.1);border:none;border-radius:var(--rx);cursor:pointer;font-weight:700;color:var(--rd);">🗑</button>
+          <button onclick="toggleBookmark('${r.id}');renderRecipesGrid()" style="padding:4px 6px;background:none;border:none;cursor:pointer;font-size:.75rem;">${isBm?'⭐':'☆'}</button>
+        </div>
+      </div>`;
+    }).join('');
+    html += '</div>';
   }
 
-  // ── Recettes perso (custom) ──
-  if(hasCustom) {
-    html += '<div style="font-size:.68rem;font-weight:800;color:var(--tx3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px;">Mes recettes ('+customOnly.length+')</div>'
-      + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px;">'
-      + customOnly.map((r,i) => `<div style="background:var(--bg);border-radius:var(--rs);box-shadow:var(--so);overflow:hidden;position:relative;">
-          <div onclick="openCustomRecipeDetail('${r.id}')" style="cursor:pointer;">
-            ${r.photo?`<img src="${r.photo}" style="width:100%;height:80px;object-fit:cover;" onerror="this.style.display='none'">`
-                     :`<div style="height:64px;background:var(--bg2);display:flex;align-items:center;justify-content:center;font-size:1.8rem;">${r.emoji||'🍳'}</div>`}
-            <div style="padding:8px 8px 4px;">
-              <div style="font-size:.76rem;font-weight:800;line-height:1.3;">${r.name}</div>
-              <div style="font-size:.6rem;color:var(--tx2);margin-top:2px;">${r.time?r.time+'min · ':''}${r.kcal?r.kcal+'kcal':''}</div>
-            </div>
+  // ── Base partagée (Firestore) ──
+  const sharedFiltered = globalDB.filter(r =>
+    !customRecipes.some(c => c.id === r.id) && matchSearch(r)
+  );
+
+  if(sharedFiltered.length > 0) {
+    html += `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+      <div style="font-size:.68rem;font-weight:800;color:var(--tl);text-transform:uppercase;letter-spacing:.8px;">☁️ Base commune (${sharedFiltered.length})</div>
+      <div style="font-size:.6rem;color:var(--tx3);">Partagée entre tous les comptes</div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:18px;">`;
+    html += sharedFiltered.map(r => {
+      const isBm = bookmarks.some(b=>b.id===r.id);
+      return `<div style="background:var(--bg);border-radius:var(--rs);box-shadow:var(--so);overflow:hidden;position:relative;cursor:pointer;">
+        <div onclick="openRecipeDetail('${(r.id||r.name).replace(/'/g,"\\'")}')">
+          ${r.photo&&!r.photo.startsWith('data:')?`<img src="${r.photo}" style="width:100%;height:80px;object-fit:cover;" onerror="this.style.display='none'" loading="lazy">`
+                   :`<div style="height:64px;background:var(--bg2);display:flex;align-items:center;justify-content:center;font-size:1.8rem;">${r.emoji||'🍳'}</div>`}
+          <div style="padding:8px 8px 4px;">
+            <div style="font-size:.76rem;font-weight:800;line-height:1.3;">${r.name}</div>
+            <div style="font-size:.6rem;color:var(--tx2);margin-top:2px;">${r.source==='mealdb'?'🌍 MealDB':r.source==='translated'?'🇫🇷 Traduite':''}${r.time?' · '+r.time+'min':''}${r.kcal?' · '+r.kcal+'kcal':''}</div>
           </div>
-          <div style="display:flex;gap:4px;padding:4px 8px 8px;">
-            <button onclick="editCustomRecipe('${r.id}')" style="flex:1;font-size:.6rem;padding:4px;background:var(--bg2);border:none;border-radius:var(--rx);cursor:pointer;font-weight:700;color:var(--tx2);">✏️ Modifier</button>
-            <button onclick="deleteCustomRecipe('${r.id}')" style="flex:1;font-size:.6rem;padding:4px;background:rgba(231,76,60,.1);border:none;border-radius:var(--rx);cursor:pointer;font-weight:700;color:var(--rd);">🗑 Suppr.</button>
-            <button onclick="toggleBookmark('${r.id}')" style="padding:4px 6px;background:none;border:none;cursor:pointer;font-size:.75rem;" title="Favori">${(state.recipeBookmarks||[]).some(b=>b.id===r.id)?"⭐":"☆"}</button>
-          </div>
-        </div>`).join('')
-      + '</div>';
+        </div>
+        <button onclick="event.stopPropagation();toggleBookmark('${(r.id||r.name).replace(/'/g,"\\'")}');renderRecipesGrid()" style="position:absolute;top:4px;right:4px;background:rgba(0,0,0,.35);border:none;border-radius:50%;width:24px;height:24px;cursor:pointer;font-size:.75rem;display:flex;align-items:center;justify-content:center;color:#fff;">${isBm?'⭐':'☆'}</button>
+      </div>`;
+    }).join('');
+    html += '</div>';
+  } else if(!customRecipes.length && !q) {
+    html += `<div style="text-align:center;padding:32px 16px;">
+      <div style="font-size:2.5rem;margin-bottom:10px;">☁️</div>
+      <div style="font-weight:900;font-size:.9rem;margin-bottom:6px;">Base commune vide</div>
+      <div style="font-size:.75rem;color:var(--tx2);line-height:1.6;">Explorez des recettes dans l'onglet <strong>Explorer</strong> — elles seront automatiquement partagées avec tous les comptes.</div>
+      <button class="btn acc" onclick="switchMenuTab('search')" style="margin-top:12px;padding:11px 20px;border-radius:var(--rs);font-weight:800;">🔍 Explorer</button>
+    </div>`;
   }
 
-  // ── Toutes les recettes (DB + custom) ──
-  html += '<div style="font-size:.68rem;font-weight:800;color:var(--tx3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px;">Toutes les recettes ('+all.length+')</div>';
-
-  const filtered = all.filter(r => {
-    if(!window._recipeSearch) return true;
-    const q = window._recipeSearch.toLowerCase();
-    return r.name.toLowerCase().includes(q) || (r.ingredients||[]).some(i=>(typeof i==='string'?i:i.name||'').toLowerCase().includes(q));
-  });
-
-  if(!filtered.length) {
-    html += '<div style="text-align:center;padding:24px;color:var(--tx2);font-size:.8rem;">Aucune recette trouvée.</div>';
-  } else {
-    html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">'
-      + filtered.slice(0,20).map(r => {
-        const isBm = (state.recipeBookmarks||[]).some(b=>b.id===r.id);
-        return `<div style="background:var(--bg);border-radius:var(--rs);box-shadow:var(--so);overflow:hidden;cursor:pointer;position:relative;">
-          <div onclick="openRecipeDetail('${r.id||r.name}')">
-            ${r.photo?`<img src="${r.photo}" style="width:100%;height:80px;object-fit:cover;" onerror="this.style.display='none'" loading="lazy">`
-                     :`<div style="height:64px;background:var(--bg2);display:flex;align-items:center;justify-content:center;font-size:1.8rem;">${r.emoji||'🍳'}</div>`}
-            <div style="padding:8px 8px 4px;">
-              <div style="font-size:.76rem;font-weight:800;line-height:1.3;">${r.name}</div>
-              <div style="font-size:.6rem;color:var(--tx2);margin-top:2px;">${r.time?r.time+'min · ':''}${r.kcal?r.kcal+'kcal':''}</div>
-            </div>
-          </div>
-          <button onclick="toggleBookmark('${r.id||r.name}')" style="position:absolute;top:4px;right:4px;background:rgba(0,0,0,.35);border:none;border-radius:50%;width:24px;height:24px;cursor:pointer;font-size:.75rem;display:flex;align-items:center;justify-content:center;">${isBm?"⭐":"☆"}</button>
-        </div>`;
-      }).join('')
-      + '</div>';
+  if(q && !myFiltered.length && !sharedFiltered.length) {
+    html += `<div style="text-align:center;padding:24px;color:var(--tx2);font-size:.82rem;">Aucune recette pour "<strong>${q}</strong>"</div>`;
   }
 
   panel.innerHTML = '<div style="padding:0;">' + html + '</div>';

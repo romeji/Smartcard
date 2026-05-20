@@ -1,6 +1,4 @@
 // api/gemini-vision.js — Gemini Vision pour reconnaissance photo frigo
-// Runtime: Node.js — Variable requise : GEMINI_API_KEY dans Vercel
-
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -19,17 +17,9 @@ export default async function handler(req, res) {
   if (!imageBase64) { res.status(400).json({ error: 'Missing imageBase64' }); return; }
 
   const defaultPrompt = `Analyse cette photo de frigo ou d'aliments.
-Liste tous les aliments visibles en JSON.
+Liste tous les aliments visibles.
 Réponds UNIQUEMENT en JSON valide sans balises markdown:
-{"aliments":[{"nom":"Lait","emoji":"🥛","quantite":"1 litre","categorie":"laitage"},{"nom":"Tomates","emoji":"🍅","quantite":"4","categorie":"légumes"}]}`;
-
-  // Try models in order: gemini-2.0-flash (latest) → gemini-1.5-flash-latest → gemini-pro-vision
-  const MODELS = [
-    'gemini-2.0-flash',
-    'gemini-1.5-flash-latest',
-    'gemini-1.5-flash-8b',
-    'gemini-pro-vision',
-  ];
+{"aliments":[{"nom":"Lait","emoji":"🥛","quantite":"1 litre","categorie":"laitage"}]}`;
 
   const payload = {
     contents: [{ parts: [
@@ -39,28 +29,43 @@ Réponds UNIQUEMENT en JSON valide sans balises markdown:
     generationConfig: { temperature: 0.1, maxOutputTokens: 1024 }
   };
 
-  let lastError = '';
+  // Liste des modèles à essayer dans l'ordre
+  const MODELS = [
+    'gemini-2.0-flash-lite',
+    'gemini-2.0-flash',
+    'gemini-1.5-flash',
+    'gemini-1.5-pro',
+  ];
+
+  const errors = [];
   for (const model of MODELS) {
     try {
-      const r = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`,
-        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }
-      );
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
+      console.log(`[gemini-vision] Trying ${model}...`);
+      const r = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
       const data = await r.json();
-      if (r.ok) {
-        const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-        console.log(`[gemini-vision] OK avec ${model}`);
+      if (r.ok && data.candidates?.[0]?.content?.parts?.[0]?.text) {
+        const text = data.candidates[0].content.parts[0].text;
+        console.log(`[gemini-vision] ✅ ${model} OK`);
         return res.status(200).json({ text, model });
       }
-      lastError = data?.error?.message || `HTTP ${r.status}`;
-      console.warn(`[gemini-vision] ${model} failed:`, lastError);
-      // If not a 404/model-not-found error, stop trying
-      if (r.status !== 404 && r.status !== 400) break;
+      const errMsg = data?.error?.message || `HTTP ${r.status}`;
+      console.warn(`[gemini-vision] ❌ ${model}: ${errMsg}`);
+      errors.push(`${model}: ${errMsg}`);
     } catch (e) {
-      lastError = e.message;
-      console.warn(`[gemini-vision] ${model} exception:`, e.message);
+      console.warn(`[gemini-vision] ❌ ${model} exception: ${e.message}`);
+      errors.push(`${model}: ${e.message}`);
     }
   }
 
-  res.status(502).json({ error: 'Tous les modèles Gemini ont échoué', details: lastError });
+  // Tous les modèles ont échoué — renvoyer le détail
+  res.status(502).json({
+    error: 'Tous les modèles Gemini ont échoué',
+    details: errors,
+    hint: 'Vérifiez que GEMINI_API_KEY est valide et que les modèles sont activés sur https://aistudio.google.com'
+  });
 }

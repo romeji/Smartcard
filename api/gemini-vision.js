@@ -42,16 +42,16 @@ Réponds UNIQUEMENT en JSON valide sans balises markdown:
         }
         const err = data?.error?.message || '';
         console.warn(`[vision] Gemini ${model} failed: ${err}`);
-        // If quota error, stop trying Gemini models
-        if (err.includes('quota') || err.includes('billing') || err.includes('exceeded')) break;
+        // Si quota/billing → arrêter les modèles Gemini, passer à Claude
+        if (err.includes('quota') || err.includes('billing') || err.includes('exceeded') || r.status === 429) break;
       } catch (e) {
         console.warn(`[vision] Gemini ${model} exception: ${e.message}`);
       }
     }
   }
 
-  // ── 2. Fallback → Claude (via CLAUDE_API key) ──────────
-  const CLAUDE_KEY = process.env.CLAUDE_API;
+  // ── 2. Fallback → Claude Vision ────────────────────────
+  const CLAUDE_KEY = process.env.CLAUDE_API_KEY;
   if (CLAUDE_KEY) {
     try {
       console.log('[vision] Trying Claude fallback...');
@@ -63,7 +63,7 @@ Réponds UNIQUEMENT en JSON valide sans balises markdown:
           'anthropic-version': '2023-06-01',
         },
         body: JSON.stringify({
-          model: 'claude-haiku-4-5-20251001',
+          model: 'claude-3-5-haiku-20241022',
           max_tokens: 1024,
           messages: [{
             role: 'user',
@@ -79,7 +79,8 @@ Réponds UNIQUEMENT en JSON valide sans balises markdown:
         console.log('[vision] ✅ Claude fallback OK');
         return res.status(200).json({ text: data.content[0].text, model: 'claude-haiku' });
       }
-      console.warn('[vision] Claude fallback failed:', data?.error?.message);
+      console.warn('[vision] Claude fallback failed:', data?.error?.message, data?.error?.type);
+      return res.status(502).json({ error: 'Claude vision failed', details: data?.error?.message });
     } catch (e) {
       console.warn('[vision] Claude fallback exception:', e.message);
     }
@@ -87,6 +88,6 @@ Réponds UNIQUEMENT en JSON valide sans balises markdown:
 
   res.status(502).json({
     error: 'Vision non disponible',
-    hint: 'Quota Gemini dépassé et pas de clé Claude. Activez la facturation sur console.cloud.google.com ou ajoutez CLAUDE_API dans Vercel.'
+    hint: 'Vérifiez GEMINI_API_KEY et CLAUDE_API_KEY dans Vercel → Settings → Environment Variables'
   });
 }

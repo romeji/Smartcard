@@ -1,75 +1,48 @@
-// Vercel Edge Function — Gemini Vision pour reconnaissance photo frigo
-// Déployer sur Vercel : vercel deploy
-// Variable d'environnement requise : GEMINI_API_KEY (dans Vercel Dashboard > Settings > Environment Variables)
+// api/gemini-vision.js — Gemini Vision pour reconnaissance photo frigo
+// Runtime: Node.js (pas Edge) pour accès à process.env
+// Variable requise : GEMINI_API_KEY dans Vercel Dashboard > Settings > Environment Variables
 
-export const config = { runtime: 'edge' };
+export default async function handler(req, res) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-export default async function handler(req) {
-  if (req.method === 'OPTIONS') {
-    return new Response(null, {
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type',
-      },
-    });
+  if (req.method === 'OPTIONS') { res.status(200).end(); return; }
+  if (req.method !== 'POST') { res.status(405).json({ error: 'Method not allowed' }); return; }
+
+  const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+  if (!GEMINI_API_KEY) {
+    res.status(500).json({ error: 'GEMINI_API_KEY not configured in Vercel environment variables' });
+    return;
   }
 
-  if (req.method !== 'POST') {
-    return new Response(JSON.stringify({ error: 'Method not allowed' }), {
-      status: 405,
-      headers: { 'Content-Type': 'application/json' },
-    });
+  const { imageBase64, mimeType = 'image/jpeg', prompt } = req.body || {};
+
+  if (!imageBase64) {
+    res.status(400).json({ error: 'Missing imageBase64' });
+    return;
   }
+
+  const defaultPrompt = `Analyse cette photo de frigo ou d'aliments.
+Liste tous les aliments visibles en JSON.
+Pour chaque aliment: nom en français, emoji adapté, quantité estimée, catégorie.
+Réponds UNIQUEMENT en JSON valide sans balises markdown:
+{"aliments":[{"nom":"Lait","emoji":"🥛","quantite":"1 litre","categorie":"laitage"},{"nom":"Tomates","emoji":"🍅","quantite":"4","categorie":"légumes"}]}`;
+
+  const geminiPayload = {
+    contents: [{
+      parts: [
+        { inline_data: { mime_type: mimeType, data: imageBase64 } },
+        { text: prompt || defaultPrompt }
+      ]
+    }],
+    generationConfig: {
+      temperature: 0.1,
+      maxOutputTokens: 1024,
+    }
+  };
 
   try {
-    const body = await req.json();
-    const { imageBase64, mimeType = 'image/jpeg', prompt } = body;
-
-    if (!imageBase64) {
-      return new Response(JSON.stringify({ error: 'Missing imageBase64' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      });
-    }
-
-    const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-    if (!GEMINI_API_KEY) {
-      return new Response(JSON.stringify({ error: 'GEMINI_API_KEY not configured' }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' },
-      });
-    }
-
-    const defaultPrompt = `Analyse cette photo de frigo ou d'aliments.
-Liste tous les aliments visibles en JSON.
-Pour chaque aliment: nom en français, emoji adapté, quantité estimée.
-Réponds UNIQUEMENT en JSON valide:
-{"items":[{"name":"lait","emoji":"🥛","qty":"1 litre"},{"name":"fromage","emoji":"🧀","qty":"200g"}]}`;
-
-    const geminiPayload = {
-      contents: [
-        {
-          parts: [
-            {
-              inline_data: {
-                mime_type: mimeType,
-                data: imageBase64,
-              },
-            },
-            {
-              text: prompt || defaultPrompt,
-            },
-          ],
-        },
-      ],
-      generationConfig: {
-        temperature: 0.1,
-        maxOutputTokens: 1024,
-        responseMimeType: 'application/json',
-      },
-    };
-
     const geminiRes = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`,
       {
@@ -81,25 +54,15 @@ Réponds UNIQUEMENT en JSON valide:
 
     if (!geminiRes.ok) {
       const errText = await geminiRes.text();
-      return new Response(JSON.stringify({ error: 'Gemini API error', details: errText }), {
-        status: 502,
-        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-      });
+      res.status(502).json({ error: 'Gemini API error', details: errText });
+      return;
     }
 
     const geminiData = await geminiRes.json();
     const text = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    res.status(200).json({ text, raw: geminiData });
 
-    return new Response(JSON.stringify({ text, raw: geminiData }), {
-      headers: {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-      },
-    });
   } catch (err) {
-    return new Response(JSON.stringify({ error: err.message }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-    });
+    res.status(500).json({ error: err.message });
   }
 }

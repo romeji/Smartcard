@@ -18,43 +18,58 @@ Réponds UNIQUEMENT en JSON valide sans balises markdown:
   // ── 1. Essayer Gemini ───────────────────────────────────
   const GEMINI_KEY = process.env.GEMINI_API_KEY;
   if (GEMINI_KEY) {
-    const MODELS = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'];
+    // Modèles dans l'ordre de préférence — noms exacts de l'API v1beta
+    const MODELS = [
+      'gemini-2.0-flash-latest',
+      'gemini-flash-latest',
+      'gemini-2.0-flash',
+      'gemini-1.5-flash-latest',
+      'gemini-1.5-flash',
+    ];
     for (const model of MODELS) {
       try {
-        const r = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_KEY}`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              contents: [{ parts: [
-                { inline_data: { mime_type: mimeType, data: imageBase64 } },
-                { text: promptText }
-              ]}],
-              generationConfig: { temperature: 0.1, maxOutputTokens: 1024 }
-            })
-          }
-        );
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_KEY}`;
+        console.log(`[vision] Trying Gemini ${model}...`);
+        const r = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [
+              { inline_data: { mime_type: mimeType, data: imageBase64 } },
+              { text: promptText }
+            ]}],
+            generationConfig: { temperature: 0.1, maxOutputTokens: 1024 }
+          })
+        });
         const data = await r.json();
         if (r.ok && data.candidates?.[0]?.content?.parts?.[0]?.text) {
-          console.log(`[vision] ✅ Gemini ${model}`);
+          console.log(`[vision] ✅ Gemini ${model} OK`);
           return res.status(200).json({ text: data.candidates[0].content.parts[0].text, model });
         }
         const err = data?.error?.message || '';
-        console.warn(`[vision] Gemini ${model} failed: ${err}`);
-        // Si quota/billing → arrêter les modèles Gemini, passer à Claude
-        if (err.includes('quota') || err.includes('billing') || err.includes('exceeded') || r.status === 429) break;
+        console.warn(`[vision] Gemini ${model} failed (${r.status}): ${err}`);
+        // Quota/billing dépassé → passer directement à Claude
+        if (r.status === 429 || err.includes('quota') || err.includes('billing') || err.includes('exceeded')) {
+          console.log('[vision] Quota Gemini dépassé → fallback Claude');
+          break;
+        }
+        // Modèle non trouvé (404) → essayer le suivant
+        if (r.status === 404 || err.includes('not found')) continue;
+        // Autre erreur → arrêter Gemini
+        break;
       } catch (e) {
         console.warn(`[vision] Gemini ${model} exception: ${e.message}`);
       }
     }
+  } else {
+    console.warn('[vision] GEMINI_API_KEY not set');
   }
 
   // ── 2. Fallback → Claude Vision ────────────────────────
   const CLAUDE_KEY = process.env.CLAUDE_API_KEY;
   if (CLAUDE_KEY) {
     try {
-      console.log('[vision] Trying Claude fallback...');
+      console.log('[vision] Trying Claude Vision fallback...');
       const r = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: {
@@ -76,14 +91,16 @@ Réponds UNIQUEMENT en JSON valide sans balises markdown:
       });
       const data = await r.json();
       if (r.ok && data.content?.[0]?.text) {
-        console.log('[vision] ✅ Claude fallback OK');
+        console.log('[vision] ✅ Claude Vision OK');
         return res.status(200).json({ text: data.content[0].text, model: 'claude-haiku' });
       }
-      console.warn('[vision] Claude fallback failed:', data?.error?.message, data?.error?.type);
+      console.warn('[vision] Claude failed:', data?.error?.message);
       return res.status(502).json({ error: 'Claude vision failed', details: data?.error?.message });
     } catch (e) {
-      console.warn('[vision] Claude fallback exception:', e.message);
+      console.warn('[vision] Claude exception:', e.message);
     }
+  } else {
+    console.warn('[vision] CLAUDE_API_KEY not set');
   }
 
   res.status(502).json({

@@ -4180,16 +4180,41 @@ async function translateInline(containerId) {
 }
 
 async function saveTranslatedRecipe() {
-  const t=window._lastTranslation; if(!t){showToast('⚠️','','Traduisez d\u2019abord.');return;}
-  if(!state.customRecipes) state.customRecipes=[];
-  const src=window._translateRecipe||{};
-  state.customRecipes.unshift({id:'tr_'+Date.now(),emoji:'🌐',name:t.name,time:src.readyInMinutes||30,portions:src.servings||4,kcal:0,diet:'omnivore',mealTypes:['l','d'],ingredients:(t.ingredients||[]).map(i=>({name:i,qty:'',unit:'',emoji:'🛍️'})),instructions:t.instructions||[],photo:src.image||null,source:'translated',createdAt:Date.now()});
+  const t = window._lastTranslation;
+  if(!t) { showToast('⚠️','','Traduisez d\'abord.'); return; }
+  if(!state.customRecipes) state.customRecipes = [];
+  const src = window._translateRecipe || {};
+
+  const recipe = {
+    id: 'tr_' + Date.now(),
+    emoji: '🌐',
+    name: t.name,
+    time: src.readyInMinutes || 30,
+    portions: src.servings || 4,
+    kcal: t.kcal || 0,
+    diet: 'omnivore',
+    mealTypes: ['l','d'],
+    ingredients: (t.ingredients||[]).map(i => ({name:i, qty:'', unit:'', emoji:'🛍️'})),
+    instructions: t.instructions || [],
+    steps: t.instructions || [],
+    photo: src.image || null,
+    source: 'translated',
+    createdAt: Date.now(),
+  };
+
+  // Save to personal recipes
+  state.customRecipes.unshift(recipe);
   await saveState();
-  window._lastTranslation=null;
+
+  // ★ Save to shared Firestore collection so ALL users see it
+  await saveToGlobalDB([recipe]);
+
+  window._lastTranslation = null;
   closeRecipe();
-  const ro=document.getElementById('recipeDetailOverlay');if(ro)ro.classList.remove('on');
-  showToast('✅','🇫🇷 '+t.name,'Recette sauvegardée !');
-  if(typeof renderRecipesGrid==='function') renderRecipesGrid();
+  const ro = document.getElementById('recipeDetailOverlay');
+  if(ro) ro.classList.remove('on');
+  showToast('✅', '🇫🇷 ' + t.name, 'Recette sauvegardée et partagée avec tous !');
+  if(typeof renderRecipesGrid === 'function') renderRecipesGrid();
 }
 
 
@@ -10899,9 +10924,21 @@ function showToast(icon, title, msg, duration=3500) {
 // ═══════════════════════════════════════════════
 // PRODUCTS DATABASE
 // ═══════════════════════════════════════════════
-// ═══════════════════════════════════════════════
-// SCAN FRIGO IA — Anthropic Vision
-// ═══════════════════════════════════════════════
+// ═══ Analyse IA de la semaine ══════════════════════════
+async function analyzeWeekWithAI() {
+  const days = Object.values(state.weekMenu || {}).filter(d => d && d.name);
+  if(days.length === 0) {
+    showToast('⚠️', 'Menu vide', 'Générez d\'abord un menu dans l\'onglet Semaine.');
+    return;
+  }
+  switchMenuTab('nutri');
+  setTimeout(() => {
+    const btn = document.getElementById('nutriAdviceBtn');
+    if(btn) btn.click();
+  }, 300);
+}
+
+
 function scanFridgeWithPhoto() {
   // Create a hidden file input and trigger it
   let fi = document.getElementById('_fridgeCamInput');

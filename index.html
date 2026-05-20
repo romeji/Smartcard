@@ -11095,33 +11095,80 @@ Maximum 20 aliments. Sois exhaustif: légumes, fruits, viandes, laitages, boisso
     }
 
     const data = await resp.json();
-    // gemini-vision returns { text, raw }
-    let rawText = data.text || data.raw?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    if(!rawText) throw new Error('Réponse Gemini vide. Vérifiez GEMINI_API_KEY dans Vercel → Settings → Environment Variables.');
+    let rawText = data.text || '';
+    if(!rawText) throw new Error('Réponse vide de l\'IA.');
 
+    console.log('[scan] Raw response:', rawText.slice(0, 300));
+
+    // Parse JSON — handle many formats the AI might return
     let aliments = [];
+
+    // Strategy 1: clean markdown fences and parse directly
     try {
-      const clean = rawText.replace(/```json|```/g, '').trim();
+      const clean = rawText.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
       const parsed = JSON.parse(clean);
-      // Handle both {aliments:[...]} and {items:[...]} formats
-      aliments = parsed.aliments || parsed.items?.map(i => ({
-        nom: i.name, emoji: i.emoji, quantite: i.qty, categorie: ''
-      })) || [];
-    } catch(e) {
-      const match = rawText.match(/\{[\s\S]*\}/);
-      if(match) {
-        const parsed = JSON.parse(match[0]);
-        aliments = parsed.aliments || parsed.items?.map(i => ({
-          nom: i.name, emoji: i.emoji, quantite: i.qty, categorie: ''
-        })) || [];
+      aliments = parsed.aliments || parsed.items || parsed.foods || parsed.ingredients || [];
+      // Normalize items/foods format to {nom, emoji, quantite}
+      aliments = aliments.map(i => ({
+        nom:      i.nom || i.name || i.label || String(i),
+        emoji:    i.emoji || '🥗',
+        quantite: i.quantite || i.qty || i.quantity || '',
+        categorie:i.categorie || i.category || '',
+      })).filter(i => i.nom && i.nom.length > 1);
+    } catch(e1) {
+      // Strategy 2: find any JSON array or object in the response
+      try {
+        // Try to find a JSON array directly
+        const arrMatch = rawText.match(/\[[\s\S]*\]/);
+        if(arrMatch) {
+          const arr = JSON.parse(arrMatch[0]);
+          aliments = arr.map(i => ({
+            nom:      i.nom || i.name || String(i),
+            emoji:    i.emoji || '🥗',
+            quantite: i.quantite || i.qty || '',
+            categorie:i.categorie || '',
+          })).filter(i => i.nom && i.nom.length > 1);
+        }
+        // Try to find a JSON object
+        if(!aliments.length) {
+          const objMatch = rawText.match(/\{[\s\S]*\}/);
+          if(objMatch) {
+            const obj = JSON.parse(objMatch[0]);
+            const arr = obj.aliments || obj.items || obj.foods || obj.ingredients || [];
+            aliments = arr.map(i => ({
+              nom:      i.nom || i.name || String(i),
+              emoji:    i.emoji || '🥗',
+              quantite: i.quantite || i.qty || '',
+              categorie:i.categorie || '',
+            })).filter(i => i.nom && i.nom.length > 1);
+          }
+        }
+      } catch(e2) {
+        console.warn('[scan] JSON parse failed:', e2.message, 'raw:', rawText.slice(0, 200));
+      }
+
+      // Strategy 3: extract food names line by line from plain text
+      if(!aliments.length && rawText.length > 5) {
+        console.warn('[scan] Falling back to text parsing');
+        const lines = rawText.split(/[\n,;]+/).map(l => l.replace(/^[-•*\d.]+\s*/, '').trim()).filter(l => l.length > 2 && l.length < 50);
+        aliments = lines.slice(0, 15).map(l => ({
+          nom: l.replace(/["""]/g,'').trim(),
+          emoji: '🥗',
+          quantite: '',
+          categorie: '',
+        })).filter(i => i.nom.length > 1);
       }
     }
 
     loadingOv.remove();
+
     if(!aliments.length) {
-      showToast('ℹ️', 'Aucun aliment détecté', 'Réessayez avec une photo plus nette et mieux éclairée.');
+      // Show raw response for debugging
+      console.error('[scan] Could not parse aliments from:', rawText);
+      showToast('⚠️', 'Détection impossible', 'L\'IA a répondu mais le format est inattendu. Vérifiez la console.');
       return;
     }
+
     _showFridgeScanResults(aliments);
 
   } catch(e) {

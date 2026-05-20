@@ -2122,44 +2122,79 @@ async function syncToFirestore(key, value) {
   try {
     const docId = state.houseId || currentUser.uid;
     await db.collection('households').doc(docId).set({[key]: value, updatedAt: Date.now()}, {merge: true});
+    // Always mirror personal data to users/{uid} so it survives logout/login without a household
+    const personalKeys = ['weekMenu', 'history', 'fridge', 'items', 'budget'];
+    if(personalKeys.includes(key)) {
+      await db.collection('users').doc(currentUser.uid).set({[key]: value, updatedAt: Date.now()}, {merge: true});
+    }
   } catch(e) { console.warn('Sync error:', e); }
 }
 
 async function loadFromFirestore() {
   if(!db || !currentUser) return;
   try {
-    const docId = state.houseId || currentUser.uid;
-    const doc = await db.collection('households').doc(docId).get();
-    if(doc.exists) {
-      const d = doc.data();
-      if(d.items) state.items = d.items;
-      if(d.fridge) state.fridge = d.fridge;
-      if(d.history) state.history = d.history;
+    // Always load personal data from users/{uid} first (guaranteed to exist)
+    const userDoc = await db.collection('users').doc(currentUser.uid).get();
+    if(userDoc.exists) {
+      const d = userDoc.data();
+      if(d.items)    state.items    = d.items;
+      if(d.fridge)   state.fridge   = d.fridge;
+      if(d.history)  state.history  = d.history;
       if(d.weekMenu) state.weekMenu = d.weekMenu;
-      if(d.budget) state.budget = d.budget;
+      if(d.budget)   state.budget   = d.budget;
       saveState();
-      renderAll();
     }
+    // If in a household, override with household data (shared/merged)
+    if(state.houseId) {
+      const houseDoc = await db.collection('households').doc(state.houseId).get();
+      if(houseDoc.exists) {
+        const d = houseDoc.data();
+        if(d.items)    state.items    = d.items;
+        if(d.fridge)   state.fridge   = d.fridge;
+        if(d.history)  state.history  = d.history;
+        if(d.weekMenu) state.weekMenu = d.weekMenu;
+        if(d.budget)   state.budget   = d.budget;
+        saveState();
+      }
+    }
+    renderAll();
   } catch(e) { console.warn('Load error:', e); }
 }
 
-// Real-time listener for shared household
+// Real-time listener for shared household + personal user data
+let _userUnsub = null;
 function subscribeToHousehold() {
-  if(itemsUnsub) itemsUnsub();
+  if(itemsUnsub) { itemsUnsub(); itemsUnsub = null; }
+  if(_userUnsub) { _userUnsub(); _userUnsub = null; }
   if(!db || !currentUser) return;
-  const docId = state.houseId || currentUser.uid;
-  itemsUnsub = db.collection('households').doc(docId).onSnapshot(doc => {
-    if(doc.exists) {
+
+  // Always listen to users/{uid} for personal data (weekMenu, fridge, items, history)
+  _userUnsub = db.collection('users').doc(currentUser.uid).onSnapshot(doc => {
+    if(!doc.exists) return;
+    const d = doc.data();
+    let changed = false;
+    if(d.items    !== undefined && JSON.stringify(d.items)    !== JSON.stringify(state.items))    { state.items    = d.items;    changed = true; }
+    if(d.fridge   !== undefined && JSON.stringify(d.fridge)   !== JSON.stringify(state.fridge))   { state.fridge   = d.fridge;   changed = true; }
+    if(d.history  !== undefined && JSON.stringify(d.history)  !== JSON.stringify(state.history))  { state.history  = d.history;  changed = true; }
+    if(d.weekMenu !== undefined && JSON.stringify(d.weekMenu) !== JSON.stringify(state.weekMenu)) { state.weekMenu = d.weekMenu; changed = true; }
+    if(d.budget   !== undefined && d.budget !== state.budget) { state.budget = d.budget; changed = true; }
+    if(changed) { saveState(); renderAll(); }
+  }, err => console.warn('User snapshot err:', err));
+
+  // Also listen to household if member of one
+  if(state.houseId) {
+    itemsUnsub = db.collection('households').doc(state.houseId).onSnapshot(doc => {
+      if(!doc.exists) return;
       const d = doc.data();
-      if(d.items !== undefined) state.items = d.items;
-      if(d.fridge !== undefined) state.fridge = d.fridge;
-      if(d.history !== undefined) state.history = d.history;
+      if(d.items    !== undefined) state.items    = d.items;
+      if(d.fridge   !== undefined) state.fridge   = d.fridge;
+      if(d.history  !== undefined) state.history  = d.history;
       if(d.weekMenu !== undefined) state.weekMenu = d.weekMenu;
-      if(d.budget !== undefined) state.budget = d.budget;
+      if(d.budget   !== undefined) state.budget   = d.budget;
       saveState();
       renderAll();
-    }
-  }, err => console.warn('Snapshot err:', err));
+    }, err => console.warn('Household snapshot err:', err));
+  }
 }
 
 async function saveItems() { saveState(); await syncToFirestore('items', state.items); }
@@ -6624,47 +6659,40 @@ function searchGlobalDB(query, filters) {
 let _recipesUnsub = null;
 async function syncGlobalRecipesFromFirestore() {
   if(typeof db === 'undefined' || !db) return;
-  // Unsubscribe previous listener if any
   if(_recipesUnsub) { _recipesUnsub(); _recipesUnsub = null; }
+
+  function applySnap(snap) {
+    const existing = getGlobalRecipeDB();
+    const existingIds = new Set(existing.map(r => r.id));
+    let added = 0;
+    snap.forEach(doc => {
+      const r = {id: doc.id, ...doc.data(), savedAt: undefined, savedBy: undefined};
+      if(!existingIds.has(r.id) && r.name) {
+        existing.push(r);
+        existingIds.add(r.id);
+        added++;
+      }
+    });
+    if(added > 0) {
+      localStorage.setItem('sc_global_recipes', JSON.stringify(existing.slice(0, 300)));
+      console.log('[Firestore] +' + added + ' recettes partagées');
+      if(window._menuTab === 'recipes') { try { renderRecipesGrid(); } catch(e){} }
+      if(window._menuTab === 'favs')    { try { renderFavsGrid(); } catch(e){} }
+    }
+  }
+
+  // Simple query without orderBy — avoids needing a composite index
   try {
-    _recipesUnsub = db.collection('recipes')
-      .orderBy('savedAt', 'desc')
-      .limit(150)
-      .onSnapshot(snap => {
-        const existing = getGlobalRecipeDB();
-        const existingIds = new Set(existing.map(r => r.id));
-        let added = 0;
-        snap.forEach(doc => {
-          const r = {id: doc.id, ...doc.data(), savedAt: undefined};
-          if(!existingIds.has(r.id) && r.name) {
-            existing.unshift(r);
-            existingIds.add(r.id);
-            added++;
-          }
-        });
-        if(added > 0) {
-          localStorage.setItem('sc_global_recipes', JSON.stringify(existing.slice(0, 300)));
-          console.log('[Firestore] Synced', added, 'shared recipes');
-          // Refresh recipes tab if it's visible
-          if(window._menuTab === 'recipes') { try { renderRecipesGrid(); } catch(e){} }
-          if(window._menuTab === 'favs')    { try { renderFavsGrid(); } catch(e){} }
-        }
-      }, err => {
-        // orderBy('savedAt') requires an index — fall back to simple query
-        console.warn('[Firestore] recipes listener error (trying without orderBy):', err.message);
-        db.collection('recipes').limit(150).get().then(snap2 => {
-          const existing = getGlobalRecipeDB();
-          const existingIds = new Set(existing.map(r => r.id));
-          let added = 0;
-          snap2.forEach(doc => {
-            const r = {id: doc.id, ...doc.data(), savedAt: undefined};
-            if(!existingIds.has(r.id) && r.name) { existing.unshift(r); existingIds.add(r.id); added++; }
-          });
-          if(added > 0) localStorage.setItem('sc_global_recipes', JSON.stringify(existing.slice(0,300)));
-        }).catch(()=>{});
-      });
+    _recipesUnsub = db.collection('recipes').limit(150).onSnapshot(
+      snap => applySnap(snap),
+      err  => {
+        console.warn('[Firestore] recipes onSnapshot error:', err.message);
+        // Fallback: one-time get
+        db.collection('recipes').limit(150).get().then(applySnap).catch(()=>{});
+      }
+    );
   } catch(e) {
-    console.warn('[Firestore] syncGlobalRecipes error:', e.message);
+    console.warn('[Firestore] syncGlobalRecipes setup error:', e.message);
   }
 }
 
@@ -9659,86 +9687,61 @@ function crHandlePhoto(input) {
   reader.readAsDataURL(file);
 }
 
-function crAddIngr() {
-  const name=document.getElementById('crIngrName')?.value?.trim();
-  const qty=document.getElementById('crIngrQty')?.value?.trim();
-  const unit=document.getElementById('crIngrUnit')?.value?.trim();
-  if(!name) return;
-  _crState.ingredients.push({name,qty:qty||'',unit:unit||''});
-  crRenderIngr();
-  document.getElementById('crIngrName').value='';
-  document.getElementById('crIngrQty').value='';
-  document.getElementById('crIngrUnit').value='';
-  document.getElementById('crIngrName').focus();
-}
-function crRemoveIngr(i) { _crState.ingredients.splice(i,1); crRenderIngr(); }
-function crRenderIngr() {
-  const list=document.getElementById('crIngrList');
-  if(!list) return;
-  list.innerHTML=_crState.ingredients.map((ing,i)=>`
-    <div class="cr-ingr-row">
-      <div class="cr-ingr-nm">🥕 ${ing.name}</div>
-      <div class="cr-ingr-qty">${ing.qty} ${ing.unit}</div>
-      <button class="btn ghost sm" onclick="crRemoveIngr(${i})" style="color:var(--rd);padding:4px;">✕</button>
-    </div>`).join('');
-}
-
-function crAddStep() {
-  const txt=document.getElementById('crStepInput')?.value?.trim();
-  if(!txt) return;
-  _crState.steps.push(txt);
-  crRenderSteps();
-  document.getElementById('crStepInput').value='';
-  document.getElementById('crStepInput').focus();
-}
-function crRemoveStep(i) { _crState.steps.splice(i,1); crRenderSteps(); }
-function crRenderSteps() {
-  const list=document.getElementById('crStepList');
-  if(!list) return;
-  list.innerHTML=_crState.steps.map((s,i)=>`
-    <div class="cr-step-row">
-      <div class="cr-step-num">${i+1}</div>
-      <div class="cr-step-txt">${s}</div>
-      <button class="btn ghost sm" onclick="crRemoveStep(${i})" style="color:var(--rd);padding:4px;">✕</button>
-    </div>`).join('');
-}
-
 function saveNewRecipe() {
-  const name=document.getElementById('cr_name')?.value?.trim();
-  if(!name) { showToast('⚠️','Nom requis',''); return; }
-  const get=id=>document.getElementById(id)?.value?.trim()||'';
-  const recipe={
-    id:'cr_'+Date.now(),
-    emoji:get('cr_emoji')||'🍳',
+  const name = document.getElementById('cr_name')?.value?.trim();
+  if(!name) { showToast('⚠️', 'Nom requis', 'Donnez un nom à votre recette.'); return; }
+  const get = id => document.getElementById(id)?.value?.trim() || '';
+
+  // Use window._crIngredients and window._crSteps (set by crAddIngrFromInput / crAddStep)
+  const ingredients = (window._crIngredients || []).slice();
+  const steps = (window._crSteps || []).slice();
+
+  const recipe = {
+    id: 'cr_' + Date.now(),
+    emoji: get('cr_emoji') || '🍳',
     name,
-    time:+get('cr_time')||null,
-    portions:+get('cr_portions')||4,
-    diet:get('cr_diet')||'omnivore',
-    kcal:+get('cr_kcal')||null,
-    prot:+get('cr_prot')||null,
-    carb:+get('cr_carb')||null,
-    fat:+get('cr_fat')||null,
-    notes:get('cr_notes'),
-    ingredients:_crState.ingredients.slice(),
-    steps:_crState.steps.slice(),
-    photo:_crState.photo||null,
-    createdAt:Date.now(),
+    time:     +get('cr_time')     || null,
+    portions: +get('cr_portions') || 4,
+    diet:      get('cr_diet')     || 'omnivore',
+    kcal:     +get('cr_kcal')     || null,
+    prot:     +get('cr_prot')     || null,
+    carb:     +get('cr_carb')     || null,
+    fat:      +get('cr_fat')      || null,
+    notes:     get('cr_notes'),
+    ingredients,
+    instructions: steps,
+    steps,
+    photo: window._crPhotoData || null,
+    createdAt: Date.now(),
+    source: 'custom',
   };
-  state.customRecipes.push(recipe);
-  // Add missing ingredients
-  const fridgeNames=state.fridge.map(f=>f.name.toLowerCase());
-  let added=0;
-  recipe.ingredients.forEach(ing=>{
-    if(!fridgeNames.some(fn=>fn.includes(ing.name.toLowerCase().split(' ')[0]))&&!state.items.some(it=>it.name.toLowerCase().includes(ing.name.toLowerCase().split(' ')[0]))) {
-      state.items.unshift({id:'i'+Date.now()+Math.random().toString(36).slice(2,6),name:ing.name,emoji:'🛒',cat:'🍝 Épicerie',price:0,qty:1,checked:false,addedAt:Date.now()});
+
+  // Save to custom recipes
+  if(!state.customRecipes) state.customRecipes = [];
+  if(window._crEditId) {
+    const idx = state.customRecipes.findIndex(r => r.id === window._crEditId);
+    if(idx >= 0) { state.customRecipes[idx] = {...state.customRecipes[idx], ...recipe, id: window._crEditId}; }
+    else state.customRecipes.push(recipe);
+  } else {
+    state.customRecipes.unshift(recipe);
+  }
+
+  // Add missing ingredients to shopping list
+  const fridgeNames = state.fridge.map(f => f.name.toLowerCase());
+  let added = 0;
+  ingredients.forEach(ing => {
+    const ingName = (ing.name || '').toLowerCase().split(' ')[0];
+    if(ingName && !fridgeNames.some(fn => fn.includes(ingName)) && !state.items.some(it => it.name.toLowerCase().includes(ingName))) {
+      state.items.unshift({id:'i'+Date.now()+Math.random().toString(36).slice(2,6), name:ing.name, emoji:'🛒', cat:'🍝 Épicerie', price:0, qty:1, checked:false, addedAt:Date.now()});
       added++;
     }
   });
-  if(added>0) saveItems();
+
+  if(added > 0) saveItems();
   saveState();
   closeCreateRecipe();
   renderRecipesGrid();
-  showToast('✅',name,'Recette créée !'+(added?' '+added+' ingrédients ajoutés à la liste':''));
+  showToast('✅', name, 'Recette ' + (window._crEditId ? 'modifiée' : 'créée') + (added ? ' · ' + added + ' ingrédients ajoutés à la liste' : ''));
 }
 function saveCustomRecipe() { saveNewRecipe(); } // compat alias
 

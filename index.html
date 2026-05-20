@@ -4561,6 +4561,7 @@ async function _saveMealDBToSharedDB(recipeId) {
 }
 
 
+function addMDBMissingToList(names) {
   let added = 0;
   names.forEach(name => {
     if(!state.items.some(it=>it.name.toLowerCase()===name.toLowerCase())) {

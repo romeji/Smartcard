@@ -11073,19 +11073,19 @@ async function _runFridgeScan(file) {
       fr.readAsDataURL(file);
     });
 
-    setStatus('Identification des aliments par Gemini Vision…');
+    setStatus('Identification des aliments…');
 
-    // Use /api/gemini-vision (Edge Function with GEMINI_API_KEY)
     const resp = await fetch('/api/gemini-vision', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         imageBase64: b64,
-        mimeType: file.type || 'image/jpeg',
-        prompt: `Analyse cette photo de frigo ou d'aliments. Liste TOUS les aliments visibles.
-Réponds UNIQUEMENT en JSON valide sans balises markdown:
-{"aliments":[{"nom":"Lait","emoji":"🥛","quantite":"1 litre","categorie":"laitage"},{"nom":"Tomates","emoji":"🍅","quantite":"4","categorie":"légumes"}]}
-Maximum 20 aliments. Sois exhaustif: légumes, fruits, viandes, laitages, boissons, condiments, restes...`
+        mimeType: 'image/jpeg',
+        prompt: `You are a food detection API. Look at this image and return ONLY a JSON object. No explanation, no markdown, no text. Start with { and end with }.
+
+{"aliments":[{"nom":"Tomates","emoji":"🍅","quantite":"4"},{"nom":"Lait","emoji":"🥛","quantite":"1L"},{"nom":"Fromage","emoji":"🧀","quantite":"200g"}]}
+
+Detect every visible food item. Use French names. Maximum 20 items. Return ONLY the JSON.`
       })
     });
 
@@ -11094,78 +11094,39 @@ Maximum 20 aliments. Sois exhaustif: légumes, fruits, viandes, laitages, boisso
       throw new Error('Erreur serveur ' + resp.status + ' — ' + errText.slice(0, 150));
     }
 
+    setStatus('Traitement…');
     const data = await resp.json();
-    let rawText = data.text || '';
+    const rawText = (data.text || '').trim();
+    console.log('[scan] Raw AI response:', rawText.slice(0, 500));
+
     if(!rawText) throw new Error('Réponse vide de l\'IA.');
 
-    console.log('[scan] Raw response:', rawText.slice(0, 300));
+    // Extract JSON: find first { and last } to strip any surrounding text
+    const firstBrace = rawText.indexOf('{');
+    const lastBrace  = rawText.lastIndexOf('}');
+    if(firstBrace === -1 || lastBrace === -1 || lastBrace <= firstBrace) {
+      throw new Error('L\'IA n\'a pas retourné de JSON valide. Réponse: ' + rawText.slice(0, 100));
+    }
 
-    // Parse JSON — handle many formats the AI might return
     let aliments = [];
-
-    // Strategy 1: clean markdown fences and parse directly
+    const jsonStr = rawText.slice(firstBrace, lastBrace + 1);
     try {
-      const clean = rawText.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
-      const parsed = JSON.parse(clean);
-      aliments = parsed.aliments || parsed.items || parsed.foods || parsed.ingredients || [];
-      // Normalize items/foods format to {nom, emoji, quantite}
-      aliments = aliments.map(i => ({
-        nom:      i.nom || i.name || i.label || String(i),
+      const parsed = JSON.parse(jsonStr);
+      const raw = parsed.aliments || parsed.items || parsed.foods || [];
+      aliments = raw.map(i => ({
+        nom:      (i.nom || i.name || i.label || '').trim(),
         emoji:    i.emoji || '🥗',
         quantite: i.quantite || i.qty || i.quantity || '',
         categorie:i.categorie || i.category || '',
-      })).filter(i => i.nom && i.nom.length > 1);
-    } catch(e1) {
-      // Strategy 2: find any JSON array or object in the response
-      try {
-        // Try to find a JSON array directly
-        const arrMatch = rawText.match(/\[[\s\S]*\]/);
-        if(arrMatch) {
-          const arr = JSON.parse(arrMatch[0]);
-          aliments = arr.map(i => ({
-            nom:      i.nom || i.name || String(i),
-            emoji:    i.emoji || '🥗',
-            quantite: i.quantite || i.qty || '',
-            categorie:i.categorie || '',
-          })).filter(i => i.nom && i.nom.length > 1);
-        }
-        // Try to find a JSON object
-        if(!aliments.length) {
-          const objMatch = rawText.match(/\{[\s\S]*\}/);
-          if(objMatch) {
-            const obj = JSON.parse(objMatch[0]);
-            const arr = obj.aliments || obj.items || obj.foods || obj.ingredients || [];
-            aliments = arr.map(i => ({
-              nom:      i.nom || i.name || String(i),
-              emoji:    i.emoji || '🥗',
-              quantite: i.quantite || i.qty || '',
-              categorie:i.categorie || '',
-            })).filter(i => i.nom && i.nom.length > 1);
-          }
-        }
-      } catch(e2) {
-        console.warn('[scan] JSON parse failed:', e2.message, 'raw:', rawText.slice(0, 200));
-      }
-
-      // Strategy 3: extract food names line by line from plain text
-      if(!aliments.length && rawText.length > 5) {
-        console.warn('[scan] Falling back to text parsing');
-        const lines = rawText.split(/[\n,;]+/).map(l => l.replace(/^[-•*\d.]+\s*/, '').trim()).filter(l => l.length > 2 && l.length < 50);
-        aliments = lines.slice(0, 15).map(l => ({
-          nom: l.replace(/["""]/g,'').trim(),
-          emoji: '🥗',
-          quantite: '',
-          categorie: '',
-        })).filter(i => i.nom.length > 1);
-      }
+      })).filter(i => i.nom.length > 1);
+    } catch(e) {
+      throw new Error('JSON malformé: ' + e.message + ' — ' + jsonStr.slice(0, 100));
     }
 
     loadingOv.remove();
 
     if(!aliments.length) {
-      // Show raw response for debugging
-      console.error('[scan] Could not parse aliments from:', rawText);
-      showToast('⚠️', 'Détection impossible', 'L\'IA a répondu mais le format est inattendu. Vérifiez la console.');
+      showToast('⚠️', 'Aucun aliment trouvé', 'L\'IA n\'a pas détecté d\'aliments dans cette photo.');
       return;
     }
 

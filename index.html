@@ -2198,7 +2198,15 @@ function subscribeToHousehold() {
 }
 
 async function saveItems() { saveState(); await syncToFirestore('items', state.items); }
-async function saveFridge() { saveState(); await syncToFirestore('fridge', state.fridge); }
+async function saveFridge() {
+  saveState();
+  await syncToFirestore('fridge', state.fridge);
+  // Refresh fridge-based recipe suggestions automatically
+  if(typeof renderFridgeRecipes === 'function') {
+    clearTimeout(window._fridgeRecipeTimer);
+    window._fridgeRecipeTimer = setTimeout(() => renderFridgeRecipes(), 800);
+  }
+}
 async function saveHistory() { saveState(); await syncToFirestore('history', state.history); }
 async function saveWeekMenu() {
   saveWeekToHistory().catch(()=>{}); // non-blocking
@@ -3779,6 +3787,15 @@ function _renderFridgeAIResults(recipes, results, status) {
 }
 
 let _mdbFridgeCache = null;
+let _mdbFridgeCacheKey = '';
+
+// Alias appelé automatiquement quand le frigo change
+function renderFridgeRecipes() {
+  // Invalider le cache pour forcer un rechargement avec les nouveaux ingrédients
+  _mdbFridgeCache = null;
+  _mdbFridgeCacheKey = '';
+  loadRecipes();
+}
 
 async function loadRecipes() {
   const grid  = document.getElementById('recipesGrid');
@@ -4389,7 +4406,7 @@ async function _translateMealDB(meal) {
         model: 'claude-3-5-haiku-20241022',
         max_tokens: 2000,
         system: 'Traducteur culinaire expert. Traduis ce JSON de recette anglaise vers le français. Règles: mesures métriques (1 cup=240ml, 1 tbsp=15ml, 1 tsp=5ml, 1 oz=28g, °F→°C via (F-32)/1.8), ingrédients exotiques→nom français courant + (original) si besoin, style chef. JSON uniquement sans markdown.',
-        messages: [{ role: 'user', content: JSON.stringify(payload) + '\n\nJSON: {"title":"...","ingredients":["mesure nom traduit"],"steps":["..."]}' }]
+        messages: [{ role: 'user', content: JSON.stringify(payload) + '\n\nJSON avec estimation: {"title":"...","ingredients":["mesure nom traduit"],"steps":["..."],"kcal":450,"prepTime":30}\nEstime les kcal par portion et le temps de préparation en minutes.' }]
       })
     });
 
@@ -4400,14 +4417,16 @@ async function _translateMealDB(meal) {
     const t = JSON.parse(jsonStr);
     if(!t.title || !t.ingredients) throw new Error('bad response');
 
-    // Reconstruire le meal traduit
+    // Reconstruire le meal traduit avec calories et temps
     return {
       ...meal,
       _translated: true,
       strMeal: t.title,
       strInstructions: (t.steps||[]).join('\n'),
-      _ingredients: t.ingredients,   // tableau string "qty nom"
-      _steps: t.steps || []
+      _ingredients: t.ingredients,
+      _steps: t.steps || [],
+      _kcal: t.kcal || 0,
+      _prepTime: t.prepTime || null,
     };
 
   } catch(e) {
@@ -4445,9 +4464,9 @@ function _showMealDBDetail(meal) {
     name: meal.strMeal,
     emoji: '🌍',
     photo: meal.strMealThumb,
-    time: null,
+    time: meal._prepTime || null,
     portions: 4,
-    kcal: 0,
+    kcal: meal._kcal || 0,
     diet: 'omnivore',
     mealTypes: ['l','d'],
     ingredients,
@@ -4484,6 +4503,8 @@ function _showMealDBDetail(meal) {
       <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:12px;">
         ${meal.strCategory?`<span class="off-badge off-badge-blue">🍽️ ${meal.strCategory}</span>`:''}
         ${meal.strArea?`<span class="off-badge off-badge-blue">🌍 ${meal.strArea}</span>`:''}
+        ${meal._prepTime?`<span class="off-badge" style="background:rgba(52,152,219,.12);color:#2980b9;">⏱️ ${meal._prepTime} min</span>`:''}
+        ${meal._kcal?`<span class="off-badge" style="background:rgba(231,76,60,.12);color:#e74c3c;">🔥 ${meal._kcal} kcal</span>`:''}
         ${meal.strYoutube?`<a href="${meal.strYoutube}" target="_blank" class="off-badge off-badge-red" style="text-decoration:none;">▶️ Vidéo</a>`:''}
       </div>
 
@@ -10333,7 +10354,6 @@ function detectStore(lines) {
 
 // ── Analyse principale ───────────────────────────
 async function runTicketAnalysis() {
-  // Utilise le fichier stocké globalement (fiable quelle que soit la source)
   const file = currentTicketFile;
   if(!file) {
     showToast('⚠️', 'Aucune image', 'Choisissez d\'abord une photo de ticket.');
@@ -10344,10 +10364,91 @@ async function runTicketAnalysis() {
   btn.textContent = '⏳ Analyse en cours...';
   setOCRProgress(5, 'Préparation de l\'image...');
 
+  // ── Étape 1 : Essayer Gemini Vision en priorité ──────────────────
   try {
-    // Étape 1 — Prétraitement (binarisation V8)
+    setOCRProgress(10, '📸 Gemini Vision analyse le ticket...');
+
+    // Compress image
+    const b64 = await new Promise((res, rej) => {
+      const img = new Image();
+      img.onload = () => {
+        const MAX = 1200;
+        let w = img.width, h = img.height;
+        if(w > MAX || h > MAX) { if(w>h){h=Math.round(h*MAX/w);w=MAX;}else{w=Math.round(w*MAX/h);h=MAX;} }
+        const c = document.createElement('canvas'); c.width=w; c.height=h;
+        c.getContext('2d').drawImage(img,0,0,w,h);
+        res(c.toDataURL('image/jpeg',0.8).split(',')[1]);
+      };
+      img.onerror = rej;
+      const fr = new FileReader(); fr.onload=e=>img.src=e.target.result; fr.readAsDataURL(file);
+    });
+
+    const resp = await fetch('/api/gemini-vision', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        imageBase64: b64,
+        mimeType: 'image/jpeg',
+        prompt: `Analyze this French supermarket receipt image. Extract all purchased products with their prices.
+Return ONLY a JSON object, no text before or after, start with { end with }:
+{"store":"Carrefour","total":42.50,"items":[{"name":"Lait demi-écrémé","price":1.29},{"name":"Tomates","price":2.49}]}
+Rules:
+- Extract every product line with a price
+- Use clean readable French product names
+- Exclude totals, taxes, loyalty points lines
+- Return ONLY the JSON`
+      })
+    });
+
+    if(resp.ok) {
+      const data = await resp.json();
+      const rawText = (data.text || '').trim();
+      const firstBrace = rawText.indexOf('{');
+      const lastBrace  = rawText.lastIndexOf('}');
+
+      if(firstBrace !== -1 && lastBrace > firstBrace) {
+        const parsed = JSON.parse(rawText.slice(firstBrace, lastBrace+1));
+        const geminiItems = parsed.items || [];
+
+        if(geminiItems.length > 0) {
+          setOCRProgress(90, `✅ ${geminiItems.length} articles détectés par Gemini`);
+
+          // Build items from Gemini result
+          const items = geminiItems.map(gi => {
+            const matched = findBestProduct(gi.name);
+            return {
+              id: 'tk'+Date.now()+Math.random().toString(36).slice(2,5),
+              name: gi.name,
+              emoji: matched?.emoji || '🛒',
+              cat: matched?.cat || '🍝 Épicerie',
+              price: gi.price || 0,
+              qty: 1, checked: false,
+              addedAt: Date.now(),
+            };
+          }).filter(i => i.name && i.name.length > 1);
+
+          setOCRProgress(100, '✅ Analyse Gemini terminée');
+          setTimeout(() => {
+            const el = document.getElementById('ocrProgress');
+            if(el) el.style.display = 'none';
+          }, 1500);
+
+          renderTicketResults(items, parsed.store || '', parsed.total || 0);
+          btn.disabled = false;
+          btn.textContent = '🤖 Analyser avec l\'IA';
+          return; // ✅ Gemini succeeded — skip Tesseract
+        }
+      }
+    }
+    console.warn('[ticket] Gemini Vision failed or returned no items — falling back to Tesseract');
+  } catch(e) {
+    console.warn('[ticket] Gemini Vision exception:', e.message, '— falling back to Tesseract');
+  }
+
+  // ── Étape 2 : Fallback Tesseract + Mistral ───────────────────────
+  try {
+    setOCRProgress(15, 'OCR Tesseract en cours...');
     const canvas = await preprocessImage(file);
-    setOCRProgress(15, 'Lancement de l\'OCR...');
 
     // Étape 2 — OCR Tesseract.js v4
     let ocrText = '';
@@ -10434,26 +10535,30 @@ async function runTicketAnalysis() {
       if(prog) prog.style.display = 'none';
     }, 800);
 
-    if(items.length === 0) {
-      // Aucun article détecté — on affiche la zone vide, PAS de démo
-      ticketParsedItems = [];
-      showTicketEditZoneEmpty(storeName);
-    } else {
-      ticketParsedItems = items;
-      showTicketEditZone(storeName, total, items);
-      showToast('✅', items.length + ' article(s) détecté(s)', storeName ? 'Magasin : ' + storeName : 'Ticket analysé');
-    }
+    renderTicketResults(items, storeName, total);
 
   } catch(e) {
     console.error('Ticket analysis error:', e);
     const prog = document.getElementById('ocrProgress');
     if(prog) prog.style.display = 'none';
-    // Afficher message d'erreur, PAS de démo
     showTicketError(e.message || 'Erreur inconnue');
   }
 
   btn.disabled = false;
   btn.textContent = '🤖 Analyser avec l\'IA';
+}
+
+function renderTicketResults(items, storeName, total) {
+  const btn = document.getElementById('analyzeBtn');
+  if(items.length === 0) {
+    ticketParsedItems = [];
+    showTicketEditZoneEmpty(storeName);
+  } else {
+    ticketParsedItems = items;
+    showTicketEditZone(storeName, total, items);
+    showToast('✅', items.length + ' article(s) détecté(s)', storeName ? 'Magasin : ' + storeName : 'Ticket analysé');
+  }
+  if(btn) { btn.disabled = false; btn.textContent = '🤖 Analyser avec l\'IA'; }
 }
 
 // Zone vide — aucun article détecté

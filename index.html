@@ -7552,6 +7552,14 @@ function renderDayDetail() {
             <div style="flex:1;min-width:0;">
               <div class="meal-slot-type">${sc.label}</div>
               <div class="meal-slot-name">${val}</div>
+              ${(()=>{
+                const md = menu[sc.key+'Data'];
+                const bits = [];
+                if(md?.kcal) bits.push('🔥 '+md.kcal+' kcal');
+                if(md?.time) bits.push('⏱️ '+md.time+' min');
+                if(md?.prot) bits.push('💪 '+md.prot+'g');
+                return bits.length ? '<div style="font-size:.62rem;color:var(--tx2);margin-top:2px;">'+bits.join(' · ')+'</div>' : '';
+              })()}
             </div>
           </div>
           <div style="display:flex;align-items:center;gap:4px;flex-shrink:0;">
@@ -7578,21 +7586,28 @@ function applyAIMenuResult(data) {
   if(!data.days) return;
   data.days.forEach((d,i)=>{
     const dn=i+1;
+    const fmt = m => m ? {
+      name:(m.emoji||'🍽️')+' '+(m.name||''),
+      kcal:m.kcal||0, prot:m.prot||0, carb:m.carb||0, fat:m.fat||0,
+      time:m.prepTime||m.time||null, notes:m.notes||''
+    } : null;
     state.weekMenu[dn]={
       b:(d.breakfast?.emoji||'🍽️')+' '+(d.breakfast?.name||''),
       l:(d.lunch?.emoji||'🍽️')+' '+(d.lunch?.name||''),
       d:(d.dinner?.emoji||'🍽️')+' '+(d.dinner?.name||''),
       snack:d.snack?(d.snack.emoji||'🍎')+' '+(d.snack.name||''):null,
-      nutri:{kcal:d.total_kcal,prot:d.prot,carb:d.carb,fat:d.fat},
-      quality:d.quality||'ok',
-      tip:d.tip||'',
-      raw:d,
+      bData:fmt(d.breakfast), lData:fmt(d.lunch),
+      dData:fmt(d.dinner),    snackData:d.snack?fmt(d.snack):null,
+      nutri:{
+        kcal:d.total_kcal||((d.breakfast?.kcal||0)+(d.lunch?.kcal||0)+(d.dinner?.kcal||0)+(d.snack?.kcal||0)),
+        prot:d.prot||0, carb:d.carb||0, fat:d.fat||0
+      },
+      quality:d.quality||'ok', tip:d.tip||'', raw:d,
     };
   });
   saveWeekMenu();
   renderWeek();
   renderDayDetail();
-  // Show summary
   const zone=document.getElementById('aiMenuResultZone');
   if(zone) {
     zone.innerHTML=`<div class="ai-menu-result">
@@ -7604,9 +7619,9 @@ function applyAIMenuResult(data) {
       ${data.days.slice(0,3).map(d=>`
         <div class="ai-menu-day">
           <div class="ai-menu-day-title">📅 ${d.day} <span style="font-size:.65rem;font-weight:700;color:${d.quality==='good'?'var(--gn)':d.quality==='warn'?"var(--yl)":"var(--bl)"};">● ${d.total_kcal||'?'} kcal</span></div>
-          <div class="ai-meal-row"><span class="ai-meal-label">Matin</span><span class="ai-meal-content">${d.breakfast?.emoji||''} ${d.breakfast?.name||''}</span></div>
-          <div class="ai-meal-row"><span class="ai-meal-label">Midi</span><span class="ai-meal-content">${d.lunch?.emoji||''} ${d.lunch?.name||''}</span></div>
-          <div class="ai-meal-row"><span class="ai-meal-label">Soir</span><span class="ai-meal-content">${d.dinner?.emoji||''} ${d.dinner?.name||''}</span></div>
+          <div class="ai-meal-row"><span class="ai-meal-label">Matin</span><span class="ai-meal-content">${d.breakfast?.emoji||''} ${d.breakfast?.name||''}${d.breakfast?.kcal?' <span style="color:var(--tx3);font-size:.62rem;">('+d.breakfast.kcal+' kcal)</span>':''}</span></div>
+          <div class="ai-meal-row"><span class="ai-meal-label">Midi</span><span class="ai-meal-content">${d.lunch?.emoji||''} ${d.lunch?.name||''}${d.lunch?.kcal?' <span style="color:var(--tx3);font-size:.62rem;">('+d.lunch.kcal+' kcal)</span>':''}</span></div>
+          <div class="ai-meal-row"><span class="ai-meal-label">Soir</span><span class="ai-meal-content">${d.dinner?.emoji||''} ${d.dinner?.name||''}${d.dinner?.kcal?' <span style="color:var(--tx3);font-size:.62rem;">('+d.dinner.kcal+' kcal)</span>':''}</span></div>
           ${d.tip?`<div style="font-size:.68rem;color:var(--ac);margin-top:4px;">💡 ${d.tip}</div>`:''}
         </div>`).join('')}
       <div style="text-align:center;font-size:.72rem;color:var(--tx2);padding-top:6px;">↓ Voir les 7 jours dans le calendrier</div>

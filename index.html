@@ -7446,27 +7446,58 @@ function selectDay(d) {
   renderDayDetail();
 }
 
-function _renderDayNutri(nutri, menu) {
-  const allRec = typeof getAllRecipes === 'function' ? getAllRecipes() : [];
-  let totalKcal = nutri.kcal || 0, totalProt = nutri.prot || 0, totalCarb = nutri.carb || 0, totalFat = nutri.fat || 0;
-  if(!totalKcal) {
-    ['b','l','d','snack'].forEach(slot => {
-      const mealName = ((menu && menu[slot]) || '').replace(/^[^\w]+/, '').trim().toLowerCase();
-      if(!mealName) return;
-      const r = allRec.find(rec =>
-        rec.name.toLowerCase().includes(mealName.split(' ')[0]) ||
-        mealName.includes(rec.name.toLowerCase().split(' ')[0])
-      );
-      if(r) { totalKcal += (r.kcal||0); totalProt += (r.prot||0); totalCarb += (r.carb||0); totalFat += (r.fat||0); }
-    });
+// Calcule les macros réelles du jour depuis les données de chaque repas
+function _calcDayNutri(menu) {
+  let kcal=0, prot=0, carb=0, fat=0, hasReal=false;
+  ['b','l','d','snack'].forEach(slot => {
+    const md = menu && menu[slot+'Data'];
+    if(md && md.kcal) { kcal+=md.kcal; prot+=md.prot||0; carb+=md.carb||0; fat+=md.fat||0; hasReal=true; }
+  });
+  // Fallback: use stored nutri only if it was set by AI generation (not fuzzy match)
+  if(!hasReal && menu?.nutri?.kcal) {
+    return { kcal:menu.nutri.kcal, prot:menu.nutri.prot||0, carb:menu.nutri.carb||0, fat:menu.nutri.fat||0, fromAI:true };
   }
-  if(!totalKcal) return '';
-  return '<div class="meal-nutri" style="margin-top:8px;">'
-    + '<span class="nutri-pill cal">🔥 ' + totalKcal + ' kcal</span>'
-    + (totalProt ? '<span class="nutri-pill prot">💪 ' + totalProt + 'g prot</span>' : '')
-    + (totalCarb ? '<span class="nutri-pill carb">🍞 ' + totalCarb + 'g glucides</span>' : '')
-    + (totalFat ? '<span class="nutri-pill fat">🥑 ' + totalFat + 'g lipides</span>' : '')
-    + '</div>';
+  return hasReal ? { kcal, prot, carb, fat, fromAI:false } : null;
+}
+
+function _renderDayNutri(nutri, menu) {
+  const n = _calcDayNutri(menu);
+  if(!n || !n.kcal) return '';
+  const source = n.fromAI ? '<span style="font-size:.55rem;color:var(--tx3);margin-left:4px;">(estimation IA)</span>' : '';
+  return `<div class="meal-nutri" style="margin-top:10px;padding:10px 12px;background:var(--bg2);border-radius:var(--rs);">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+      <div style="font-size:.7rem;font-weight:900;">Bilan du jour${source}</div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;">
+      <div style="text-align:center;background:var(--bg);border-radius:8px;padding:7px 4px;">
+        <div style="font-size:.9rem;font-weight:900;color:var(--ac);">${Math.round(n.kcal)}</div>
+        <div style="font-size:.55rem;color:var(--tx2);">kcal</div>
+      </div>
+      ${n.prot ? `<div style="text-align:center;background:var(--bg);border-radius:8px;padding:7px 4px;">
+        <div style="font-size:.9rem;font-weight:900;color:#3498db;">${Math.round(n.prot)}g</div>
+        <div style="font-size:.55rem;color:var(--tx2);">protéines</div>
+      </div>` : ''}
+      ${n.carb ? `<div style="text-align:center;background:var(--bg);border-radius:8px;padding:7px 4px;">
+        <div style="font-size:.9rem;font-weight:900;color:#f39c12;">${Math.round(n.carb)}g</div>
+        <div style="font-size:.55rem;color:var(--tx2);">glucides</div>
+      </div>` : ''}
+      ${n.fat ? `<div style="text-align:center;background:var(--bg);border-radius:8px;padding:7px 4px;">
+        <div style="font-size:.9rem;font-weight:900;color:#27ae60;">${Math.round(n.fat)}g</div>
+        <div style="font-size:.55rem;color:var(--tx2);">lipides</div>
+      </div>` : ''}
+    </div>
+  </div>`;
+}
+
+// Met à jour le total nutritionnel du jour depuis les Data slots — appelé après chaque modification
+function _refreshDayNutri(day) {
+  const menu = state.weekMenu[day];
+  if(!menu) return;
+  const n = _calcDayNutri(menu);
+  if(n && n.kcal && !n.fromAI) {
+    // Only overwrite AI nutri if we have real per-meal data
+    menu.nutri = { kcal:Math.round(n.kcal), prot:Math.round(n.prot), carb:Math.round(n.carb), fat:Math.round(n.fat) };
+  }
 }
 
 function renderDayDetail() {
@@ -7497,7 +7528,9 @@ function renderDayDetail() {
   }
 
   const nutri = menu.nutri || {};
-  const pctKcal = calTarget && nutri.kcal ? Math.min(110, Math.round(nutri.kcal/calTarget*100)) : 0;
+  const realNutri = _calcDayNutri(menu);
+  const displayKcal = (realNutri && !realNutri.fromAI) ? realNutri.kcal : (nutri.kcal || 0);
+  const pctKcal = calTarget && displayKcal ? Math.min(110, Math.round(displayKcal/calTarget*100)) : 0;
   const barColor = pctKcal>=85&&pctKcal<=105 ? 'var(--gn)' : pctKcal>110 ? 'var(--rd)' : 'var(--yl)';
 
   const SLOT_CFG = [
@@ -7516,7 +7549,8 @@ function renderDayDetail() {
     ${calTarget ? `<div class="meal-card-sub" style="margin-bottom:8px;">🎯 Objectif: ${calTarget} kcal</div>
     <div class="cal-bar-wrap" style="margin-bottom:12px;">
       <div style="display:flex;justify-content:space-between;font-size:.65rem;color:var(--tx2);margin-bottom:3px;">
-        <span>${nutri.kcal||0} kcal planifiées</span><span>${pctKcal}%</span>
+        <span>${displayKcal ? displayKcal+' kcal planifiées'+(realNutri&&!realNutri.fromAI?' ✓':' ~') : 'Aucune donnée calorique'}</span>
+        <span>${pctKcal ? pctKcal+'%' : ''}</span>
       </div>
       <div class="cal-bar-track"><div class="cal-bar-fill" style="width:${pctKcal}%;background:${barColor};"></div></div>
     </div>` : ''}
@@ -7941,6 +7975,7 @@ async function selectMealDBForSlot(id, frName, day, slot) {
       }).catch(()=>{});
   }
 
+  _refreshDayNutri(day);
   saveWeekMenu();
   renderWeek && renderWeek();
   renderDayDetail && renderDayDetail();
@@ -8820,7 +8855,7 @@ async function omeSearchMealDB(day, slot) {
   const q = document.getElementById('omeDbSearch')?.value?.trim();
   if(!q) return;
   const res = document.getElementById('omeDbResults');
-  if(res) res.innerHTML = '<div style="padding:10px;text-align:center;color:var(--tx2);font-size:.75rem;">🔄 Recherche...</div>';
+  if(res) res.innerHTML = '<div style="padding:12px;text-align:center;color:var(--tx2);font-size:.75rem;">🔄 Recherche...</div>';
   try {
     const qEn = typeof translateQueryToEnglish==='function' ? translateQueryToEnglish(q) : q;
     const resp = await fetch('https://www.themealdb.com/api/json/v1/1/search.php?s='+encodeURIComponent(qEn));
@@ -8831,21 +8866,45 @@ async function omeSearchMealDB(day, slot) {
       const d2 = await r2.json();
       meals = (d2.meals||[]).slice(0,8);
     }
-    if(!meals.length) { if(res) res.innerHTML='<div style="text-align:center;padding:14px;color:var(--tx3);font-size:.8rem;">Aucun résultat</div>'; return; }
-    if(res) {
-      res.innerHTML = '';
-      meals.slice(0,8).forEach(m => {
-        const frName = typeof translateRecipeName==='function' ? translateRecipeName(m.strMeal) : m.strMeal;
-        const div = document.createElement('div');
-        div.className = 'meal-pick-item';
-        div.style.cssText = 'background:rgba(0,181,184,.07);border:1px solid rgba(0,181,184,.15);';
-        div.innerHTML = (m.strMealThumb ? '<img src="'+m.strMealThumb+'/preview" style="width:44px;height:44px;border-radius:var(--rs);object-fit:cover;flex-shrink:0;" loading="lazy">' : '<span class="meal-pick-em">🌐</span>')
-          + '<div style="flex:1;min-width:0;"><div class="meal-pick-name">'+frName+'</div>'+(m.strCategory?'<div style="font-size:.62rem;color:var(--tx3);">'+m.strCategory+'</div>':'')+'</div>';
-        div.onclick = (function(id, name, d, s){ return function(){ selectMealDBForSlot(id, name, d, s); }; })(m.idMeal, frName, day, slot);
-        res.appendChild(div);
-      });
+    if(!meals.length) {
+      if(res) res.innerHTML='<div style="text-align:center;padding:16px;color:var(--tx3);font-size:.8rem;">Aucun résultat pour "'+q+'"</div>';
+      return;
     }
-  } catch(e) { if(res) res.innerHTML='<div style="text-align:center;padding:14px;color:var(--rd);font-size:.8rem;">Erreur réseau.</div>'; }
+    if(!res) return;
+    res.innerHTML = '';
+    meals.slice(0,8).forEach(m => {
+      const frName = typeof translateRecipeName==='function' ? translateRecipeName(m.strMeal) : m.strMeal;
+      // Extract ingredients from full meal object
+      const ingrs = [];
+      for(let i=1;i<=5;i++) {
+        const ing = m['strIngredient'+i]; const meas = m['strMeasure'+i];
+        if(ing && ing.trim()) ingrs.push((meas||'').trim()+' '+ing.trim());
+      }
+      const ingHtml = ingrs.length ? `<div style="font-size:.6rem;color:var(--tx3);margin-top:2px;">${ingrs.join(' · ')}${m.strIngredient6?' …':''}</div>` : '';
+      // Check cache for kcal/time
+      const cached = window._mdbDetailCache && window._mdbDetailCache[m.idMeal];
+      const kcalHtml = cached?._kcal ? `<span style="color:#e74c3c;font-weight:800;">🔥${cached._kcal}kcal</span>` : '';
+      const timeHtml = cached?._prepTime ? `<span>⏱️${cached._prepTime}min</span>` : '';
+      const metaBits = [kcalHtml, timeHtml, m.strCategory ? `<span>${m.strCategory}</span>` : ''].filter(Boolean);
+
+      const div = document.createElement('div');
+      div.className = 'meal-pick-item ome-mdb-pick';
+      div.style.cssText = 'display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:var(--rs);background:rgba(0,181,184,.07);border:1px solid rgba(0,181,184,.15);cursor:pointer;margin-bottom:6px;';
+      div.innerHTML = (m.strMealThumb
+        ? `<img src="${m.strMealThumb}/preview" style="width:52px;height:52px;border-radius:10px;object-fit:cover;flex-shrink:0;" loading="lazy" onerror="this.style.display='none'">`
+        : `<div style="width:52px;height:52px;border-radius:10px;background:var(--bg);display:flex;align-items:center;justify-content:center;font-size:1.4rem;flex-shrink:0;">🌍</div>`)
+        + `<div style="flex:1;min-width:0;">
+          <div style="font-weight:800;font-size:.82rem;line-height:1.3;">${frName}</div>
+          ${metaBits.length ? `<div style="font-size:.62rem;color:var(--ac);margin-top:2px;display:flex;gap:6px;">${metaBits.join('')}</div>` : ''}
+          ${ingHtml}
+        </div>
+        <div style="flex-shrink:0;font-size:.75rem;color:var(--tx3);">▶</div>`;
+      div.onclick = () => selectMealDBForSlot(m.idMeal, frName, day, slot);
+      res.appendChild(div);
+    });
+  } catch(e) {
+    if(res) res.innerHTML='<div style="text-align:center;padding:14px;color:var(--rd);font-size:.8rem;">Erreur réseau.</div>';
+  }
 }
 
 function omeSaveFree(day, slot) {
@@ -9225,11 +9284,12 @@ function selectRecipeForMeal(idOrName, day, slot) {
   });
   if(totalKcal) state.weekMenu[day].nutri = {kcal:totalKcal, prot:totalProt, carb:totalCarb, fat:totalFat};
 
+  _refreshDayNutri(day);
   saveWeekMenu();
   renderWeek && renderWeek();
   renderDayDetail && renderDayDetail();
   closeMealEdit();
-  showToast('✅', r.name, (r.kcal?'🔥 '+r.kcal+' kcal · ':'')+(r.time?'⏱️ '+r.time+' min':'Ajouté au menu !'));
+  showToast('✅', r.name, [r.kcal?'🔥 '+r.kcal+' kcal':'', r.time?'⏱️ '+r.time+' min':''].filter(Boolean).join(' · ') || 'Ajouté au menu !');
 }
 function saveMealEdit(day, slot) {
   const val=document.getElementById('mealEditInput')?.value?.trim();
@@ -9997,50 +10057,59 @@ function renderNutriTab() {
     }
   }
 
-  // Compute weekly averages from weekMenu
-  const weekDays = Object.values(state.weekMenu).filter(m => m && m.nutri && m.nutri.kcal);
-  const weekCount = weekDays.length;
-  const avgKcal = weekCount ? Math.round(weekDays.reduce((s,m)=>s+(m.nutri.kcal||0),0)/weekCount) : 0;
-  const avgProt = weekCount ? Math.round(weekDays.reduce((s,m)=>s+(m.nutri.prot||0),0)/weekCount) : 0;
-  const avgCarb = weekCount ? Math.round(weekDays.reduce((s,m)=>s+(m.nutri.carb||0),0)/weekCount) : 0;
-  const avgFat  = weekCount ? Math.round(weekDays.reduce((s,m)=>s+(m.nutri.fat||0),0)/weekCount) : 0;
+  // Compute weekly averages using REAL per-meal data only
+  const weekEntries = Object.values(state.weekMenu).filter(m => m && (m.b||m.l||m.d));
+  const weekWithKcal = weekEntries.map(m => _calcDayNutri(m)).filter(n => n && n.kcal);
+  const weekCount = weekWithKcal.length;
+  const avgKcal = weekCount ? Math.round(weekWithKcal.reduce((s,n)=>s+n.kcal,0)/weekCount) : 0;
+  const avgProt = weekCount ? Math.round(weekWithKcal.reduce((s,n)=>s+n.prot,0)/weekCount) : 0;
+  const avgCarb = weekCount ? Math.round(weekWithKcal.reduce((s,n)=>s+n.carb,0)/weekCount) : 0;
+  const avgFat  = weekCount ? Math.round(weekWithKcal.reduce((s,n)=>s+n.fat, 0)/weekCount) : 0;
+  const weekPlanCount = weekEntries.length;
 
   // Week score badge
   const weekScore = document.getElementById('nutriWeekScore');
   if(weekScore) {
-    if(!weekCount) { weekScore.textContent = weekCount + ' jour(s) planifié(s)'; weekScore.style.color='var(--tx3)'; }
+    if(!weekPlanCount) { weekScore.textContent = '0 jour planifié'; weekScore.style.color='var(--tx3)'; }
+    else if(!weekCount) { weekScore.textContent = weekPlanCount+' j planifié(s) · données kcal manquantes'; weekScore.style.color='var(--tx3)'; }
     else if(cals) {
       const pct = Math.round(avgKcal / cals * 100);
       weekScore.textContent = weekCount + ' j · ' + (pct >= 85 && pct <= 110 ? '✅ ' + pct + '%' : pct > 110 ? '⚠️ +' + (pct-100) + '%' : '🔵 ' + pct + '%');
       weekScore.style.color = pct >= 85 && pct <= 110 ? 'var(--gn)' : pct > 110 ? 'var(--rd)' : 'var(--bl)';
     } else {
-      weekScore.textContent = weekCount + ' j planifié(s)';
+      weekScore.textContent = weekCount + ' j avec données';
     }
   }
 
-  // Macros grid (weekly averages vs targets)
+  // Macros grid — affiche uniquement des données réelles
   const macroGrid = document.getElementById('macroRings');
   if(macroGrid) {
-    if(!macros && !weekCount) {
-      macroGrid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:20px;color:var(--tx2);font-size:.82rem;">Configurez votre profil et générez un menu pour voir vos macros</div>';
+    if(!weekCount && !cals) {
+      macroGrid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:20px;color:var(--tx2);font-size:.8rem;">Configurez votre profil et sélectionnez des recettes dans le menu semaine pour voir vos macros.</div>';
     } else {
       const items = [
-        {label:'Calories', val:weekCount?avgKcal:null, target:cals, unit:'kcal', color:'var(--ac)'},
-        {label:'Protéines', val:weekCount?avgProt:null, target:macros?macros.prot:null, unit:'g', color:'var(--bl)'},
-        {label:'Glucides', val:weekCount?avgCarb:null, target:macros?macros.carb:null, unit:'g', color:'var(--or)'},
-        {label:'Lipides', val:weekCount?avgFat:null, target:macros?macros.fat:null, unit:'g', color:'var(--lv)'},
+        {label:'Calories',  val:weekCount?avgKcal:null, target:cals,               unit:'kcal', color:'var(--ac)'},
+        {label:'Protéines', val:weekCount&&avgProt?avgProt:null, target:macros?.prot||null, unit:'g', color:'#3498db'},
+        {label:'Glucides',  val:weekCount&&avgCarb?avgCarb:null, target:macros?.carb||null, unit:'g', color:'#f39c12'},
+        {label:'Lipides',   val:weekCount&&avgFat?avgFat:null,  target:macros?.fat||null,  unit:'g', color:'#27ae60'},
       ];
       macroGrid.innerHTML = items.map(m => {
+        if(m.val === null && !m.target) return ''; // Skip empty
         const pct = m.target && m.val ? Math.min(115, Math.round(m.val/m.target*100)) : 0;
-        const status = pct >= 85 && pct <= 105 ? 'ok' : pct > 110 ? 'bad' : m.val ? 'warn' : '';
-        return '<div class="nutri-macro-card">'
-          + '<div class="nutri-macro-val" style="color:' + m.color + ';">' + (m.val !== null ? m.val : '—') + '<small style="font-size:.45em;"> ' + m.unit + '</small></div>'
-          + '<div class="nutri-macro-label">' + m.label + '</div>'
-          + '<div class="nutri-macro-pct" style="color:' + m.color + ';">' + (m.target ? (pct ? pct+'% · obj '+m.target+m.unit : 'Obj: '+m.target+m.unit) : (m.val !== null ? m.val+' '+m.unit+' moy' : 'Aucune donnée')) + '</div>'
-          + '<div class="nutri-macro-bar"><div class="nutri-macro-fill" style="width:'+pct+'%;background:'+m.color+';"></div></div>'
-          + (status ? '<div class="nutri-pill '+status+'" style="display:inline-flex;margin-top:6px;font-size:.58rem;">'+(status==='ok'?'✅ Optimal':status==='bad'?'⚠️ Dépassé':'🔶 À compléter')+'</div>' : '')
-          + '</div>';
-      }).join('');
+        const status = pct>=85&&pct<=105?'ok':pct>110?'bad':m.val?'warn':'';
+        const valDisplay = m.val !== null ? m.val : (m.target ? '—' : null);
+        if(valDisplay === null) return '';
+        return `<div class="nutri-macro-card">
+          <div class="nutri-macro-val" style="color:${m.color};">${valDisplay}<small style="font-size:.45em;"> ${m.unit}</small></div>
+          <div class="nutri-macro-label">${m.label}</div>
+          <div class="nutri-macro-pct" style="color:${m.color};">
+            ${m.target ? (pct ? pct+'% · obj '+m.target+m.unit : 'Obj: '+m.target+m.unit) : (m.val?'moy. semaine':'—')}
+          </div>
+          <div class="nutri-macro-bar"><div class="nutri-macro-fill" style="width:${pct}%;background:${m.color};"></div></div>
+          ${status ? `<div style="display:inline-flex;margin-top:6px;font-size:.58rem;padding:2px 6px;border-radius:6px;background:${status==='ok'?'rgba(46,204,113,.15)':status==='bad'?'rgba(231,76,60,.12)':'rgba(243,156,18,.12)'};color:${status==='ok'?'var(--gn)':status==='bad'?'var(--rd)':'var(--yl)'};">${status==='ok'?'✅ Optimal':status==='bad'?'⚠️ Dépassé':'🔶 À compléter'}</div>` : ''}
+        </div>`;
+      }).filter(Boolean).join('');
+      if(!macroGrid.innerHTML) macroGrid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:16px;color:var(--tx2);font-size:.78rem;">Sélectionnez des recettes avec des données nutritionnelles dans votre menu semaine.</div>';
     }
   }
 

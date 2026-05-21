@@ -11179,7 +11179,21 @@ Maximum 20 aliments. Sois exhaustif: légumes, fruits, viandes, laitages, boisso
 }
 
 function _showFridgeScanResults(aliments) {
-  // Create a bottom sheet with the detected items
+  // Normalize — ensure every item has .nom regardless of source format
+  aliments = aliments.map(a => ({
+    nom:      a.nom || a.name || a.label || a.ingredient || String(a) || '?',
+    emoji:    a.emoji || '🥗',
+    quantite: a.quantite || a.qty || a.quantity || a.measure || '',
+    categorie:a.categorie || a.category || '',
+  })).filter(a => a.nom && a.nom !== '?' && a.nom.length > 1);
+
+  console.log('[scan] _showFridgeScanResults received:', aliments.length, 'items:', aliments);
+
+  if(!aliments.length) {
+    showToast('⚠️', 'Liste vide', 'L\'IA n\'a pas retourné d\'aliments valides. Vérifiez la console.');
+    return;
+  }
+
   const existing = document.getElementById('_fridgeScanSheet');
   if(existing) existing.remove();
 
@@ -11188,6 +11202,9 @@ function _showFridgeScanResults(aliments) {
   sheet.style.cssText = 'position:fixed;inset:0;z-index:8500;background:rgba(0,0,0,.55);display:flex;align-items:flex-end;justify-content:center;';
 
   const selected = new Set(aliments.map((_, i) => i));
+  window._fridgeScanSelected = selected;
+  window._fridgeScanCount = aliments.length;
+  window._fridgeScanAliments = aliments; // store for _addSelectedFridgeItems
 
   sheet.innerHTML = `<div style="background:var(--bg);border-radius:20px 20px 0 0;width:100%;max-width:480px;max-height:85vh;display:flex;flex-direction:column;">
     <div style="padding:16px 18px 10px;border-bottom:1px solid var(--bg2);flex-shrink:0;">
@@ -11203,10 +11220,10 @@ function _showFridgeScanResults(aliments) {
     <div style="overflow-y:auto;flex:1;padding:12px 14px;" id="_fridgeScanList">
       ${aliments.map((a, i) => `
         <div id="_fridgeItem_${i}" onclick="_toggleFridgeItem(${i})" style="display:flex;align-items:center;gap:12px;padding:11px 12px;border-radius:12px;margin-bottom:6px;cursor:pointer;background:rgba(0,210,198,.1);border:1.5px solid rgba(0,210,198,.3);transition:all .15s;">
-          <div style="font-size:1.4rem;flex-shrink:0;">${a.emoji||'🥗'}</div>
+          <div style="font-size:1.4rem;flex-shrink:0;">${a.emoji}</div>
           <div style="flex:1;">
             <div style="font-weight:800;font-size:.88rem;">${a.nom}</div>
-            ${a.quantite?`<div style="font-size:.68rem;color:var(--tx2);">${a.quantite}</div>`:''}
+            ${a.quantite ? `<div style="font-size:.68rem;color:var(--tx2);">${a.quantite}</div>` : ''}
           </div>
           <div id="_fridgeCheck_${i}" style="width:22px;height:22px;border-radius:50%;background:var(--tl);display:flex;align-items:center;justify-content:center;color:#fff;font-size:.75rem;font-weight:900;flex-shrink:0;">✓</div>
         </div>
@@ -11214,15 +11231,11 @@ function _showFridgeScanResults(aliments) {
     </div>
     <div style="padding:12px 14px calc(12px + env(safe-area-inset-bottom));border-top:1px solid var(--bg2);flex-shrink:0;display:flex;gap:8px;">
       <button onclick="_selectAllFridgeItems(${aliments.length})" class="btn" style="flex:1;padding:11px;border-radius:12px;font-size:.8rem;">Tout sélectionner</button>
-      <button onclick="_addSelectedFridgeItems(${JSON.stringify(aliments).replace(/"/g,'&quot;')})" class="btn acc" style="flex:2;padding:13px;border-radius:12px;font-weight:900;">🧊 Ajouter au frigo</button>
+      <button onclick="_addSelectedFridgeItems()" class="btn acc" style="flex:2;padding:13px;border-radius:12px;font-weight:900;">🧊 Ajouter au frigo</button>
     </div>
   </div>`;
   sheet.onclick = e => { if(e.target===sheet) sheet.remove(); };
   document.body.appendChild(sheet);
-
-  // Track selected
-  window._fridgeScanSelected = selected;
-  window._fridgeScanCount = aliments.length;
 }
 
 function _toggleFridgeItem(i) {
@@ -11254,21 +11267,26 @@ function _selectAllFridgeItems(count) {
 }
 
 function _addSelectedFridgeItems(aliments) {
-  if(typeof aliments === 'string') {
-    try { aliments = JSON.parse(aliments); } catch(e) { return; }
-  }
+  // Use stored aliments if not passed directly
+  if(!aliments) aliments = window._fridgeScanAliments || [];
+  if(typeof aliments === 'string') { try { aliments = JSON.parse(aliments); } catch(e) { aliments = window._fridgeScanAliments || []; } }
+
   const sel = window._fridgeScanSelected || new Set();
   let added = 0;
   aliments.forEach((a, i) => {
     if(!sel.has(i)) return;
-    const existing = state.fridge.find(f => f.name.toLowerCase() === a.nom.toLowerCase());
+    const nom = a.nom || a.name || '';
+    if(!nom) return;
+    const existing = state.fridge.find(f => f.name.toLowerCase() === nom.toLowerCase());
     if(existing) {
       existing.qty = (parseInt(existing.qty)||1) + 1;
     } else {
       state.fridge.push({
         id: 'f'+Date.now()+Math.random().toString(36).slice(2,5),
-        name: a.nom, emoji: a.emoji||'🥗', qty: a.quantite||1,
-        cat: '🥦 Légumes'
+        name: nom,
+        emoji: a.emoji || '🥗',
+        qty: a.quantite || 1,
+        cat: a.categorie || '🥦 Légumes',
       });
       added++;
     }
@@ -11277,9 +11295,8 @@ function _addSelectedFridgeItems(aliments) {
   renderFridge();
   document.getElementById('_fridgeScanSheet')?.remove();
   const total = sel.size;
-  showToast('🧊', total+' aliment'+(total>1?'s':'')+' ajouté'+(total>1?'s':''), 'Votre frigo a été mis à jour !');
-  // Switch to frigo tab to see results
-  if(typeof switchTab === 'function') switchTab('frigo');
+  showToast('🧊', total + ' aliment' + (total>1?'s':'') + ' ajouté' + (total>1?'s':''), 'Votre frigo a été mis à jour !');
+  switchTab('frigo');
 }
 
 

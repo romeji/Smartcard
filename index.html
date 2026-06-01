@@ -12228,55 +12228,84 @@ try {
 } catch(e) {}
 </script>
 
+
 <!-- ═══════════════════════════════════════════════════════════
-     SMARTCARD PATCH v1.0
-     Corrections : portions bug · nutrition refaite · favoris fusionnés
-                   responsive PC · stats menu live
+     SMARTCARD PATCH v2.0 — Nutrition & Semaine Ultra-Modern
      ═══════════════════════════════════════════════════════════ -->
 <script>
+// ─────────────────────────────────────────────────────────────
+// UTILITAIRES — accès correct aux données
+// ─────────────────────────────────────────────────────────────
+function _sc_getWeekMenu() {
+  return window.state && window.state.weekMenu ? window.state.weekMenu : {};
+}
+function _sc_getProfile() {
+  return window.state && window.state.profile ? window.state.profile : {};
+}
+function _sc_getDayKcal(day) {
+  if(!day) return 0;
+  // Préférer les slots détaillés
+  let sum = 0, hasReal = false;
+  ['b','l','d','snack'].forEach(slot => {
+    const sd = day[slot+'Data'];
+    if(sd && sd.kcal) { sum += +sd.kcal; hasReal = true; }
+  });
+  if(hasReal) return Math.round(sum);
+  return day.nutri ? (+day.nutri.kcal || 0) : 0;
+}
+function _sc_getDayMacro(day, key) {
+  if(!day) return 0;
+  let sum = 0, hasReal = false;
+  ['b','l','d','snack'].forEach(slot => {
+    const sd = day[slot+'Data'];
+    if(sd && sd[key]) { sum += +sd[key]; hasReal = true; }
+  });
+  if(hasReal) return Math.round(sum);
+  return day.nutri ? (+day.nutri[key] || 0) : 0;
+}
+
 // ─────────────────────────────────────────────────────────────
 // 1. FIX BUG PORTIONS
 // ─────────────────────────────────────────────────────────────
 (function patchPortions() {
-  const _orig = window.renderRecipeModal;
-  if(!_orig) { setTimeout(patchPortions, 300); return; }
-
-  window.renderRecipeModal = function(recipe, portions, isBookmarked) {
-    if(!recipe.portions || recipe.portions < 1) recipe.portions = 4;
-    _orig(recipe, portions || recipe.portions, isBookmarked);
-    setTimeout(() => {
-      const p = portions || recipe.portions;
-      document.querySelectorAll('[id^=portionBtn]').forEach(btn => {
-        const n = parseInt(btn.id.replace('portionBtn',''));
-        const on = n === p;
-        btn.style.border = on ? '1.5px solid var(--ac)' : '1.5px solid var(--bg2)';
-        btn.style.background = on ? 'var(--ac)' : 'var(--bg)';
-        btn.style.color = on ? '#fff' : 'var(--tx)';
-        btn.style.fontWeight = on ? '900' : '600';
-      });
-    }, 10);
-  };
-
-  window.changePortions = function(n) {
-    window._currentPortions = n;
-    const recipe = window._currentRecipe;
-    if(!recipe) return;
-    if(!recipe.portions || recipe.portions < 1) recipe.portions = 4;
-    const isBookmarked = (window.state?.recipeBookmarks || []).some(b => b.id === recipe.id);
-    window.renderRecipeModal(recipe, n, isBookmarked);
-  };
+  function tryPatch() {
+    if(!window.renderRecipeModal) { setTimeout(tryPatch, 400); return; }
+    const _orig = window.renderRecipeModal;
+    window.renderRecipeModal = function(recipe, portions, isBookmarked) {
+      if(!recipe.portions || recipe.portions < 1) recipe.portions = 4;
+      _orig(recipe, portions || recipe.portions, isBookmarked);
+      setTimeout(() => {
+        const p = portions || recipe.portions;
+        document.querySelectorAll('[id^=portionBtn]').forEach(btn => {
+          const n = parseInt(btn.id.replace('portionBtn',''));
+          const on = n === p;
+          btn.style.border = on ? '1.5px solid var(--ac)' : '1.5px solid var(--bg2)';
+          btn.style.background = on ? 'var(--ac)' : 'var(--bg)';
+          btn.style.color = on ? '#fff' : 'var(--tx)';
+          btn.style.fontWeight = on ? '900' : '600';
+        });
+      }, 20);
+    };
+    window.changePortions = function(n) {
+      window._currentPortions = n;
+      const recipe = window._currentRecipe;
+      if(!recipe) return;
+      if(!recipe.portions || recipe.portions < 1) recipe.portions = 4;
+      const isBm = (window.state?.recipeBookmarks || []).some(b => b.id === recipe.id);
+      window.renderRecipeModal(recipe, n, isBm);
+    };
+  }
+  setTimeout(tryPatch, 300);
 })();
 
 // ─────────────────────────────────────────────────────────────
-// 2. FUSION FAVORIS → filtre dans Recettes
+// 2. FUSION FAVORIS → Recettes
 // ─────────────────────────────────────────────────────────────
 (function patchFavoris() {
   function apply() {
-    // Masquer l'onglet Favoris
     const favTab = document.getElementById('mtab-favs');
     if(favTab) favTab.style.display = 'none';
 
-    // Ajouter chip "⭐ Favoris" dans le filtre régime
     const dietFilter = document.getElementById('recipeDietFilter');
     if(dietFilter && !dietFilter.querySelector('[data-v="favs"]')) {
       const chip = document.createElement('div');
@@ -12287,344 +12316,588 @@ try {
         document.querySelectorAll('#recipeDietFilter .diet-chip').forEach(c => c.classList.remove('on'));
         chip.classList.add('on');
         window._recipeDietFilter = 'favs';
-        renderRecipesGridWithFavs();
+        _renderFavsInGrid();
       };
       dietFilter.appendChild(chip);
     }
 
-    // renderFavsGrid manquante — définie ici
     if(!window.renderFavsGrid) {
       window.renderFavsGrid = function() {
-        switchMenuTab('recipes');
+        if(typeof switchMenuTab==='function') switchMenuTab('recipes');
         setTimeout(() => {
           const c = document.querySelector('#recipeDietFilter [data-v="favs"]');
           if(c) c.click();
-        }, 120);
+        }, 150);
+      };
+    }
+
+    const _origRender = window.renderRecipesGrid;
+    if(_origRender && !window._favsPatchDone) {
+      window._favsPatchDone = true;
+      window.renderRecipesGrid = function() {
+        if(window._recipeDietFilter === 'favs') { _renderFavsInGrid(); return; }
+        _origRender.apply(this, arguments);
       };
     }
   }
 
-  window.renderRecipesGridWithFavs = function() {
-    if(window._recipeDietFilter !== 'favs') {
-      if(typeof renderRecipesGrid === 'function') renderRecipesGrid();
-      return;
-    }
+  function _renderFavsInGrid() {
     const grid = document.getElementById('recipesGrid');
     if(!grid) return;
     const bms = window.state?.recipeBookmarks || [];
     if(!bms.length) {
-      grid.innerHTML = '<div style="text-align:center;padding:32px;color:var(--tx3);">'
-        + '<div style="font-size:2.5rem;margin-bottom:10px;">⭐</div>'
-        + '<div style="font-size:.88rem;font-weight:700;">Aucun favori pour l\'instant</div>'
-        + '<div style="font-size:.75rem;margin-top:6px;">Ajoutez des ☆ depuis l\'explorateur de recettes</div>'
-        + '</div>';
+      grid.innerHTML = '<div style="text-align:center;padding:32px 16px;color:var(--tx3);">'
+        +'<div style="font-size:2.5rem;margin-bottom:10px;">⭐</div>'
+        +'<div style="font-weight:700;font-size:.88rem;">Aucun favori</div>'
+        +'<div style="font-size:.75rem;margin-top:6px;">Ajoutez des ☆ depuis l\'explorateur</div></div>';
       return;
     }
-    grid.innerHTML = bms.map(r => {
-      const isBm = true;
-      return `<div onclick="openRecipeDetail('${r.id}')"
-        style="background:var(--bg);border-radius:var(--rs);box-shadow:var(--so);display:flex;align-items:center;gap:10px;padding:12px;margin-bottom:8px;cursor:pointer;transition:all .15s;">
-        ${r.photo
-          ? `<img src="${r.photo}" style="width:52px;height:52px;border-radius:var(--rs);object-fit:cover;flex-shrink:0;" onerror="this.style.display='none'">`
-          : `<div style="width:52px;height:52px;border-radius:var(--rs);background:var(--bg2);display:flex;align-items:center;justify-content:center;font-size:1.6rem;flex-shrink:0;">${r.emoji||'🍽️'}</div>`}
-        <div style="flex:1;min-width:0;">
-          <div style="font-weight:800;font-size:.88rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${r.name}</div>
-          <div style="display:flex;gap:5px;margin-top:4px;flex-wrap:wrap;">
-            ${r.time ? `<span style="font-size:.62rem;color:var(--tx3);">⏱ ${r.time}min</span>` : ''}
-            ${r.kcal ? `<span style="font-size:.62rem;color:var(--or);">🔥 ${r.kcal}kcal</span>` : ''}
-          </div>
+    grid.innerHTML = bms.map(r => `<div onclick="openRecipeDetail&&openRecipeDetail('${r.id}')"
+      style="background:var(--bg);border-radius:var(--rs);box-shadow:var(--so);display:flex;align-items:center;gap:10px;padding:12px;margin-bottom:8px;cursor:pointer;">
+      ${r.photo ? `<img src="${r.photo}" style="width:52px;height:52px;border-radius:var(--rs);object-fit:cover;flex-shrink:0;" onerror="this.style.display='none'">` : `<div style="width:52px;height:52px;border-radius:var(--rs);background:var(--bg2);display:flex;align-items:center;justify-content:center;font-size:1.6rem;flex-shrink:0;">${r.emoji||'🍽️'}</div>`}
+      <div style="flex:1;min-width:0;">
+        <div style="font-weight:800;font-size:.88rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${r.name}</div>
+        <div style="display:flex;gap:5px;margin-top:4px;">
+          ${r.time ? `<span style="font-size:.62rem;color:var(--tx3);">⏱ ${r.time}min</span>` : ''}
+          ${r.kcal ? `<span style="font-size:.62rem;color:var(--or);">🔥 ${r.kcal}kcal</span>` : ''}
         </div>
-        <button onclick="event.stopPropagation();toggleBookmark('${r.id}')"
-          style="font-size:1.1rem;background:none;border:none;cursor:pointer;padding:4px;flex-shrink:0;">⭐</button>
-      </div>`;
-    }).join('');
-  };
+      </div>
+      <span style="font-size:1.1rem;flex-shrink:0;">⭐</span>
+    </div>`).join('');
+  }
 
-  // Patch renderRecipesGrid pour supporter "favs"
-  document.addEventListener('DOMContentLoaded', () => {
-    setTimeout(() => {
-      apply();
-      const _orig = window.renderRecipesGrid;
-      if(_orig && !window._favsRenderPatched) {
-        window._favsRenderPatched = true;
-        window.renderRecipesGrid = function() {
-          if(window._recipeDietFilter === 'favs') { renderRecipesGridWithFavs(); return; }
-          _orig.apply(this, arguments);
-        };
-      }
-    }, 600);
-  });
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',()=>setTimeout(apply,800));
+  else setTimeout(apply, 800);
 })();
 
 // ─────────────────────────────────────────────────────────────
-// 3. ONGLET NUTRITION — Refonte complète
+// 3. CSS GLOBAL — Styles pour les nouvelles sections
+// ─────────────────────────────────────────────────────────────
+(function injectCSS() {
+  const s = document.createElement('style');
+  s.textContent = `
+    /* ── Nutrition Hero ── */
+    .sc-nutri-hero {
+      background: var(--grad);
+      border-radius: var(--r);
+      padding: 22px 20px 18px;
+      margin-bottom: 14px;
+      color: #fff;
+      position: relative;
+      overflow: hidden;
+    }
+    .sc-nutri-hero::before {
+      content:'';position:absolute;top:-30px;right:-30px;
+      width:120px;height:120px;border-radius:50%;
+      background:rgba(255,255,255,.08);
+    }
+    .sc-nutri-hero::after {
+      content:'';position:absolute;bottom:-20px;left:-20px;
+      width:80px;height:80px;border-radius:50%;
+      background:rgba(255,255,255,.06);
+    }
+    .sc-nutri-hero-val {
+      font-size: 2.4rem;
+      font-weight: 900;
+      letter-spacing: -1px;
+      line-height: 1;
+      position: relative;
+    }
+    .sc-nutri-hero-sub {
+      font-size: .75rem;
+      opacity: .88;
+      margin-top: 4px;
+      position: relative;
+    }
+    .sc-nutri-hero-chips {
+      display:flex;gap:6px;margin-top:12px;flex-wrap:wrap;position:relative;
+    }
+    .sc-nutri-hero-chip {
+      background:rgba(255,255,255,.2);
+      border-radius:99px;
+      padding:4px 10px;
+      font-size:.65rem;
+      font-weight:800;
+      backdrop-filter:blur(4px);
+    }
+
+    /* ── Profil stats ── */
+    .sc-stat-card {
+      background: var(--bg);
+      border-radius: var(--rs);
+      box-shadow: var(--so);
+      padding: 12px 10px;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+    .sc-stat-card-icon { font-size:1.4rem;margin-bottom:4px; }
+    .sc-stat-card-val { font-size:.92rem;font-weight:900; }
+    .sc-stat-card-label { font-size:.52rem;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.6px;margin-top:2px; }
+    .sc-stat-card-sub { font-size:.6rem;color:var(--tx2);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+    .sc-stat-card-bar { height:3px;background:var(--bg2);border-radius:99px;margin-top:8px; }
+    .sc-stat-card-bar-fill { height:100%;border-radius:99px;transition:width .6s; }
+
+    /* ── Week chart ── */
+    .sc-week-chart-wrap { position:relative; }
+    .sc-week-chart-legend {
+      display:flex;gap:8px;flex-wrap:wrap;align-items:center;
+      margin-top:8px;
+    }
+    .sc-week-chart-legend-item {
+      display:flex;align-items:center;gap:4px;
+      padding:3px 7px;border-radius:var(--rp);
+      font-size:.58rem;font-weight:700;
+    }
+    .sc-week-chart-legend-dot { width:8px;height:8px;border-radius:2px; }
+
+    /* ── Macro rings ── */
+    .sc-macro-grid { display:grid;grid-template-columns:1fr 1fr;gap:10px; }
+    .sc-macro-card {
+      background:var(--bg);border-radius:var(--rs);box-shadow:var(--so);
+      padding:10px;display:flex;align-items:center;gap:8px;
+    }
+    .sc-macro-info { flex:1;min-width:0; }
+    .sc-macro-label { font-size:.74rem;font-weight:800; }
+    .sc-macro-val { font-size:.98rem;font-weight:900; }
+    .sc-macro-target { font-size:.58rem;color:var(--tx3); }
+    .sc-macro-status { font-size:.58rem;font-weight:700;margin-top:2px; }
+    .sc-macro-bar { height:3px;background:var(--bg2);border-radius:99px;margin-top:5px; }
+    .sc-macro-bar-fill { height:100%;border-radius:99px;transition:width .6s; }
+
+    /* ── Meal timeline (semaine) ── */
+    .sc-day-card {
+      background:var(--bg);border-radius:var(--rs);box-shadow:var(--so);
+      padding:12px;cursor:pointer;transition:all .18s;
+      border-left:3px solid transparent;
+      margin-bottom:8px;
+    }
+    .sc-day-card.today { border-left-color:var(--ac); }
+    .sc-day-card.active { background:var(--bg2); }
+    .sc-day-card:active { transform:scale(.98); }
+    .sc-day-head { display:flex;align-items:center;justify-content:space-between;margin-bottom:8px; }
+    .sc-day-name { font-size:.78rem;font-weight:900; }
+    .sc-day-kcal { font-size:.68rem;font-weight:800;padding:2px 7px;border-radius:99px; }
+    .sc-day-kcal.ok { background:rgba(46,204,113,.15);color:#27ae60; }
+    .sc-day-kcal.warn { background:rgba(243,156,18,.15);color:#c0891a; }
+    .sc-day-kcal.over { background:rgba(231,76,60,.15);color:#c0392b; }
+    .sc-day-kcal.empty { background:var(--bg2);color:var(--tx3); }
+    .sc-meal-row { display:flex;align-items:center;gap:6px;margin-bottom:3px; }
+    .sc-meal-slot { font-size:.56rem;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.5px;min-width:30px; }
+    .sc-meal-name { font-size:.7rem;color:var(--tx2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1; }
+
+    /* ── Sport pie ── */
+    .sc-sport-pie-wrap { display:flex;align-items:center;gap:16px; }
+    .sc-sport-legend { flex:1; }
+    .sc-sport-legend-row { display:flex;align-items:center;gap:8px;margin-bottom:8px; }
+    .sc-sport-legend-dot { width:12px;height:12px;border-radius:3px;flex-shrink:0; }
+    .sc-sport-legend-label { flex:1;font-size:.72rem;font-weight:700; }
+    .sc-sport-legend-val { font-size:.8rem;font-weight:900; }
+    .sc-balance-card {
+      margin-top:10px;padding:10px 12px;border-radius:var(--rs);
+    }
+
+    /* ── Menu live stats ── */
+    .sc-menu-stats { display:flex;gap:8px;margin-bottom:14px; }
+    .sc-menu-stat-card {
+      flex:1;background:var(--bg);border-radius:var(--rs);box-shadow:var(--so);
+      padding:10px 8px;text-align:center;
+    }
+    .sc-menu-stat-icon { font-size:1rem;margin-bottom:3px; }
+    .sc-menu-stat-val { font-size:.82rem;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+    .sc-menu-stat-label { font-size:.5rem;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.5px;margin-top:2px; }
+
+    /* ── Advice cards ── */
+    .sc-advice { background:var(--bg);border-radius:var(--rs);box-shadow:var(--so);padding:12px;margin-bottom:8px;display:flex;flex-direction:column;gap:4px; }
+    .sc-advice.tip  { border-left:3px solid var(--gn); }
+    .sc-advice.warn { border-left:3px solid var(--yl); }
+    .sc-advice.bad  { border-left:3px solid var(--rd); }
+    .sc-advice.info { border-left:3px solid var(--bl); }
+    .sc-advice-icon { font-size:1.1rem; }
+    .sc-advice-title { font-weight:900;font-size:.82rem; }
+    .sc-advice-body  { font-size:.73rem;color:var(--tx2);line-height:1.5; }
+
+    /* ── Responsive PC ── */
+    @media(min-width:768px) {
+      body.tablet-layout .tab-lb { font-size:.75rem!important;display:block!important; }
+      body.tablet-layout .tab { padding:10px 12px!important;min-height:44px; }
+      body.tablet-layout .menu-tabs { flex-wrap:wrap;gap:4px; }
+      body.tablet-layout .menu-tab { font-size:.72rem!important;padding:8px 6px!important;flex:1 1 auto;white-space:nowrap; }
+      body.tablet-layout .vb { max-width:640px!important;margin:0 auto!important;padding-bottom:32px!important; }
+      body.tablet-layout .rc-grid { grid-template-columns:repeat(2,1fr)!important; }
+      body.tablet-layout #weekScroll { flex-wrap:wrap;overflow-x:visible; }
+      body.tablet-layout .dc { flex:1 1 auto;min-width:80px; }
+      body.tablet-layout .spoon-grid { grid-template-columns:repeat(3,1fr)!important; }
+      body.tablet-layout #nutriProfileGrid { grid-template-columns:repeat(3,1fr)!important; }
+      body.tablet-layout .sc-macro-grid { grid-template-columns:repeat(2,1fr)!important; }
+      body.tablet-layout .modal { max-width:560px!important;margin:auto; }
+    }
+    @media(min-width:1100px) {
+      body.tablet-layout .vb { max-width:760px!important; }
+      body.tablet-layout .spoon-grid { grid-template-columns:repeat(4,1fr)!important; }
+    }
+  `;
+  document.head.appendChild(s);
+})();
+
+// ─────────────────────────────────────────────────────────────
+// 4. ONGLET NUTRITION — renderNutriTab() complète & corrigée
 // ─────────────────────────────────────────────────────────────
 window.renderNutriTab = function() {
-  const p = window.state?.profile || {};
-  const weekMenu = window.state?.weekMenu || {};
-  const cals = typeof calculateDailyCalories === 'function' ? calculateDailyCalories(p) : null;
-  const macros = typeof getMacroTargets === 'function' ? getMacroTargets(p, cals) : null;
+  const p   = _sc_getProfile();
+  const wm  = _sc_getWeekMenu();
+  const cals = (typeof calculateDailyCalories === 'function') ? calculateDailyCalories(p) : null;
+  const macros = (cals && typeof getMacroTargets === 'function') ? getMacroTargets(p, cals) : null;
 
-  // Hero
-  const heroKcal = document.getElementById('nutriHeroKcal');
-  const heroSub  = document.getElementById('nutriHeroSub');
-  if(heroKcal) heroKcal.textContent = cals ? cals + ' kcal' : '— kcal';
-  if(heroSub) {
-    const gl = {equilibre:'⚖️ Équilibre alimentaire',perte:'📉 Perte de poids',prise:'💪 Prise de masse',maintien:'🔄 Maintien',perf:'🏃 Performance sportive'};
-    heroSub.textContent = p.goal ? (gl[p.goal] || p.goal) : 'Complétez votre profil pour personnaliser';
-  }
-
-  // Profil stats grid
-  const pgrid = document.getElementById('nutriProfileGrid');
-  if(pgrid) {
-    if(p.age && p.poids && p.taille) {
-      const bmi = (p.poids / Math.pow(p.taille/100, 2)).toFixed(1);
-      const bmiLabel = bmi < 18.5 ? 'Maigreur' : bmi < 25 ? 'Idéal ✅' : bmi < 30 ? 'Surpoids' : 'Obésité';
-      const bmiColor = (bmi >= 18.5 && bmi < 25) ? 'var(--gn)' : 'var(--or)';
-      const acts = ['Sédentaire','Lgt actif','Mod. actif','Très actif','Extrême'];
-      pgrid.innerHTML = [
-        {icon:'⚖️', label:'IMC', val:bmi, sub:bmiLabel, color:bmiColor},
-        {icon:'🎂', label:'Profil', val:(p.age||'?')+' ans', sub:(p.sex==='H'?'Homme':p.sex==='F'?'Femme':'—')+' · '+(p.poids||'?')+'kg', color:'var(--bl)'},
-        {icon:'🏃', label:'Activité', val:acts[+(p.sportFreq||2)]||'—', sub:cals?cals+' kcal/j':'—', color:'var(--tl)'},
-      ].map(s => `<div style="background:var(--bg);border-radius:var(--rs);box-shadow:var(--so);padding:12px;text-align:center;">
-        <div style="font-size:1.3rem;margin-bottom:4px;">${s.icon}</div>
-        <div style="font-size:.82rem;font-weight:900;color:${s.color};">${s.val}</div>
-        <div style="font-size:.56rem;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.5px;margin-top:2px;">${s.label}</div>
-        <div style="font-size:.6rem;color:var(--tx2);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${s.sub}</div>
-      </div>`).join('');
-    } else {
-      pgrid.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:10px;">
-        <div style="font-size:.78rem;color:var(--tx3);">Renseignez votre profil pour voir vos stats santé</div>
-        <button class="btn sm" onclick="openMenuProfile()" style="margin-top:8px;">⚙️ Mon profil</button>
-      </div>`;
-    }
-  }
-
-  _scNutriWeekChart(cals, weekMenu);
-  _scMacroRings(macros, weekMenu);
-  _scSportPie(p, cals, weekMenu);
-  if(typeof renderSeasonalNutri === 'function') renderSeasonalNutri();
+  _sc_renderHero(p, cals);
+  _sc_renderProfileGrid(p, cals);
+  _sc_renderWeekChart(wm, cals);
+  _sc_renderMacroRings(wm, macros, cals);
+  _sc_renderSportPie(p, wm, cals);
+  if(typeof renderSeasonalNutri === 'function') { try { renderSeasonalNutri(); } catch(e){} }
 };
 
-function _scGetDayKcal(d) {
-  // Préférer les données réelles des slots
-  let sum = 0, hasReal = false;
-  ['b','l','d','snack'].forEach(slot => {
-    if(d[slot+'Data']?.kcal) { sum += d[slot+'Data'].kcal; hasReal = true; }
-  });
-  return hasReal ? sum : (d.nutri?.kcal || 0);
+/* ── Hero ── */
+function _sc_renderHero(p, cals) {
+  const card = document.getElementById('nutriHeroCard');
+  if(!card) return;
+
+  const goalLabels = {
+    equilibre:'⚖️ Équilibre alimentaire',
+    perte:'📉 Perte de poids',
+    prise:'💪 Prise de masse',
+    maintien:'🔄 Maintien du poids',
+    perf:'🏃 Performance sportive'
+  };
+  const goalLabel = p.goal ? (goalLabels[p.goal] || p.goal) : 'Complétez votre profil';
+
+  if(!cals) {
+    document.getElementById('nutriHeroKcal') && (document.getElementById('nutriHeroKcal').textContent = '— kcal');
+    document.getElementById('nutriHeroSub')  && (document.getElementById('nutriHeroSub').textContent  = 'Renseignez votre profil pour personnaliser');
+    return;
+  }
+
+  const bmr = p.sex==='F'
+    ? Math.round(10*(+p.poids)+6.25*(+p.taille)-5*(+p.age)-161)
+    : Math.round(10*(+p.poids)+6.25*(+p.taille)-5*(+p.age)+5);
+
+  const surplus = p.goal==='perte' ? '−500 kcal déficit' : p.goal==='prise' ? '+300 kcal surplus' : p.goal==='perf' ? '+200 kcal' : 'Maintien';
+  const kcalEl = document.getElementById('nutriHeroKcal');
+  const subEl  = document.getElementById('nutriHeroSub');
+  if(kcalEl) kcalEl.textContent = cals + ' kcal';
+  if(subEl)  subEl.textContent  = goalLabel;
+
+  // Chips sous le hero
+  let chipsEl = card.querySelector('.sc-nutri-hero-chips');
+  if(!chipsEl) {
+    chipsEl = document.createElement('div');
+    chipsEl.className = 'sc-nutri-hero-chips';
+    card.appendChild(chipsEl);
+  }
+  chipsEl.innerHTML = [
+    '🫀 BMR ' + bmr + ' kcal',
+    surplus,
+    p.diet && p.diet !== 'omnivore' ? '🌿 ' + p.diet : '',
+  ].filter(Boolean).map(t => `<div class="sc-nutri-hero-chip">${t}</div>`).join('');
 }
 
-function _scNutriWeekChart(calTarget, weekMenu) {
+/* ── Profil grid ── */
+function _sc_renderProfileGrid(p, cals) {
+  const grid = document.getElementById('nutriProfileGrid');
+  if(!grid) return;
+
+  if(!p.age || !p.poids || !p.taille) {
+    grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:12px;">
+      <div style="font-size:.78rem;color:var(--tx3);">Renseignez votre profil pour voir vos stats santé</div>
+      <button class="btn sm" onclick="openMenuProfile()" style="margin-top:8px;">⚙️ Compléter mon profil</button>
+    </div>`;
+    return;
+  }
+
+  const bmi = (p.poids / Math.pow(p.taille/100, 2)).toFixed(1);
+  const bmiNum = +bmi;
+  const bmiLabel = bmiNum < 18.5 ? 'Maigreur' : bmiNum < 25 ? 'Idéal ✅' : bmiNum < 30 ? 'Surpoids' : 'Obésité';
+  const bmiColor = (bmiNum >= 18.5 && bmiNum < 25) ? 'var(--gn)' : bmiNum < 18.5 ? 'var(--bl)' : 'var(--or)';
+  const bmiPct   = bmiNum < 18.5 ? 30 : bmiNum < 25 ? 80 : bmiNum < 30 ? 55 : 25;
+
+  const actLabels = ['Sédentaire','Lgt actif','Mod. actif','Très actif','Extrême'];
+  const actPcts   = [20, 40, 60, 80, 100];
+  const actIdx    = Math.min(Math.max(+(p.sportFreq||2), 0), 4);
+
+  const poids = +p.poids, poidsObj = +p.poidsObj;
+  const diff = poidsObj && poids ? poids - poidsObj : null;
+  const diffLabel = diff === null ? '—' : (diff > 0 ? '−'+diff+'kg à perdre' : diff < 0 ? '+'+Math.abs(diff)+'kg à prendre' : 'Objectif atteint ✅');
+  const diffColor = diff === null ? 'var(--tx2)' : Math.abs(diff) < 2 ? 'var(--gn)' : 'var(--or)';
+  const weightPct = diff === null ? 50 : Math.max(10, Math.min(100, 100 - Math.abs(diff)*10));
+
+  const stats = [
+    { icon:'⚖️', label:'IMC', val:bmi, sub:bmiLabel, color:bmiColor, pct:bmiPct },
+    { icon:'🏃', label:'Activité', val:actLabels[actIdx], sub:cals?cals+' kcal/j':'—', color:'var(--tl)', pct:actPcts[actIdx] },
+    { icon:'🎯', label:'Objectif poids', val:diff===null?(poidsObj?poidsObj+'kg':'—'):diffLabel, sub:p.sex==='H'?'Homme · '+(p.age||'?')+' ans':'Femme · '+(p.age||'?')+' ans', color:diffColor, pct:weightPct },
+  ];
+
+  grid.innerHTML = stats.map(s => `<div class="sc-stat-card">
+    <div class="sc-stat-card-icon">${s.icon}</div>
+    <div class="sc-stat-card-val" style="color:${s.color};">${s.val}</div>
+    <div class="sc-stat-card-label">${s.label}</div>
+    <div class="sc-stat-card-sub">${s.sub}</div>
+    <div class="sc-stat-card-bar"><div class="sc-stat-card-bar-fill" style="width:${s.pct}%;background:${s.color};"></div></div>
+  </div>`).join('');
+}
+
+/* ── Graphique calories semaine ── */
+function _sc_renderWeekChart(wm, calTarget) {
   const chart = document.getElementById('nutriWeekCard');
+  const scoreEl = document.getElementById('nutriWeekScore');
   if(!chart) return;
+
   const DS = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
-  const kcals = Array.from({length:7}, (_,i) => {
-    const d = weekMenu[i+1];
-    return d ? _scGetDayKcal(d) : 0;
-  });
+  const kcals = Array.from({length:7}, (_,i) => _sc_getDayKcal(wm[i+1]));
   const hasData = kcals.some(v => v > 0);
   const tgt = calTarget || 2000;
 
   if(!hasData) {
-    chart.innerHTML = `<div style="text-align:center;padding:20px;color:var(--tx2);font-size:.78rem;">
-      <div style="font-size:1.5rem;margin-bottom:8px;">📅</div>
-      <div>Générez un menu dans l'onglet <strong>Semaine</strong> pour voir votre bilan.</div>
-      <button class="btn acc sm" onclick="switchMenuTab('week')" style="margin-top:10px;padding:8px 16px;border-radius:var(--rs);font-weight:800;">📅 Planifier ma semaine</button>
+    chart.innerHTML = `<div style="text-align:center;padding:24px 16px;">
+      <div style="font-size:2rem;margin-bottom:8px;">📅</div>
+      <div style="font-size:.78rem;font-weight:700;color:var(--tx2);">Votre semaine n'est pas encore planifiée</div>
+      <div style="font-size:.7rem;color:var(--tx3);margin-top:4px;">Générez un menu IA dans l'onglet Semaine</div>
+      <button class="btn acc" onclick="switchMenuTab('week')" style="margin-top:12px;padding:10px 20px;border-radius:var(--rs);font-weight:800;">📅 Planifier ma semaine</button>
     </div>`;
-    const sc = document.getElementById('nutriWeekScore');
-    if(sc) sc.textContent = '';
+    if(scoreEl) scoreEl.textContent = '';
     return;
   }
 
-  // Score A/B/C/D
-  const daysOk = kcals.filter(v => v > 0 && Math.abs(v - tgt) < tgt * 0.12).length;
   const daysPlanned = kcals.filter(v => v > 0).length;
-  const score = daysOk >= 5 ? 'A' : daysOk >= 3 ? 'B' : daysOk >= 2 ? 'C' : 'D';
-  const scoreColor = score==='A'?'#2ecc71':score==='B'?'#3498db':score==='C'?'#f39c12':'#e74c3c';
-  const sc = document.getElementById('nutriWeekScore');
-  if(sc) { sc.textContent = 'Score '+score+' · '+daysPlanned+'/7 jours'; sc.style.color = scoreColor; }
+  const daysOk      = kcals.filter(v => v > 0 && Math.abs(v - tgt) <= tgt * 0.12).length;
+  const avgKcal     = Math.round(kcals.filter(v=>v>0).reduce((s,v)=>s+v,0) / daysPlanned);
+  const score       = daysOk >= 5 ? 'A' : daysOk >= 3 ? 'B' : daysOk >= 2 ? 'C' : 'D';
+  const sCol        = {A:'#2ecc71',B:'#3498db',C:'#f39c12',D:'#e74c3c'}[score];
 
-  const avgKcal = Math.round(kcals.filter(v=>v>0).reduce((s,v)=>s+v,0) / daysPlanned);
-  const W = chart.offsetWidth || 320, H = 100, pad = 8;
+  if(scoreEl) {
+    scoreEl.textContent = 'Score ' + score + ' · ' + daysPlanned + '/7 jours';
+    scoreEl.style.color = sCol;
+  }
+
+  const W = Math.max(chart.offsetWidth || 320, 300), H = 110, pad = 10;
   const barW = Math.floor((W - pad*2) / 7);
-  const maxV = Math.max(tgt*1.3, ...kcals, 100);
+  const maxV = Math.max(tgt * 1.3, ...kcals, 200);
   const tgtY = H - Math.round(tgt/maxV*H);
   const today = new Date().getDay() || 7;
 
-  let svg = `<svg width="100%" height="${H+42}" viewBox="0 0 ${W} ${H+42}" style="overflow:visible;">`;
-  svg += `<line x1="${pad}" y1="${tgtY}" x2="${W-pad}" y2="${tgtY}" stroke="var(--ac)" stroke-width="1.5" stroke-dasharray="5,4" opacity=".6"/>`;
-  svg += `<text x="${W-pad-2}" y="${tgtY-5}" text-anchor="end" font-size="9" fill="var(--ac)" font-weight="700" opacity=".8">${tgt}</text>`;
+  let svg = `<svg width="100%" height="${H+52}" viewBox="0 0 ${W} ${H+52}" style="overflow:visible;display:block;">`;
+  // Zone cible
+  svg += `<rect x="${pad}" y="${tgtY-tgt*.12/maxV*H}" width="${W-pad*2}" height="${tgt*.24/maxV*H}" rx="3" fill="rgba(46,204,113,.06)"/>`;
+  // Ligne cible
+  svg += `<line x1="${pad}" y1="${tgtY}" x2="${W-pad}" y2="${tgtY}" stroke="#2ecc71" stroke-width="1.5" stroke-dasharray="6,4" opacity=".7"/>`;
+  svg += `<text x="${W-pad+2}" y="${tgtY+4}" text-anchor="start" font-size="9" fill="#2ecc71" font-weight="700" opacity=".85">${tgt}</text>`;
 
   kcals.forEach((v, i) => {
-    const x = pad + i*barW + barW*.1, bw = barW*.8;
-    const bh = v ? Math.max(6, Math.round(v/maxV*H)) : 4;
-    const y = H - bh;
-    const col = !v ? 'var(--bg2)' : Math.abs(v-tgt)<tgt*.12 ? '#2ecc71' : v>tgt*1.15 ? '#e74c3c' : '#f39c12';
-    svg += `<rect x="${x}" y="${v?y:H-4}" width="${bw}" height="${v?bh:4}" rx="5" fill="${col}" opacity="${v?'1':'.3'}">
-      <animate attributeName="height" from="0" to="${v?bh:4}" dur=".5s" begin="${i*.06}s" fill="freeze"/>
-      <animate attributeName="y" from="${H}" to="${v?y:H-4}" dur=".5s" begin="${i*.06}s" fill="freeze"/>
+    const x = pad + i*barW + barW*.12;
+    const bw = barW*.76;
+    const bh = v ? Math.max(8, Math.round(v/maxV*H)) : 5;
+    const y  = H - bh;
+    const col = !v ? 'var(--bg2)'
+      : Math.abs(v - tgt) <= tgt*.12 ? '#2ecc71'
+      : v > tgt*1.15 ? '#e74c3c' : '#f39c12';
+    const isToday = (i+1) === today;
+
+    if(isToday && v) {
+      svg += `<rect x="${x-2}" y="${y-2}" width="${bw+4}" height="${bh+2+2}" rx="7" fill="${col}" opacity=".18"/>`;
+    }
+
+    svg += `<rect x="${x}" y="${v?y:H-5}" width="${bw}" height="${v?bh:5}" rx="6" fill="${col}" opacity="${v?'1':'.25'}">
+      <animate attributeName="height" from="0" to="${v?bh:5}" dur=".55s" begin="${i*.07}s" fill="freeze"/>
+      <animate attributeName="y" from="${H}" to="${v?y:H-5}" dur=".55s" begin="${i*.07}s" fill="freeze"/>
     </rect>`;
-    if(v) svg += `<text x="${x+bw/2}" y="${y-5}" text-anchor="middle" font-size="9" fill="var(--tx2)" font-weight="700">${v}</text>`;
-    const isToday = (i+1)===today;
-    svg += `<text x="${x+bw/2}" y="${H+16}" text-anchor="middle" font-size="10" fill="${isToday?'var(--ac)':'var(--tx)'}" font-weight="${isToday||v?'800':'500'}">${DS[i]}</text>`;
-    if(isToday) svg += `<circle cx="${x+bw/2}" cy="${H+26}" r="2.5" fill="var(--ac)"/>`;
+
+    if(v) {
+      svg += `<text x="${x+bw/2}" y="${y-6}" text-anchor="middle" font-size="9" fill="${col}" font-weight="900">${v}</text>`;
+    }
+
+    svg += `<text x="${x+bw/2}" y="${H+18}" text-anchor="middle" font-size="11" fill="${isToday?'var(--ac)':'var(--tx)'}" font-weight="${isToday?'900':v?'700':'400'}">${DS[i]}</text>`;
+    if(isToday) svg += `<circle cx="${x+bw/2}" cy="${H+29}" r="3" fill="var(--ac)"/>`;
+    if(!v) svg += `<text x="${x+bw/2}" y="${H+42}" text-anchor="middle" font-size="9" fill="var(--tx3)">—</text>`;
   });
   svg += '</svg>';
 
-  svg += `<div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap;align-items:center;">
-    <div style="display:flex;align-items:center;gap:4px;padding:4px 8px;background:rgba(46,204,113,.1);border-radius:var(--rp);">
-      <div style="width:8px;height:8px;border-radius:2px;background:#2ecc71;"></div>
-      <span style="font-size:.58rem;font-weight:700;color:var(--gn);">Objectif ±12%</span>
+  const legendHtml = `<div class="sc-week-chart-legend">
+    <div class="sc-week-chart-legend-item" style="background:rgba(46,204,113,.1);">
+      <div class="sc-week-chart-legend-dot" style="background:#2ecc71;"></div>
+      <span style="color:var(--gn);">Dans l'objectif</span>
     </div>
-    <div style="display:flex;align-items:center;gap:4px;padding:4px 8px;background:rgba(243,156,18,.1);border-radius:var(--rp);">
-      <div style="width:8px;height:8px;border-radius:2px;background:#f39c12;"></div>
-      <span style="font-size:.58rem;font-weight:700;color:#c0891a;">À ajuster</span>
+    <div class="sc-week-chart-legend-item" style="background:rgba(243,156,18,.1);">
+      <div class="sc-week-chart-legend-dot" style="background:#f39c12;"></div>
+      <span style="color:#c0891a;">À ajuster</span>
     </div>
-    <span style="margin-left:auto;font-size:.68rem;font-weight:800;color:var(--tx2);">Moy: ${avgKcal} kcal/j</span>
+    <div class="sc-week-chart-legend-item" style="background:rgba(231,76,60,.1);">
+      <div class="sc-week-chart-legend-dot" style="background:#e74c3c;"></div>
+      <span style="color:#c0392b;">Trop élevé</span>
+    </div>
+    <span style="margin-left:auto;font-size:.68rem;font-weight:900;color:var(--tx2);">Moy: ${avgKcal} kcal/j</span>
   </div>`;
-  chart.innerHTML = svg;
+
+  chart.innerHTML = `<div class="sc-week-chart-wrap">${svg}${legendHtml}</div>`;
   chart.style.height = 'auto';
 }
 
-function _scMacroRings(macros, weekMenu) {
+/* ── Anneaux macros ── */
+function _sc_renderMacroRings(wm, macros, cals) {
   const el = document.getElementById('macroRings');
   if(!el) return;
+
   if(!macros) {
     el.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:16px;">
-      <div style="font-size:1.5rem;margin-bottom:6px;">📊</div>
-      <div style="font-size:.78rem;color:var(--tx2);">Complétez votre profil pour voir vos objectifs macros.</div>
-      <button class="btn sm" onclick="openMenuProfile()" style="margin-top:10px;">⚙️ Mon profil</button>
+      <div style="font-size:1.5rem;margin-bottom:8px;">📊</div>
+      <div style="font-size:.78rem;color:var(--tx2);">Complétez votre profil pour voir vos objectifs.</div>
+      <button class="btn sm" onclick="openMenuProfile()" style="margin-top:8px;">⚙️ Mon profil</button>
     </div>`;
+    el.className = 'sc-macro-grid';
     return;
   }
-  const planned = Object.values(weekMenu||{}).filter(m => m && (m.nutri?.kcal));
-  const avg = k => planned.length ? Math.round(planned.reduce((s,m) => {
-    let v=0; ['b','l','d','snack'].forEach(sl=>{if(m[sl+'Data']?.[k])v+=m[sl+'Data'][k];});
-    return s+(v>0?v:(m.nutri?.[k]||0));
-  },0)/planned.length) : 0;
 
-  const R=28, CX=36, CY=36, CIRC=2*Math.PI*R;
+  const days = Object.values(wm).filter(d => d && (_sc_getDayKcal(d) > 0));
+  const avgOf = key => days.length
+    ? Math.round(days.reduce((s,d) => s + _sc_getDayMacro(d, key), 0) / days.length)
+    : 0;
+
+  const R = 30, CX = 38, CY = 38, CIRC = 2*Math.PI*R;
   const list = [
-    {label:'Calories', icon:'🔥', actual:avg('kcal'), target:macros.kcal||macros.cals||2000, color:'#e74c3c', unit:'kcal'},
-    {label:'Protéines', icon:'💪', actual:avg('prot'), target:macros.prot, color:'#3498db', unit:'g'},
-    {label:'Glucides', icon:'🍞', actual:avg('carb'), target:macros.carb, color:'#f39c12', unit:'g'},
-    {label:'Lipides', icon:'🥑', actual:avg('fat'), target:macros.fat, color:'#9b59b6', unit:'g'},
+    { label:'Calories', icon:'🔥', actual:avgOf('kcal')||Math.round(days.reduce((s,d)=>s+_sc_getDayKcal(d),0)/Math.max(days.length,1)), target:cals||macros.kcal||2000, color:'#e74c3c', unit:'kcal' },
+    { label:'Protéines', icon:'💪', actual:avgOf('prot'), target:macros.prot, color:'#3498db', unit:'g' },
+    { label:'Glucides',  icon:'🍞', actual:avgOf('carb'), target:macros.carb, color:'#f39c12', unit:'g' },
+    { label:'Lipides',   icon:'🥑', actual:avgOf('fat'),  target:macros.fat,  color:'#9b59b6', unit:'g' },
   ];
-  el.style.display = 'grid';
-  el.style.gridTemplateColumns = '1fr 1fr';
-  el.style.gap = '10px';
+
+  el.className = 'sc-macro-grid';
   el.innerHTML = list.map(m => {
-    const pct = m.target ? Math.min(100, Math.round(m.actual/m.target*100)) : 0;
-    const dash = (pct/100)*CIRC, gap = CIRC-dash;
-    const badge = pct>=88&&pct<=112?'✅':pct>112?'⚠️':'';
-    const stCol = pct>=88&&pct<=112?'var(--gn)':pct>112?'var(--rd)':'var(--yl)';
-    const stTxt = pct>=88&&pct<=112?'Objectif atteint':pct>112?'Au-dessus':pct>50?'En cours':'Insuffisant';
-    return `<div style="background:var(--bg);border-radius:var(--rs);box-shadow:var(--so);padding:10px;display:flex;align-items:center;gap:8px;">
-      <svg width="68" height="68" viewBox="0 0 72 72" style="flex-shrink:0;">
-        <circle cx="${CX}" cy="${CY}" r="${R}" fill="none" stroke="var(--bg2)" stroke-width="7"/>
-        <circle cx="${CX}" cy="${CY}" r="${R}" fill="none" stroke="${m.color}" stroke-width="7"
-          stroke-dasharray="${dash.toFixed(1)} ${gap.toFixed(1)}"
+    const pct  = m.target ? Math.min(110, Math.round(m.actual/m.target*100)) : 0;
+    const dash = (Math.min(pct,100)/100)*CIRC;
+    const gap  = CIRC - dash;
+    const stOk = pct >= 85 && pct <= 112;
+    const stOv = pct > 112;
+    const stCol= stOk ? 'var(--gn)' : stOv ? 'var(--rd)' : pct > 50 ? 'var(--yl)' : 'var(--tx3)';
+    const stTxt= stOk ? '✅ Objectif' : stOv ? '⚠️ Trop élevé' : pct > 50 ? '🔄 En cours' : '❌ Insuffisant';
+    const badge= days.length === 0 ? '' : '';
+    return `<div class="sc-macro-card">
+      <svg width="76" height="76" viewBox="0 0 76 76" style="flex-shrink:0;">
+        <circle cx="${CX}" cy="${CY}" r="${R}" fill="none" stroke="var(--bg2)" stroke-width="8"/>
+        <circle cx="${CX}" cy="${CY}" r="${R}" fill="none" stroke="${m.color}" stroke-width="8"
+          stroke-dasharray="${days.length?dash.toFixed(1):0} ${CIRC.toFixed(1)}"
           stroke-dashoffset="${(CIRC/4).toFixed(1)}" stroke-linecap="round">
-          <animate attributeName="stroke-dasharray" from="0 ${CIRC.toFixed(1)}" to="${dash.toFixed(1)} ${gap.toFixed(1)}" dur=".7s" fill="freeze"/>
+          ${days.length?`<animate attributeName="stroke-dasharray" from="0 ${CIRC.toFixed(1)}" to="${dash.toFixed(1)} ${gap.toFixed(1)}" dur=".7s" fill="freeze"/>`:''}
         </circle>
-        <text x="${CX}" y="${CY+1}" text-anchor="middle" dominant-baseline="middle" font-size="13" font-weight="900" fill="var(--tx)">${pct}%</text>
+        <text x="${CX}" y="${CY+1}" text-anchor="middle" dominant-baseline="middle" font-size="14" font-weight="900" fill="var(--tx)">${days.length?pct+'%':'—'}</text>
       </svg>
-      <div style="flex:1;min-width:0;">
-        <div style="font-size:.78rem;font-weight:800;">${m.icon} ${m.label} ${badge}</div>
-        <div style="font-size:.95rem;font-weight:900;color:${m.color};">${m.actual}<span style="font-size:.55rem;"> ${m.unit}</span></div>
-        <div style="font-size:.6rem;color:var(--tx3);">/ ${m.target} ${m.unit}</div>
-        <div style="font-size:.58rem;color:${stCol};font-weight:700;margin-top:2px;">${stTxt}</div>
-        <div style="height:3px;background:var(--bg2);border-radius:99px;margin-top:4px;">
-          <div style="height:100%;width:${Math.min(100,pct)}%;background:${m.color};border-radius:99px;transition:width .5s;"></div>
-        </div>
+      <div class="sc-macro-info">
+        <div class="sc-macro-label">${m.icon} ${m.label}</div>
+        <div class="sc-macro-val" style="color:${m.color};">${days.length?m.actual:'—'}<span style="font-size:.55rem;font-weight:600;"> ${m.unit}</span></div>
+        <div class="sc-macro-target">/ ${m.target} ${m.unit} objectif</div>
+        <div class="sc-macro-status" style="color:${stCol};">${days.length?stTxt:'Pas de données'}</div>
+        <div class="sc-macro-bar"><div class="sc-macro-bar-fill" style="width:${days.length?Math.min(100,pct):0}%;background:${m.color};"></div></div>
       </div>
     </div>`;
   }).join('');
 }
 
-function _scSportPie(p, cals, weekMenu) {
+/* ── Camembert sport + balance ── */
+function _sc_renderSportPie(p, wm, cals) {
   const el = document.getElementById('sportPieChart');
   if(!el) return;
-  if(!p?.age || !cals) {
-    el.innerHTML = `<div style="text-align:center;font-size:.75rem;color:var(--tx3);padding:8px;">
-      Renseignez votre profil pour voir la répartition calorique
+
+  if(!p.age || !p.poids || !p.taille || !cals) {
+    el.innerHTML = `<div style="text-align:center;font-size:.75rem;color:var(--tx3);padding:12px;">
+      Renseignez votre profil complet pour voir la répartition calorique.
     </div>`; return;
   }
-  const bmr = p.sex==='F' ? 10*(+p.poids||70)+6.25*(+p.taille||170)-5*(+p.age||30)-161
-                           : 10*(+p.poids||70)+6.25*(+p.taille||170)-5*(+p.age||30)+5;
-  const factors=[1.2,1.375,1.55,1.725,1.9];
-  const sportBurn = Math.round(bmr * ((factors[+(p.sportFreq||2)]||1.55) - 1.2));
+
+  const bmr = p.sex==='F'
+    ? Math.round(10*(+p.poids)+6.25*(+p.taille)-5*(+p.age)-161)
+    : Math.round(10*(+p.poids)+6.25*(+p.taille)-5*(+p.age)+5);
+  const factors = [1.2,1.375,1.55,1.725,1.9];
+  const act = factors[Math.min(Math.max(+(p.sportFreq||2),0),4)] || 1.55;
   const baseBurn  = Math.round(bmr * 1.2);
+  const sportBurn = Math.round(bmr * (act - 1.2));
+
   const segs = [
-    {label:'Métabolisme de base', val:baseBurn, color:'#3498db', icon:'🫀'},
-    {label:'Activité physique',   val:sportBurn+(+(p.kcalSport||0)), color:'#e74c3c', icon:'🏃'},
+    { label:'Métabolisme de base', val:baseBurn,  color:'#3498db', icon:'🫀' },
+    { label:'Activité physique',   val:sportBurn + (+(p.kcalSport||0)), color:'#e74c3c', icon:'🏃' },
   ];
   const total = segs.reduce((s,sg)=>s+sg.val,0);
-  const R=48, CX=64, CY=64, SW=20, CIRC=2*Math.PI*R;
+  const R=46, CX=62, CY=62, SW=18, CIRC=2*Math.PI*R;
   let off = CIRC/4;
-  const paths = segs.map(sg => {
+  const circles = segs.map(sg => {
     const dl = (sg.val/total)*CIRC;
-    const p = `<circle cx="${CX}" cy="${CY}" r="${R}" fill="none" stroke="${sg.color}" stroke-width="${SW}" stroke-dasharray="${dl.toFixed(2)} ${(CIRC-dl).toFixed(2)}" stroke-dashoffset="${off.toFixed(2)}" stroke-linecap="butt"/>`;
-    off -= dl; return p;
+    const c = `<circle cx="${CX}" cy="${CY}" r="${R}" fill="none" stroke="${sg.color}" stroke-width="${SW}" stroke-dasharray="${dl.toFixed(2)} ${(CIRC-dl).toFixed(2)}" stroke-dashoffset="${off.toFixed(2)}"/>`;
+    off -= dl; return c;
   }).join('');
+
   const legend = segs.map(sg => {
     const pct = Math.round(sg.val/total*100);
-    return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-      <div style="width:12px;height:12px;border-radius:3px;background:${sg.color};flex-shrink:0;"></div>
-      <div style="flex:1;font-size:.74rem;font-weight:700;">${sg.icon} ${sg.label}</div>
-      <div style="font-size:.82rem;font-weight:900;color:${sg.color};">${sg.val} kcal</div>
-      <div style="font-size:.62rem;color:var(--tx3);min-width:26px;text-align:right;">${pct}%</div>
+    return `<div class="sc-sport-legend-row">
+      <div class="sc-sport-legend-dot" style="background:${sg.color};"></div>
+      <div class="sc-sport-legend-label">${sg.icon} ${sg.label}</div>
+      <div class="sc-sport-legend-val" style="color:${sg.color};">${sg.val} kcal<span style="font-size:.58rem;color:var(--tx3);"> (${pct}%)</span></div>
     </div>`;
   }).join('');
 
-  const days = Object.values(weekMenu||{}).filter(d=>d?.nutri?.kcal);
-  const avgPlanned = days.length ? Math.round(days.reduce((s,d)=>s+d.nutri.kcal,0)/days.length) : 0;
+  // Balance calorique
+  const days = Object.values(wm).filter(d => d && _sc_getDayKcal(d) > 0);
+  const avgPlanned = days.length ? Math.round(days.reduce((s,d)=>s+_sc_getDayKcal(d),0)/days.length) : 0;
   const balance = avgPlanned ? avgPlanned - cals : null;
-  const balHtml = balance!==null ? `<div style="margin-top:10px;padding:10px 12px;border-radius:var(--rs);background:${Math.abs(balance)<150?'rgba(46,204,113,.1)':'rgba(231,76,60,.08)'};border-left:3px solid ${Math.abs(balance)<150?'var(--gn)':'var(--rd)'};">
-    <div style="font-size:.72rem;font-weight:800;color:${Math.abs(balance)<150?'var(--gn)':'var(--rd)'};">${balance>0?'⬆️ Excédent':balance<0?'⬇️ Déficit':'⚖️ Équilibre'} calorique</div>
-    <div style="font-size:.85rem;font-weight:900;color:var(--tx);">${balance>0?'+':''}${balance} kcal/j</div>
-    <div style="font-size:.6rem;color:var(--tx2);margin-top:2px;">Planifié (${avgPlanned} kcal) vs objectif (${cals} kcal)</div>
-  </div>` : '';
+  const balOk = balance !== null && Math.abs(balance) < 150;
+  const balUp = balance !== null && balance > 0;
 
-  el.innerHTML = `<div style="display:flex;align-items:center;gap:18px;">
-    <svg width="128" height="128" viewBox="0 0 128 128" style="flex-shrink:0;">
+  const balanceHtml = balance !== null ? `<div class="sc-balance-card" style="background:${balOk?'rgba(46,204,113,.08)':balUp?'rgba(231,76,60,.07)':'rgba(243,156,18,.08)'};border-left:3px solid ${balOk?'var(--gn)':balUp?'var(--rd)':'var(--yl)'};">
+    <div style="font-size:.7rem;font-weight:800;color:${balOk?'var(--gn)':balUp?'var(--rd)':'var(--yl)'};">${balance>0?'⬆️ Excédent calorique':balance<0?'⬇️ Déficit calorique':'⚖️ Équilibre parfait'}</div>
+    <div style="font-size:.95rem;font-weight:900;color:var(--tx);margin-top:2px;">${balance>0?'+':''}${balance} kcal/jour</div>
+    <div style="font-size:.62rem;color:var(--tx2);margin-top:3px;">Planifié : ${avgPlanned} kcal · Objectif : ${cals} kcal</div>
+    ${balOk?'<div style="font-size:.62rem;color:var(--gn);margin-top:2px;font-weight:700;">🎉 Excellent équilibre cette semaine !</div>':
+      balUp?'<div style="font-size:.62rem;color:var(--tx2);margin-top:2px;">Réduisez légèrement les portions ou ajoutez une session sport</div>':
+      '<div style="font-size:.62rem;color:var(--tx2);margin-top:2px;">Augmentez légèrement les portions ou collations</div>'}
+  </div>` : `<div style="font-size:.7rem;color:var(--tx3);margin-top:10px;text-align:center;">Planifiez votre semaine pour voir la balance</div>`;
+
+  el.innerHTML = `<div class="sc-sport-pie-wrap">
+    <svg width="124" height="124" viewBox="0 0 124 124" style="flex-shrink:0;">
       <circle cx="${CX}" cy="${CY}" r="${R}" fill="none" stroke="var(--bg2)" stroke-width="${SW}"/>
-      ${paths}
-      <text x="${CX}" y="${CY-6}" text-anchor="middle" font-size="13" font-weight="900" fill="var(--tx)">${cals}</text>
-      <text x="${CX}" y="${CY+9}" text-anchor="middle" font-size="9" fill="var(--tx2)">kcal/jour</text>
+      ${circles}
+      <text x="${CX}" y="${CY-7}" text-anchor="middle" font-size="14" font-weight="900" fill="var(--tx)">${cals}</text>
+      <text x="${CX}" y="${CY+8}" text-anchor="middle" font-size="9" fill="var(--tx2)">kcal/jour</text>
     </svg>
-    <div style="flex:1;">${legend}</div>
-  </div>${balHtml}`;
+    <div class="sc-sport-legend">${legend}</div>
+  </div>${balanceHtml}`;
 }
 
 // ─────────────────────────────────────────────────────────────
-// 4. STATS LIVE dans l'onglet Menu
+// 5. STATS LIVE ONGLET MENU
 // ─────────────────────────────────────────────────────────────
-(function patchMenuStats() {
-  function inject() {
+(function injectMenuStats() {
+  function createBar() {
+    if(document.getElementById('sc-menu-live-stats')) return;
     const menuVb = document.getElementById('menuVb');
-    if(!menuVb || document.getElementById('sc-menu-live-stats')) return;
+    if(!menuVb) return;
+
     const bar = document.createElement('div');
     bar.id = 'sc-menu-live-stats';
-    bar.style.cssText = 'display:flex;gap:8px;margin-bottom:14px;';
+    bar.className = 'sc-menu-stats';
 
     function refresh() {
-      const wm = window.state?.weekMenu || {};
-      const p  = window.state?.profile || {};
+      const wm   = _sc_getWeekMenu();
+      const p    = _sc_getProfile();
       const cals = typeof calculateDailyCalories==='function' ? calculateDailyCalories(p) : null;
-      const days = Object.values(wm).filter(d=>d&&(d.l||d.d||d.b));
-      const avgKcal = days.length ? Math.round(days.reduce((s,d)=>s+(d.nutri?.kcal||0),0)/days.length) : 0;
-      const diff = cals&&avgKcal ? avgKcal-cals : null;
-      const diffCol = diff===null?'var(--tx2)':Math.abs(diff)<120?'var(--gn)':diff>0?'var(--rd)':'var(--yl)';
+      const days = Object.keys(wm).map(k=>wm[k]).filter(d => d && (d.b||d.l||d.d));
+      const planned = days.length;
+      const avgKcal = planned ? Math.round(days.reduce((s,d)=>s+_sc_getDayKcal(d),0)/planned) : 0;
+      const diff = cals && avgKcal ? avgKcal - cals : null;
+      const dCol = diff===null ? 'var(--tx2)' : Math.abs(diff)<120 ? 'var(--gn)' : diff>0 ? 'var(--rd)' : 'var(--yl)';
+
       bar.innerHTML = [
-        {icon:'📅', val:days.length+'/7',  label:'Jours planifiés', color:'var(--tl)'},
-        {icon:'🔥', val:avgKcal?avgKcal+' kcal':'—', label:'Moy. kcal/jour', color:'var(--or)'},
-        {icon:'⚖️', val:diff!==null?(diff>0?'+':'')+diff+' kcal':'—', label:'Écart objectif', color:diffCol},
-      ].map(s=>`<div style="flex:1;background:var(--bg);border-radius:var(--rs);box-shadow:var(--so);padding:10px 8px;text-align:center;">
-        <div style="font-size:1rem;margin-bottom:3px;">${s.icon}</div>
-        <div style="font-size:.82rem;font-weight:900;color:${s.color};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${s.val}</div>
-        <div style="font-size:.52rem;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.5px;margin-top:2px;">${s.label}</div>
+        {icon:'📅', val:planned+'/7',   label:'Planifiés',   color:'var(--tl)'},
+        {icon:'🔥', val:avgKcal?avgKcal+' kcal':'—', label:'Moy./jour', color:'var(--or)'},
+        {icon:'⚖️', val:diff!==null?(diff>0?'+':'')+diff+' kcal':'—', label:'Écart objectif', color:dCol},
+      ].map(s => `<div class="sc-menu-stat-card">
+        <div class="sc-menu-stat-icon">${s.icon}</div>
+        <div class="sc-menu-stat-val" style="color:${s.color};">${s.val}</div>
+        <div class="sc-menu-stat-label">${s.label}</div>
       </div>`).join('');
     }
 
@@ -12632,92 +12905,53 @@ function _scSportPie(p, cals, weekMenu) {
     if(tabBar) menuVb.insertBefore(bar, tabBar);
     refresh();
 
-    // Refresh on tab switch & generation
+    // Patch switchMenuTab
     const _origSwitch = window.switchMenuTab;
-    if(_origSwitch && !window._statsTabPatched) {
-      window._statsTabPatched = true;
+    if(_origSwitch && !window._sc_menuStatsDone) {
+      window._sc_menuStatsDone = true;
       window.switchMenuTab = function(tab) {
-        _origSwitch(tab);
+        _origSwitch.apply(this, arguments);
         setTimeout(refresh, 80);
-        if(tab==='nutri') setTimeout(()=>{ if(typeof renderNutriTab==='function') renderNutriTab(); }, 100);
+        if(tab === 'nutri') setTimeout(() => { try { renderNutriTab(); } catch(e){} }, 120);
       };
     }
+    // Refresh après génération IA
     const _origApply = window.applyAIMenuResult;
-    if(_origApply && !window._statsApplyPatched) {
-      window._statsApplyPatched = true;
+    if(_origApply && !window._sc_applyDone) {
+      window._sc_applyDone = true;
       window.applyAIMenuResult = function() {
         _origApply.apply(this, arguments);
-        setTimeout(refresh, 200);
+        setTimeout(refresh, 300);
       };
     }
   }
 
-  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', ()=>setTimeout(inject,800));
-  else setTimeout(inject, 800);
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', ()=>setTimeout(createBar, 900));
+  else setTimeout(createBar, 900);
 })();
 
 // ─────────────────────────────────────────────────────────────
-// 5. RESPONSIVE PC — CSS
+// 6. AUTO-REFRESH NUTRITION quand on ouvre l'onglet
 // ─────────────────────────────────────────────────────────────
-(function patchCSS() {
-  const s = document.createElement('style');
-  s.textContent = `
-    @media(min-width:768px){
-      body.tablet-layout .tab-lb{font-size:.78rem!important;display:block!important;}
-      body.tablet-layout .tab{padding:10px 14px!important;min-height:44px;}
-      body.tablet-layout .tab svg{width:20px!important;height:20px!important;flex-shrink:0;}
-      body.tablet-layout .menu-tabs{flex-wrap:wrap;gap:4px;}
-      body.tablet-layout .menu-tab{font-size:.72rem!important;padding:8px 6px!important;flex:1 1 auto;white-space:nowrap;}
-      body.tablet-layout .vb{max-width:640px!important;margin:0 auto!important;padding-bottom:32px!important;}
-      body.tablet-layout .rc-grid{grid-template-columns:repeat(2,1fr)!important;}
-      body.tablet-layout #weekScroll{flex-wrap:wrap;overflow-x:visible;}
-      body.tablet-layout .dc{flex:1 1 auto;min-width:80px;}
-      body.tablet-layout .spoon-grid{grid-template-columns:repeat(3,1fr)!important;}
-      body.tablet-layout #nutriProfileGrid{grid-template-columns:repeat(3,1fr)!important;}
-      body.tablet-layout #macroRings{grid-template-columns:repeat(2,1fr)!important;}
-      body.tablet-layout .modal{max-width:560px!important;margin:auto;}
-      body.tablet-layout .tb-logo{padding:0 0 16px 0;border-bottom:1px solid var(--bg2);margin-bottom:8px;}
-    }
-    @media(min-width:1100px){
-      body.tablet-layout .vb{max-width:760px!important;}
-      body.tablet-layout .spoon-grid{grid-template-columns:repeat(4,1fr)!important;}
-    }
-    #macroRings{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
-    .nutri-macros-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
-    .advice-card{background:var(--bg);border-radius:var(--rs);box-shadow:var(--so);padding:12px 14px;margin-bottom:8px;}
-    .advice-card-ic{font-size:1.2rem;}
-    .advice-card-title{font-weight:900;font-size:.82rem;margin-top:4px;}
-    .advice-card-body{font-size:.75rem;color:var(--tx2);line-height:1.5;margin-top:4px;}
-    .advice-card.warn{border-left:3px solid var(--yl);}
-    .advice-card.bad{border-left:3px solid var(--rd);}
-    .advice-card.tip{border-left:3px solid var(--gn);}
-    .advice-card.info{border-left:3px solid var(--bl);}
-  `;
-  document.head.appendChild(s);
+(function autoRefreshNutri() {
+  // Observer l'affichage du panel nutrition
+  function tryObserve() {
+    const panel = document.getElementById('menuPanelNutri');
+    if(!panel) { setTimeout(tryObserve, 500); return; }
+    const obs = new MutationObserver(mutations => {
+      mutations.forEach(m => {
+        if(m.attributeName === 'style' && panel.style.display !== 'none') {
+          setTimeout(() => { try { renderNutriTab(); } catch(e){ console.warn('NutriTab err:', e); } }, 80);
+        }
+      });
+    });
+    obs.observe(panel, { attributes: true });
+  }
+  setTimeout(tryObserve, 500);
 })();
 
-// ─────────────────────────────────────────────────────────────
-// 6. FIX renderFavsGrid manquante + openRecipeDetail compat
-// ─────────────────────────────────────────────────────────────
-if(!window.renderFavsGrid) {
-  window.renderFavsGrid = function() {
-    if(typeof switchMenuTab==='function') switchMenuTab('recipes');
-    setTimeout(()=>{
-      const c = document.querySelector('#recipeDietFilter [data-v="favs"]');
-      if(c) c.click();
-    }, 150);
-  };
-}
-
-// Compat openRecipeDetail pour les favoris (peut appeler openSpoonRecipe ou openClaudeRecipe)
-if(!window.openRecipeDetail) {
-  window.openRecipeDetail = function(id) {
-    if(typeof openSpoonRecipe==='function') openSpoonRecipe(id);
-    else if(typeof openClaudeRecipe==='function') openClaudeRecipe(id);
-  };
-}
-
-console.log('[SmartCard Patch v1.0] ✅ Appliqué — Portions · Nutrition · Favoris · Stats · Responsive');
+console.log('[SmartCard Patch v2.0] ✅ Portions · Nutrition moderne · Favoris · Stats · CSS · MutationObserver');
 </script>
+
 </body>
 </html>

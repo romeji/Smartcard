@@ -12017,7 +12017,7 @@ try {
   function _showFavsGrid(){
     const g=document.getElementById('recipesGrid'); if(!g) return;
     const bms=window.state?.recipeBookmarks||[];
-    if(!bms.length){ g.innerHTML='<div style="text-align:center;padding:32px;color:var(--tx3);"><div style="font-size:2rem;margin-bottom:8px;">⭐</div><div style="font-weight:700;">Aucun favori</div><div style="font-size:.75rem;margin-top:4px;">Ajoutez des ☆ dans l'explorateur</div></div>'; return; }
+    if(!bms.length){ g.innerHTML='<div style="text-align:center;padding:32px;color:var(--tx3);"><div style="font-size:2rem;margin-bottom:8px;">⭐</div><div style="font-weight:700;">Aucun favori</div><div style="font-size:.75rem;margin-top:4px;">Ajoutez des ☆ dans l&#39;explorateur</div></div>'; return; }
     g.innerHTML=bms.map(r=>`<div onclick="openRecipeDetail&&openRecipeDetail('${r.id}')" style="background:var(--bg);border-radius:var(--rs);box-shadow:var(--so);display:flex;align-items:center;gap:10px;padding:12px;margin-bottom:8px;cursor:pointer;">${r.photo?`<img src="${r.photo}" style="width:50px;height:50px;border-radius:var(--rs);object-fit:cover;flex-shrink:0;" onerror="this.style.display='none'">`:''}<div style="flex:1;min-width:0;"><div style="font-weight:800;font-size:.88rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${r.name}</div><div style="font-size:.62rem;color:var(--tx3);margin-top:3px;">${r.kcal?'🔥 '+r.kcal+' kcal':''} ${r.time?'⏱ '+r.time+'min':''}</div></div><span>⭐</span></div>`).join('');
   }
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',()=>setTimeout(apply,800));
@@ -12126,7 +12126,7 @@ function sc_nutri_render() {
       <div style="text-align:center;padding:20px;color:var(--tx2);">
         <div style="font-size:1.8rem;margin-bottom:8px;">📅</div>
         <div style="font-size:.8rem;font-weight:700;">Semaine non planifiée</div>
-        <div style="font-size:.72rem;margin-top:4px;color:var(--tx3);">Générez un menu dans l'onglet Semaine</div>
+        <div style="font-size:.72rem;margin-top:4px;color:var(--tx3);">Générez un menu dans l&#39;onglet Semaine</div>
         <button class="btn acc" onclick="switchMenuTab('week')" style="margin-top:12px;padding:10px 20px;border-radius:var(--rs);font-weight:800;">📅 Planifier ma semaine</button>
       </div>
     </div>`;
@@ -12163,7 +12163,7 @@ function sc_nutri_render() {
       </div>
       <div class="nx-legend">
         <div class="nx-leg-item" style="background:rgba(46,204,113,.1);color:var(--gn);">
-          <div class="nx-leg-dot" style="background:#2ecc71;"></div>Dans l'objectif
+          <div class="nx-leg-dot" style="background:#2ecc71;"></div>Dans l&#39;objectif
         </div>
         <div class="nx-leg-item" style="background:rgba(243,156,18,.1);color:#c0891a;">
           <div class="nx-leg-dot" style="background:#f39c12;"></div>À ajuster
@@ -12314,7 +12314,7 @@ function sc_nutri_render() {
 
 function _sc_buildAutoAdvice(weekData, cals, macros, p) {
   if(!weekData.some(d=>d.planned)) {
-    return '<div class="nx-ai-card info"><div class="nx-ai-icon">💡</div><div class="nx-ai-title">Planifiez votre semaine</div><div class="nx-ai-body">Générez un menu IA dans l'onglet Semaine pour recevoir des conseils nutritionnels personnalisés.</div></div>';
+    return '<div class="nx-ai-card info"><div class="nx-ai-icon">💡</div><div class="nx-ai-title">Planifiez votre semaine</div><div class="nx-ai-body">Générez un menu IA dans l&#39;onglet Semaine pour recevoir des conseils nutritionnels personnalisés.</div></div>';
   }
   const withK   = weekData.filter(d=>d.kcal>0);
   const avgKcal = withK.length ? Math.round(withK.reduce((s,d)=>s+d.kcal,0)/withK.length) : 0;
@@ -12333,7 +12333,7 @@ function _sc_buildAutoAdvice(weekData, cals, macros, p) {
   if(macros && avgProt && macros.prot) {
     const pptc = Math.round(avgProt/macros.prot*100);
     if(pptc < 75)
-      tips.push({type:'bad',icon:'💪',title:'Protéines insuffisantes',body:`Votre apport moyen de ${avgProt}g de protéines représente ${pptc}% de l'objectif (${macros.prot}g). Ajoutez des œufs, légumineuses, ou viande maigre à vos repas.`});
+      tips.push({type:'bad',icon:'💪',title:'Protéines insuffisantes',body:`Votre apport moyen de ${avgProt}g de protéines représente ${pptc}% de l&#39;objectif (${macros.prot}g). Ajoutez des œufs, légumineuses, ou viande maigre à vos repas.`});
     else if(pptc >= 90 && pptc <= 115)
       tips.push({type:'tip',icon:'💪',title:'Excellente source de protéines',body:`${avgProt}g de protéines en moyenne — objectif atteint ! Vos muscles vous remercient.`});
   }

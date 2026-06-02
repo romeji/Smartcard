@@ -4641,7 +4641,7 @@ function switchMenuTab(tab) {
     if(panel) panel.style.display = t===tab ? 'block' : 'none';
   });
   if(tab==='week')    { try { renderWeek(); } catch(e){} }
-  if(tab==='nutri')   { try { sc_nutri_render(); } catch(e){ console.error('nutri render error:', e); } }
+  if(tab==='nutri')   { try { sc_nutri_render(); } catch(e){ console.error('[SC nutri]',e); } }
   if(tab==='recipes') { try { renderRecipesGrid(); } catch(e){} }
   if(tab==='favs')    { try { renderFavsGrid(); } catch(e){} }
   if(tab==='search') {
@@ -9953,8 +9953,222 @@ function saveCustomRecipe() { saveNewRecipe(); } // compat alias
 
 // ── Nutrition ────────────────────────────────────────────────
 function renderNutriTab() {
-  // Redirigé vers sc_nutri_render (patch v3)
-  if(typeof sc_nutri_render === 'function') sc_nutri_render();
+  if(typeof sc_nutri_render==="function") sc_nutri_render();
+}
+
+function renderSportPieChart(p, totalCals) {
+  const el = document.getElementById('sportPieChart');
+  if(!el) return;
+  const sport = getSportBurnSummary(p);
+  if(!sport || !totalCals) {
+    el.innerHTML = '<div style="text-align:center;padding:16px;color:var(--tx2);font-size:.78rem;">Configurez votre profil et votre activité sportive pour voir ce graphique.</div>';
+    return;
+  }
+
+  const baseBMR = totalCals - sport.totalBurn;
+  const activityBurn = sport.burn;
+  const extraBurn = sport.extraKcal;
+
+  const segments = [
+    { label: 'Métabolisme de base', val: Math.max(0, baseBMR), color: '#3498db', icon: '❤️' },
+    { label: 'Activité quotidienne', val: activityBurn, color: '#2ecc71', icon: '🚶' },
+    { label: 'Sport supplémentaire', val: extraBurn, color: '#e74c3c', icon: '🏃' },
+  ].filter(s => s.val > 0);
+
+  const total = segments.reduce((s, seg) => s + seg.val, 0);
+  if(!total) { el.innerHTML = ''; return; }
+
+  // SVG donut
+  const R = 52, CX = 64, CY = 64, SW = 20;
+  const CIRC = 2 * Math.PI * R;
+  let offset = CIRC / 4;
+  const paths = segments.map(seg => {
+    const pct = seg.val / total;
+    const dashlen = pct * CIRC;
+    const path = `<circle cx="${CX}" cy="${CY}" r="${R}" fill="none" stroke="${seg.color}" stroke-width="${SW}"
+      stroke-dasharray="${dashlen.toFixed(2)} ${(CIRC - dashlen).toFixed(2)}"
+      stroke-dashoffset="${offset.toFixed(2)}" stroke-linecap="butt"/>`;
+    offset -= dashlen;
+    return path;
+  }).join('');
+
+  const legend = segments.map(seg => {
+    const pct = Math.round(seg.val / total * 100);
+    return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+      <div style="width:12px;height:12px;border-radius:3px;background:${seg.color};flex-shrink:0;"></div>
+      <div style="flex:1;font-size:.74rem;font-weight:700;">${seg.icon} ${seg.label}</div>
+      <div style="font-size:.82rem;font-weight:900;color:${seg.color};">${seg.val} kcal</div>
+      <div style="font-size:.62rem;color:var(--tx3);min-width:28px;text-align:right;">${pct}%</div>
+    </div>`;
+  }).join('');
+
+  el.innerHTML = `<div style="display:flex;align-items:center;gap:18px;">
+    <svg width="128" height="128" viewBox="0 0 128 128" style="flex-shrink:0;">
+      <circle cx="${CX}" cy="${CY}" r="${R}" fill="none" stroke="var(--bg2)" stroke-width="${SW}"/>
+      ${paths}
+      <text x="${CX}" y="${CY-6}" text-anchor="middle" font-size="13" font-weight="900" fill="var(--tx)">${totalCals}</text>
+      <text x="${CX}" y="${CY+10}" text-anchor="middle" font-size="9" fill="var(--tx2)">kcal/jour</text>
+    </svg>
+    <div style="flex:1;">${legend}
+      <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--bg2);">
+        <div style="font-size:.68rem;color:var(--tx3);">Sport pratiqué: <strong style="color:var(--tx);">${p.sport||'Non défini'}</strong></div>
+        <div style="font-size:.68rem;color:var(--tx3);">Niveau: <strong style="color:var(--tl);">${sport.label}</strong></div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderNutriWeekOld(calTarget) {
+  const DAYS=['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
+  const card=document.getElementById('nutriWeekCard');
+  if(!card) return;
+  if(!Object.keys(state.weekMenu).length) {
+    card.innerHTML=`<div style="text-align:center;padding:20px;color:var(--tx2);font-size:.82rem;">Générez un menu pour voir le bilan nutritionnel</div>`;
+    return;
+  }
+  card.innerHTML=DAYS.map((d,i)=>{
+    const dn=i+1;
+    const menu=state.weekMenu[dn];
+    const kcal=menu?.nutri?.kcal||0;
+    const pct=calTarget&&kcal?Math.min(100,Math.round(kcal/calTarget*100)):0;
+    const color=pct>=85&&pct<=105?'var(--gn)':pct>110?'var(--rd)':'var(--yl)';
+    return `<div class="nutri-week-row">
+      <div class="nutri-week-day">${d}</div>
+      <div class="nutri-week-bar-wrap"><div class="nutri-week-bar">
+        <div class="nutri-week-bar-fill" style="width:${pct}%;background:${color};"></div>
+      </div></div>
+      <div class="nutri-week-kcal">${kcal?kcal+' kcal':'—'}</div>
+      <span style="font-size:.7rem;margin-left:4px;">${pct>=85&&pct<=105?'✅':pct>110?'⚠️':kcal?"🔵":"➖"}</span>
+    </div>`;
+  }).join('');
+}
+
+async function generateNutriAdvice() {
+  const zone=document.getElementById('nutriAdviceZone');
+  if(!zone) return;
+  zone.innerHTML=`<div class="ai-loading"><div class="ai-loading-spinner"></div><div>Analyse IA en cours...</div></div>`;
+  const p=state.profile||{};
+  const cals=calculateDailyCalories(p);
+  const weekData=Object.values(state.weekMenu).filter(m=>m?.nutri).map(m=>`${m.nutri.kcal}kcal, ${m.nutri.prot}g prot`).join(' | ');
+  const prompt=`Tu es nutritionniste expert. Profil: ${p.age||'?'}ans, ${p.sex==='H'?"homme":"femme"}, ${p.poids||'?'}kg, objectif: ${p.goal||'équilibre'}, régime: ${p.diet||'omnivore'}. Objectif: ${cals||'?'}kcal/j. Menu semaine: ${weekData||'non défini'}.
+Donne 4 conseils nutritionnels personnalisés et précis en JSON:
+[{"type":"tip|warn|bad|info","title":"Titre court","body":"Conseil de 2 phrases précises et actionnables"}]
+Pas de généralités. Adapte à ce profil spécifique.`;
+  try {
+    const resp=await fetch('/api/claude',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:800,messages:[{role:'user',content:prompt}]})});
+    const data=await resp.json();
+    const text=(data.content||[]).find(c=>c.type==='text')?.text||'';
+    const items=JSON.parse(text.replace(/```json|```/g,'').trim());
+    const icons={tip:'💡',warn:'⚠️',bad:'🚨',info:'ℹ️'};
+    zone.innerHTML=items.map(a=>`
+      <div class="advice-card ${a.type}">
+        <div class="advice-card-ic">${icons[a.type]||'💡'}</div>
+        <div class="advice-card-title">${a.title}</div>
+        <div class="advice-card-body">${a.body}</div>
+      </div>`).join('') +
+      `<button class="btn ghost" style="width:100%;margin-top:8px;font-size:.78rem;" onclick="generateNutriAdvice()">🔄 Actualiser les conseils</button>`;
+  } catch(e) {
+    // Default advice
+    const defaults=[
+      {type:'tip',title:'💧 Hydratation',body:`Avec votre objectif de ${calculateDailyCalories(p)||'?'} kcal/j, visez 35mL d'eau/kg de poids (${Math.round((+(p.poids)||70)*35/1000)}L/jour minimum). L'hydratation optimise votre métabolisme.`},
+      {type:'tip',title:'🥦 Micronutriments',body:'Variez les couleurs dans vos assiettes : légumes verts (magnésium), oranges (vitamine C), rouges (lycopène). 5 portions de fruits & légumes minimum.'},
+      {type:'warn',title:'⏰ Rythme des repas',body:'Espacez vos repas de 3-4h pour stabiliser la glycémie. Un petit-déjeuner riche en protéines réduit les fringales de 30%.'},
+      {type:'info',title:'💪 Protéines',body:`Pour votre profil, visez ${Math.round((+(p.poids)||70)*1.6)}g de protéines/jour (1.6g/kg). Répartissez sur 3 repas pour maximiser la synthèse musculaire.`},
+    ];
+    const icons={tip:'💡',warn:'⚠️',bad:'🚨',info:'ℹ️'};
+    zone.innerHTML=defaults.map(a=>`
+      <div class="advice-card ${a.type}">
+        <div class="advice-card-ic">${icons[a.type]||'💡'}</div>
+        <div class="advice-card-title">${a.title}</div>
+        <div class="advice-card-body">${a.body}</div>
+      </div>`).join('') +
+      `<button class="btn ghost" style="width:100%;margin-top:8px;font-size:.78rem;" onclick="generateNutriAdvice()">🔄 Actualiser les conseils</button>`;
+  }
+}
+
+// ── Compatibilité ancien code ────────────────────────────────
+function handleMenuTap(event) { /* désactivé - menu direct */ }
+function renderDayDetailCompat() { renderDayDetail(); }
+
+
+// TICKET SCAN — Powered by Tesseract.js + Mistral AI
+// Basé sur Smart Receipt AI V8 ULTIME
+// ═══════════════════════════════════════════════
+let ticketParsedItems = [];
+let aiCache = {};
+try { aiCache = JSON.parse(localStorage.getItem('sc_ai_cache') || '{}'); } catch(e) {}
+
+const MISTRAL_KEY = 'jOTJWyqoNRUtmbd0KL5QP2ncDmBofky2';
+const STORES_LIST = ['Carrefour','Leclerc','Auchan','Intermarché','Lidl','Aldi','Monoprix','Casino','Super U','Franprix','Picard','Biocoop','Naturalia','La Vie Claire','Netto','Leader Price','Simply','Système U','Spar','Grand Frais','Bio c Bon','Marché U'];
+
+// ── Navigation ──────────────────────────────────
+function startTicketScan() {
+  document.getElementById('ticketStartZone').style.display = 'none';
+  document.getElementById('ticketZone').style.display = 'block';
+  document.getElementById('ticketEditZone').style.display = 'none';
+  document.getElementById('ticketResults').style.display = 'none';
+}
+
+function resetTicketScan() {
+  document.getElementById('ticketStartZone').style.display = 'block';
+  document.getElementById('ticketZone').style.display = 'none';
+  document.getElementById('ticketEditZone').style.display = 'none';
+  document.getElementById('ticketResults').style.display = 'none';
+  const preview = document.getElementById('ticketPreview');
+  if(preview) { preview.src = ''; preview.style.display = 'none'; }
+  const camPh = document.getElementById('camPh');
+  if(camPh) camPh.style.display = 'flex';
+  const btn = document.getElementById('analyzeBtn');
+  if(btn) btn.disabled = true;
+  // Recréer les inputs fichier pour que onChange se déclenche même si même fichier sélectionné
+  _rebuildFileInputs();
+  currentTicketFile = null;
+  ticketParsedItems = [];
+}
+
+function _rebuildFileInputs() {
+  // Input caméra
+  const old1 = document.getElementById('ticketFile');
+  if(old1) {
+    const n = document.createElement('input');
+    n.type = 'file'; n.id = 'ticketFile'; n.accept = 'image/*';
+    n.style.display = 'none';
+    n.onchange = function(){ analyzeTicket(this); };
+    old1.parentNode.replaceChild(n, old1);
+  }
+  // Input galerie
+  const old2 = document.getElementById('ticketFileGallery');
+  if(old2) {
+    const n = document.createElement('input');
+    n.type = 'file'; n.id = 'ticketFileGallery'; n.accept = 'image/*';
+    n.style.display = 'none';
+    n.onchange = function(){ analyzeTicket(this); };
+    old2.parentNode.replaceChild(n, old2);
+  }
+}
+
+function triggerFileInput() {
+  document.getElementById('ticketFile').click();
+}
+
+// ── Image load & preview ────────────────────────
+let currentTicketFile = null; // stockage fiable du fichier
+
+function analyzeTicket(input) {
+  const file = input.files[0];
+  if(!file) return;
+  currentTicketFile = file; // stockage global fiable
+  const reader = new FileReader();
+  reader.onload = e => {
+    const preview = document.getElementById('ticketPreview');
+    preview.src = e.target.result;
+    preview.style.display = 'block';
+    const camPh = document.getElementById('camPh');
+    if(camPh) camPh.style.display = 'none';
+    const btn = document.getElementById('analyzeBtn');
+    if(btn) { btn.disabled = false; btn.textContent = '🤖 Analyser avec l\'IA'; }
+  };
+  reader.readAsDataURL(file);
 }
 
 // ── Progress helper ─────────────────────────────
@@ -11827,600 +12041,324 @@ try {
   if(t) document.documentElement.dataset.theme = t;
 } catch(e) {}
 </script>
-
-<!-- ═══════════════════════════════════════════════════════
-     SMARTCARD PATCH v3.0 — Nutrition Dashboard Complet
-     ═══════════════════════════════════════════════════════ -->
+<!-- SMARTCARD PATCH v3 FINAL — Nutrition Dashboard -->
 <style>
-/* ── Nutrition Layout ── */
-.nx-hero {
-  background: var(--grad);
-  border-radius: 20px;
-  padding: 22px 20px 20px;
-  margin-bottom: 12px;
-  color: #fff;
-  position: relative;
-  overflow: hidden;
-}
-.nx-hero::before {
-  content:''; position:absolute; top:-40px; right:-30px;
-  width:140px; height:140px; border-radius:50%;
-  background:rgba(255,255,255,.07);
-}
-.nx-hero::after {
-  content:''; position:absolute; bottom:-25px; left:-20px;
-  width:90px; height:90px; border-radius:50%;
-  background:rgba(255,255,255,.05);
-}
-.nx-hero-label { font-size:.68rem; font-weight:700; opacity:.85; margin-bottom:6px; position:relative; }
-.nx-hero-kcal  { font-size:2.6rem; font-weight:900; letter-spacing:-2px; line-height:1; position:relative; }
-.nx-hero-sub   { font-size:.75rem; opacity:.9; margin-top:5px; position:relative; }
-.nx-hero-chips { display:flex; gap:6px; flex-wrap:wrap; margin-top:12px; position:relative; }
-.nx-chip {
-  background:rgba(255,255,255,.2); border-radius:99px;
-  padding:4px 10px; font-size:.62rem; font-weight:800;
-  backdrop-filter:blur(4px);
-}
-.nx-hero-btn {
-  margin-top:14px; background:rgba(255,255,255,.22);
-  border:none; border-radius:10px; padding:8px 18px;
-  font-size:.72rem; font-weight:800; color:#fff;
-  cursor:pointer; position:relative;
-}
-
-/* ── Stat cards ── */
-.nx-stats { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:12px; }
-.nx-stat {
-  background:var(--bg); border-radius:var(--rs); box-shadow:var(--so);
-  padding:12px 8px; text-align:center;
-}
-.nx-stat-icon { font-size:1.3rem; margin-bottom:5px; }
-.nx-stat-val  { font-size:.9rem; font-weight:900; }
-.nx-stat-lbl  { font-size:.52rem; font-weight:700; color:var(--tx3); text-transform:uppercase; letter-spacing:.5px; margin-top:3px; }
-.nx-stat-sub  { font-size:.58rem; color:var(--tx2); margin-top:2px; }
-
-/* ── Week chart card ── */
-.nx-card { background:var(--bg); border-radius:var(--rs); box-shadow:var(--so); padding:14px; margin-bottom:12px; }
-.nx-card-title { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
-.nx-card-title-txt { font-weight:900; font-size:.88rem; }
-.nx-score-badge {
-  font-size:.68rem; font-weight:900; padding:3px 9px;
-  border-radius:99px;
-}
-
-/* ── Bar chart ── */
-.nx-bars { display:flex; align-items:flex-end; gap:4px; height:90px; padding:0 2px; margin-bottom:4px; position:relative; }
-.nx-bar-col { flex:1; display:flex; flex-direction:column; align-items:center; gap:3px; height:100%; }
-.nx-bar-val { font-size:.52rem; font-weight:800; color:var(--tx2); min-height:10px; text-align:center; }
-.nx-bar { width:100%; border-radius:6px 6px 0 0; transition:height .5s; position:relative; min-height:4px; }
-.nx-bar-day { font-size:.62rem; font-weight:700; margin-top:4px; }
-.nx-bar-dot { width:5px; height:5px; border-radius:50%; margin-top:2px; }
-.nx-tgt-line {
-  position:absolute; left:0; right:0; height:1px;
-  background:rgba(46,204,113,.6);
-  border-top:2px dashed rgba(46,204,113,.5);
-  pointer-events:none;
-}
-.nx-bar-wrap { position:relative; width:100%; flex:1; display:flex; align-items:flex-end; }
-
-/* ── Legend ── */
-.nx-legend { display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
-.nx-leg-item { display:flex; align-items:center; gap:4px; font-size:.58rem; font-weight:700; padding:3px 7px; border-radius:var(--rp); }
-.nx-leg-dot { width:8px; height:8px; border-radius:2px; }
-
-/* ── Macro rings ── */
-.nx-macros { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
-.nx-macro {
-  background:var(--bg); border-radius:var(--rs); box-shadow:var(--so);
-  padding:10px; display:flex; align-items:center; gap:8px;
-}
-.nx-macro-info { flex:1; min-width:0; }
-.nx-macro-lbl  { font-size:.74rem; font-weight:800; }
-.nx-macro-val  { font-size:1rem; font-weight:900; margin-top:1px; }
-.nx-macro-tgt  { font-size:.58rem; color:var(--tx3); }
-.nx-macro-st   { font-size:.58rem; font-weight:700; margin-top:2px; }
-.nx-macro-bar  { height:3px; background:var(--bg2); border-radius:99px; margin-top:5px; }
-.nx-macro-fill { height:100%; border-radius:99px; transition:width .6s; }
-
-/* ── Day pills (week recap) ── */
-.nx-week-pills { display:flex; flex-direction:column; gap:6px; margin-top:4px; }
-.nx-day-pill {
-  display:flex; align-items:center; gap:8px;
-  background:var(--bg2); border-radius:var(--rs); padding:8px 10px;
-  cursor:pointer; transition:.15s;
-}
-.nx-day-pill:active { opacity:.8; }
-.nx-day-pill-name { font-size:.74rem; font-weight:900; min-width:28px; }
-.nx-day-pill-meals { flex:1; font-size:.62rem; color:var(--tx2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.nx-day-pill-kcal { font-size:.7rem; font-weight:900; padding:2px 7px; border-radius:99px; white-space:nowrap; }
-.nx-day-pill-bar { height:3px; background:var(--bg3,var(--bg)); border-radius:99px; margin-top:4px; }
-
-/* ── Sport pie ── */
-.nx-sport-wrap { display:flex; align-items:center; gap:14px; }
-.nx-sport-legend { flex:1; }
-.nx-sport-row { display:flex; align-items:center; gap:8px; margin-bottom:8px; }
-.nx-sport-dot { width:11px; height:11px; border-radius:3px; flex-shrink:0; }
-.nx-sport-lbl { flex:1; font-size:.72rem; font-weight:700; }
-.nx-sport-val { font-size:.8rem; font-weight:900; }
-.nx-balance {
-  margin-top:10px; padding:10px 12px; border-radius:var(--rs);
-}
-
-/* ── AI advice ── */
-.nx-ai-card { background:var(--bg2); border-radius:var(--rs); padding:12px; margin-bottom:8px; }
-.nx-ai-icon { font-size:1rem; }
-.nx-ai-title { font-weight:900; font-size:.8rem; margin:3px 0 2px; }
-.nx-ai-body { font-size:.72rem; color:var(--tx2); line-height:1.5; }
-.nx-ai-card.tip  { border-left:3px solid var(--gn); }
-.nx-ai-card.warn { border-left:3px solid var(--yl); }
-.nx-ai-card.bad  { border-left:3px solid var(--rd); }
-.nx-ai-card.info { border-left:3px solid var(--bl); }
-
-/* ── Responsive ── */
-@media(min-width:768px) {
-  body.tablet-layout .nx-stats { grid-template-columns:repeat(3,1fr); }
-  body.tablet-layout .nx-macros { grid-template-columns:repeat(2,1fr); }
-  body.tablet-layout .tab-lb { font-size:.76rem!important; display:block!important; }
-  body.tablet-layout .tab { padding:10px 12px!important; }
-  body.tablet-layout .menu-tabs { flex-wrap:wrap; gap:4px; }
-  body.tablet-layout .menu-tab { font-size:.72rem!important; padding:8px 6px!important; flex:1 1 auto; }
-  body.tablet-layout .vb { max-width:640px!important; margin:0 auto!important; }
-  body.tablet-layout .modal { max-width:560px!important; margin:auto; }
-}
+.nx-hero{background:var(--grad);border-radius:20px;padding:22px 20px 20px;margin-bottom:12px;color:#fff;position:relative;overflow:hidden;}
+.nx-hero::before{content:'';position:absolute;top:-40px;right:-30px;width:140px;height:140px;border-radius:50%;background:rgba(255,255,255,.07);}
+.nx-hero-label{font-size:.68rem;font-weight:700;opacity:.85;margin-bottom:6px;position:relative;}
+.nx-hero-kcal{font-size:2.5rem;font-weight:900;letter-spacing:-2px;line-height:1;position:relative;}
+.nx-hero-sub{font-size:.75rem;opacity:.9;margin-top:5px;position:relative;}
+.nx-hero-chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:12px;position:relative;}
+.nx-chip{background:rgba(255,255,255,.2);border-radius:99px;padding:4px 10px;font-size:.62rem;font-weight:800;}
+.nx-hero-btn{margin-top:14px;background:rgba(255,255,255,.22);border:none;border-radius:10px;padding:8px 18px;font-size:.72rem;font-weight:800;color:#fff;cursor:pointer;position:relative;display:inline-block;}
+.nx-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px;}
+.nx-stat{background:var(--bg);border-radius:var(--rs);box-shadow:var(--so);padding:12px 8px;text-align:center;}
+.nx-stat-icon{font-size:1.3rem;margin-bottom:5px;}
+.nx-stat-val{font-size:.88rem;font-weight:900;}
+.nx-stat-lbl{font-size:.5rem;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.5px;margin-top:3px;}
+.nx-stat-sub{font-size:.58rem;color:var(--tx2);margin-top:2px;}
+.nx-card{background:var(--bg);border-radius:var(--rs);box-shadow:var(--so);padding:14px;margin-bottom:12px;}
+.nx-card-title{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
+.nx-card-title-txt{font-weight:900;font-size:.88rem;}
+.nx-score-badge{font-size:.68rem;font-weight:900;padding:3px 9px;border-radius:99px;}
+.nx-bars{display:flex;align-items:flex-end;gap:4px;height:90px;padding:0 2px;margin-bottom:4px;}
+.nx-bar-col{flex:1;display:flex;flex-direction:column;align-items:center;gap:0;height:100%;}
+.nx-bar-val{font-size:.52rem;font-weight:800;color:var(--tx2);height:14px;text-align:center;line-height:14px;}
+.nx-bar-wrap{flex:1;width:100%;display:flex;align-items:flex-end;}
+.nx-bar{width:100%;border-radius:6px 6px 0 0;min-height:3px;}
+.nx-bar-day{font-size:.62rem;font-weight:700;margin-top:4px;}
+.nx-legend{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;align-items:center;}
+.nx-leg-item{display:flex;align-items:center;gap:4px;font-size:.58rem;font-weight:700;padding:3px 7px;border-radius:var(--rp);}
+.nx-leg-dot{width:8px;height:8px;border-radius:2px;flex-shrink:0;}
+.nx-macros{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.nx-macro{background:var(--bg);border-radius:var(--rs);box-shadow:var(--so);padding:10px;display:flex;align-items:center;gap:8px;}
+.nx-macro-info{flex:1;min-width:0;}
+.nx-macro-lbl{font-size:.74rem;font-weight:800;}
+.nx-macro-val{font-size:1rem;font-weight:900;margin-top:1px;}
+.nx-macro-tgt{font-size:.58rem;color:var(--tx3);}
+.nx-macro-st{font-size:.58rem;font-weight:700;margin-top:2px;}
+.nx-macro-bar{height:3px;background:var(--bg2);border-radius:99px;margin-top:5px;}
+.nx-macro-fill{height:100%;border-radius:99px;transition:width .6s;}
+.nx-week-pills{display:flex;flex-direction:column;gap:6px;}
+.nx-day-pill{display:flex;align-items:center;gap:8px;background:var(--bg2);border-radius:var(--rs);padding:8px 10px;cursor:pointer;}
+.nx-day-pill-name{font-size:.74rem;font-weight:900;min-width:28px;}
+.nx-day-pill-meals{font-size:.62rem;color:var(--tx2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.nx-day-pill-kcal{font-size:.7rem;font-weight:900;padding:2px 7px;border-radius:99px;white-space:nowrap;flex-shrink:0;}
+.nx-sport-wrap{display:flex;align-items:center;gap:14px;}
+.nx-sport-legend{flex:1;}
+.nx-sport-row{display:flex;align-items:center;gap:8px;margin-bottom:8px;}
+.nx-sport-dot{width:11px;height:11px;border-radius:3px;flex-shrink:0;}
+.nx-sport-lbl{flex:1;font-size:.72rem;font-weight:700;}
+.nx-sport-val{font-size:.8rem;font-weight:900;}
+.nx-balance{margin-top:10px;padding:10px 12px;border-radius:var(--rs);}
+.nx-ai-card{background:var(--bg2);border-radius:var(--rs);padding:12px;margin-bottom:8px;}
+.nx-ai-card.tip{border-left:3px solid var(--gn);}
+.nx-ai-card.warn{border-left:3px solid var(--yl);}
+.nx-ai-card.bad{border-left:3px solid var(--rd);}
+.nx-ai-card.info{border-left:3px solid var(--bl);}
+.nx-ai-icon{font-size:1rem;}
+.nx-ai-title{font-weight:900;font-size:.8rem;margin:3px 0 2px;}
+.nx-ai-body{font-size:.72rem;color:var(--tx2);line-height:1.5;}
+@media(min-width:768px){body.tablet-layout .tab-lb{font-size:.76rem!important;display:block!important;}body.tablet-layout .menu-tabs{flex-wrap:wrap;gap:4px;}body.tablet-layout .menu-tab{font-size:.72rem!important;padding:8px 6px!important;flex:1 1 auto;}body.tablet-layout .vb{max-width:640px!important;margin:0 auto!important;}body.tablet-layout .modal{max-width:560px!important;margin:auto;}}
 </style>
 
 <script>
-// ─────────────────────────────────────────────────────────────
-// PATCH v3 — Nutrition Dashboard
-// Utilise les vraies fonctions existantes : _calcDayNutri,
-// calculateDailyCalories, getMacroTargets, state directement
-// ─────────────────────────────────────────────────────────────
-
-// Fix portions
+// Fix portions bug
 (function(){
-  function tryPatch(){
-    if(!window.renderRecipeModal){ setTimeout(tryPatch,400); return; }
-    if(window._portionPatched) return;
-    window._portionPatched = true;
-    const orig = window.renderRecipeModal;
-    window.renderRecipeModal = function(r,p,bm){
-      if(!r.portions||r.portions<1) r.portions=4;
-      orig(r, p||r.portions, bm);
-    };
-    window.changePortions = function(n){
-      window._currentPortions=n;
-      const r=window._currentRecipe; if(!r) return;
-      if(!r.portions||r.portions<1) r.portions=4;
-      const bm=(window.state?.recipeBookmarks||[]).some(b=>b.id===r.id);
-      window.renderRecipeModal(r,n,bm);
-    };
+  function tryP(){
+    if(!window.renderRecipeModal){setTimeout(tryP,400);return;}
+    if(window._portionPatched)return;
+    window._portionPatched=true;
+    var orig=window.renderRecipeModal;
+    window.renderRecipeModal=function(r,p,bm){if(!r.portions||r.portions<1)r.portions=4;orig(r,p||r.portions,bm);};
+    window.changePortions=function(n){window._currentPortions=n;var r=window._currentRecipe;if(!r)return;if(!r.portions||r.portions<1)r.portions=4;var bm=(state.recipeBookmarks||[]).some(function(b){return b.id===r.id;});window.renderRecipeModal(r,n,bm);};
   }
-  setTimeout(tryPatch,300);
+  setTimeout(tryP,300);
 })();
 
-// Fusion Favoris → Recettes
+// Fusion Favoris
 (function(){
   function apply(){
-    const t=document.getElementById('mtab-favs');
-    if(t) t.style.display='none';
-    const df=document.getElementById('recipeDietFilter');
+    var t=document.getElementById('mtab-favs');if(t)t.style.display='none';
+    var df=document.getElementById('recipeDietFilter');
     if(df&&!df.querySelector('[data-v="favs"]')){
-      const c=document.createElement('div');
-      c.className='diet-chip'; c.dataset.v='favs'; c.textContent='⭐ Favoris';
-      c.onclick=()=>{ df.querySelectorAll('.diet-chip').forEach(x=>x.classList.remove('on')); c.classList.add('on'); window._recipeDietFilter='favs'; _showFavsGrid(); };
+      var c=document.createElement('div');c.className='diet-chip';c.dataset.v='favs';c.textContent='⭐ Favoris';
+      c.onclick=function(){df.querySelectorAll('.diet-chip').forEach(function(x){x.classList.remove('on');});c.classList.add('on');window._recipeDietFilter='favs';showFavs();};
       df.appendChild(c);
     }
-    if(!window.renderFavsGrid) window.renderFavsGrid=()=>{ switchMenuTab('recipes'); setTimeout(()=>{ const c=document.querySelector('#recipeDietFilter [data-v="favs"]'); if(c)c.click(); },150); };
-    const orig=window.renderRecipesGrid;
-    if(orig&&!window._favsOk){ window._favsOk=true; window.renderRecipesGrid=function(){ if(window._recipeDietFilter==='favs'){_showFavsGrid();return;} orig.apply(this,arguments); }; }
+    if(!window.renderFavsGrid)window.renderFavsGrid=function(){switchMenuTab('recipes');setTimeout(function(){var c=document.querySelector('#recipeDietFilter [data-v="favs"]');if(c)c.click();},150);};
+    var orig=window.renderRecipesGrid;
+    if(orig&&!window._favsOk){window._favsOk=true;window.renderRecipesGrid=function(){if(window._recipeDietFilter==='favs'){showFavs();return;}orig.apply(this,arguments);};}
   }
-  function _showFavsGrid(){
-    const g=document.getElementById('recipesGrid'); if(!g) return;
-    const bms=window.state?.recipeBookmarks||[];
-    if(!bms.length){ g.innerHTML='<div style="text-align:center;padding:32px;color:var(--tx3);"><div style="font-size:2rem;margin-bottom:8px;">⭐</div><div style="font-weight:700;">Aucun favori</div><div style="font-size:.75rem;margin-top:4px;">Ajoutez des ☆ dans l&#39;explorateur</div></div>'; return; }
-    g.innerHTML=bms.map(r=>`<div onclick="openRecipeDetail&&openRecipeDetail('${r.id}')" style="background:var(--bg);border-radius:var(--rs);box-shadow:var(--so);display:flex;align-items:center;gap:10px;padding:12px;margin-bottom:8px;cursor:pointer;">${r.photo?`<img src="${r.photo}" style="width:50px;height:50px;border-radius:var(--rs);object-fit:cover;flex-shrink:0;" onerror="this.style.display='none'">`:''}<div style="flex:1;min-width:0;"><div style="font-weight:800;font-size:.88rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${r.name}</div><div style="font-size:.62rem;color:var(--tx3);margin-top:3px;">${r.kcal?'🔥 '+r.kcal+' kcal':''} ${r.time?'⏱ '+r.time+'min':''}</div></div><span>⭐</span></div>`).join('');
+  function showFavs(){
+    var g=document.getElementById('recipesGrid');if(!g)return;
+    var bms=state.recipeBookmarks||[];
+    if(!bms.length){g.innerHTML='<div style="text-align:center;padding:32px;color:var(--tx3);"><div style="font-size:2rem;">⭐</div><div style="font-weight:700;margin-top:8px;">Aucun favori</div><div style="font-size:.75rem;margin-top:4px;">Ajoutez des étoiles dans l\'explorateur</div></div>';return;}
+    g.innerHTML=bms.map(function(r){return '<div onclick="openRecipeDetail&&openRecipeDetail(\''+r.id+'\')" style="background:var(--bg);border-radius:var(--rs);box-shadow:var(--so);display:flex;align-items:center;gap:10px;padding:12px;margin-bottom:8px;cursor:pointer;">'+(r.photo?'<img src="'+r.photo+'" style="width:50px;height:50px;border-radius:var(--rs);object-fit:cover;flex-shrink:0;">':'')+'<div style="flex:1;min-width:0;"><div style="font-weight:800;font-size:.88rem;">'+r.name+'</div><div style="font-size:.62rem;color:var(--tx3);">'+(r.kcal?'🔥 '+r.kcal+' kcal ':'')+' '+(r.time?'⏱ '+r.time+'min':'')+'</div></div><span>⭐</span></div>';}).join('');
   }
-  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',()=>setTimeout(apply,800));
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',function(){setTimeout(apply,800);});
   else setTimeout(apply,800);
 })();
 
-// ─────────────────────────────────────────────────────────────
-// NUTRITION DASHBOARD — sc_nutri_render()
-// S'appuie sur _calcDayNutri, calculateDailyCalories, getMacroTargets
-// Accès direct à state.weekMenu / state.profile
-// ─────────────────────────────────────────────────────────────
-function sc_nutri_render() {
-  const root = document.getElementById('nutriRoot');
-  if(!root) return;
-
-  const p     = (window.state && window.state.profile) || {};
-  const wm    = (window.state && window.state.weekMenu) || {};
-  const cals  = (typeof calculateDailyCalories === 'function') ? calculateDailyCalories(p) : null;
-  const macros= (cals && typeof getMacroTargets === 'function') ? getMacroTargets(p, cals) : null;
-  const DAYS  = ['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche'];
-  const DAYS_S= ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
-
-  // Calcul des données semaine avec _calcDayNutri existant
-  const weekData = Array.from({length:7}, (_,i) => {
-    const m = wm[i+1];
-    if(!m) return { idx:i, planned:false, kcal:0, prot:0, carb:0, fat:0, b:'', l:'', d:'', snack:'' };
-    const n = (typeof _calcDayNutri === 'function') ? _calcDayNutri(m) : null;
-    return {
-      idx:i, planned:!!(m.b||m.l||m.d),
-      kcal: n ? n.kcal : (m.nutri?.kcal||0),
-      prot: n ? n.prot : (m.nutri?.prot||0),
-      carb: n ? n.carb : (m.nutri?.carb||0),
-      fat:  n ? n.fat  : (m.nutri?.fat||0),
-      b:m.b||'', l:m.l||'', d:m.d||'', snack:m.snack||'',
-      quality:m.quality||'ok'
-    };
-  });
-
-  const planned   = weekData.filter(d => d.planned);
-  const withKcal  = weekData.filter(d => d.kcal > 0);
-  const avgKcal   = withKcal.length ? Math.round(withKcal.reduce((s,d)=>s+d.kcal,0)/withKcal.length) : 0;
-  const avgProt   = withKcal.length ? Math.round(withKcal.reduce((s,d)=>s+d.prot,0)/withKcal.length) : 0;
-  const avgCarb   = withKcal.length ? Math.round(withKcal.reduce((s,d)=>s+d.carb,0)/withKcal.length) : 0;
-  const avgFat    = withKcal.length ? Math.round(withKcal.reduce((s,d)=>s+d.fat,0)/withKcal.length)  : 0;
-  const today     = (new Date().getDay()||7) - 1; // 0=Lun
-
-  // Score
-  const daysOk  = withKcal.filter(d=>cals&&Math.abs(d.kcal-cals)<=cals*.12).length;
-  const score   = withKcal.length===0?'—':daysOk>=5?'A':daysOk>=3?'B':daysOk>=2?'C':'D';
-  const scoreCol= {A:'#2ecc71',B:'#3498db',C:'#f39c12',D:'#e74c3c','—':'var(--tx3)'}[score];
-
-  // BMR
-  const hasProfil = p.age && p.poids && p.taille;
-  const bmr = hasProfil ? (p.sex==='F'
-    ? Math.round(10*(+p.poids)+6.25*(+p.taille)-5*(+p.age)-161)
-    : Math.round(10*(+p.poids)+6.25*(+p.taille)-5*(+p.age)+5)) : null;
-  const bmi = hasProfil ? (+p.poids/Math.pow(+p.taille/100,2)).toFixed(1) : null;
-  const bmiLabel = !bmi?'—':bmi<18.5?'Maigreur':bmi<25?'Normal ✅':bmi<30?'Surpoids':'Obésité';
-  const bmiColor = !bmi?'var(--tx)':bmi>=18.5&&bmi<25?'var(--gn)':bmi<18.5?'var(--bl)':'var(--or)';
-  const goalLabel = {equilibre:'⚖️ Équilibre',perte:'📉 Perte de poids',prise:'💪 Masse musculaire',maintien:'🔄 Maintien',perf:'🏃 Performance'}[p.goal||'equilibre'] || '🎯 Objectif';
-  const actLabel  = ['Sédentaire','Lgt actif','Mod. actif','Très actif','Extrême'][Math.min(+(p.sportFreq||2),4)];
-
-  // ── HERO ──
-  const heroHTML = `<div class="nx-hero">
-    <div class="nx-hero-label">🎯 Objectif calorique journalier</div>
-    <div class="nx-hero-kcal">${cals ? cals+' kcal' : '— kcal'}</div>
-    <div class="nx-hero-sub">${cals ? goalLabel+' · '+actLabel : 'Complétez votre profil pour personnaliser'}</div>
-    <div class="nx-hero-chips">
-      ${bmr ? '<div class="nx-chip">🫀 BMR '+bmr+' kcal</div>' : ''}
-      ${p.goal==='perte'?'<div class="nx-chip">📉 −500 kcal déficit</div>':p.goal==='prise'?'<div class="nx-chip">💪 +300 kcal surplus</div>':''}
-      ${planned.length?'<div class="nx-chip">📅 '+planned.length+'/7 planifiés</div>':''}
-      ${avgKcal?'<div class="nx-chip">🔥 Moy. '+avgKcal+' kcal</div>':''}
-    </div>
-    <button class="nx-hero-btn" onclick="openMenuProfile()">⚙️ Modifier mon profil</button>
-  </div>`;
-
-  // ── STAT CARDS ──
-  const diffKcal = cals && avgKcal ? avgKcal - cals : null;
-  const diffCol  = diffKcal===null?'var(--tx2)':Math.abs(diffKcal)<120?'var(--gn)':diffKcal>0?'var(--rd)':'var(--yl)';
-  const statsHTML = `<div class="nx-stats">
-    <div class="nx-stat">
-      <div class="nx-stat-icon">⚖️</div>
-      <div class="nx-stat-val" style="color:${bmiColor};">${bmi||'—'}</div>
-      <div class="nx-stat-lbl">IMC</div>
-      <div class="nx-stat-sub">${bmiLabel}</div>
-    </div>
-    <div class="nx-stat">
-      <div class="nx-stat-icon">📊</div>
-      <div class="nx-stat-val" style="color:${scoreCol};">Score ${score}</div>
-      <div class="nx-stat-lbl">Bilan semaine</div>
-      <div class="nx-stat-sub">${withKcal.length} j avec données</div>
-    </div>
-    <div class="nx-stat">
-      <div class="nx-stat-icon">⚖️</div>
-      <div class="nx-stat-val" style="color:${diffCol};">${diffKcal!==null?(diffKcal>0?'+':'')+diffKcal+' kcal':'—'}</div>
-      <div class="nx-stat-lbl">Balance</div>
-      <div class="nx-stat-sub">${diffKcal===null?'—':Math.abs(diffKcal)<120?'Équilibre 🎉':diffKcal>0?'Excédent':'Déficit'}</div>
-    </div>
-  </div>`;
-
-  // ── GRAPHIQUE BARRES ──
-  let weekChartHTML = '';
-  if(withKcal.length === 0) {
-    weekChartHTML = `<div class="nx-card">
-      <div class="nx-card-title"><span class="nx-card-title-txt">📊 Bilan calorique semaine</span></div>
-      <div style="text-align:center;padding:20px;color:var(--tx2);">
-        <div style="font-size:1.8rem;margin-bottom:8px;">📅</div>
-        <div style="font-size:.8rem;font-weight:700;">Semaine non planifiée</div>
-        <div style="font-size:.72rem;margin-top:4px;color:var(--tx3);">Générez un menu dans l&#39;onglet Semaine</div>
-        <button class="btn acc" onclick="switchMenuTab('week')" style="margin-top:12px;padding:10px 20px;border-radius:var(--rs);font-weight:800;">📅 Planifier ma semaine</button>
-      </div>
-    </div>`;
-  } else {
-    const maxV = Math.max((cals||2000)*1.25, ...weekData.map(d=>d.kcal), 200);
-    const tgt  = cals || avgKcal;
-    const tgtPct = Math.round((tgt/maxV)*100);
-
-    const barsHTML = weekData.map((d,i) => {
-      const pct  = d.kcal ? Math.round((d.kcal/maxV)*100) : 0;
-      const col  = !d.kcal ? 'var(--bg2)' : Math.abs(d.kcal-tgt)<=tgt*.12 ? '#2ecc71' : d.kcal>tgt*1.15 ? '#e74c3c' : '#f39c12';
-      const isTo = i === today;
-      return `<div class="nx-bar-col">
-        <div class="nx-bar-val" style="color:${col};">${d.kcal||''}</div>
-        <div class="nx-bar-wrap">
-          <div class="nx-bar" style="height:${Math.max(pct,d.planned?3:1)}%;background:${col};opacity:${d.planned?1:.25};${isTo?'box-shadow:0 0 8px '+col+'60;':''}"></div>
-        </div>
-        <div class="nx-bar-day" style="color:${isTo?'var(--ac)':'var(--tx)'};font-weight:${isTo?900:d.planned?700:400};">${DAYS_S[i]}</div>
-        <div class="nx-bar-dot" style="background:${isTo?'var(--ac)':'transparent'};"></div>
-      </div>`;
-    }).join('');
-
-    weekChartHTML = `<div class="nx-card">
-      <div class="nx-card-title">
-        <span class="nx-card-title-txt">📊 Bilan calorique semaine</span>
-        <span class="nx-score-badge" style="background:${scoreCol}20;color:${scoreCol};">Score ${score}</span>
-      </div>
-      <div style="position:relative;margin-bottom:6px;">
-        <div class="nx-bars" style="position:relative;">${barsHTML}</div>
-        ${cals?`<div style="position:absolute;top:0;left:0;right:0;height:100%;pointer-events:none;">
-          <div style="position:absolute;width:100%;border-top:2px dashed rgba(46,204,113,.55);bottom:${tgtPct}%;"></div>
-          <span style="position:absolute;right:2px;font-size:.56rem;font-weight:700;color:#2ecc71;bottom:calc(${tgtPct}% + 3px);">${cals} kcal</span>
-        </div>`:''}
-      </div>
-      <div class="nx-legend">
-        <div class="nx-leg-item" style="background:rgba(46,204,113,.1);color:var(--gn);">
-          <div class="nx-leg-dot" style="background:#2ecc71;"></div>Dans l&#39;objectif
-        </div>
-        <div class="nx-leg-item" style="background:rgba(243,156,18,.1);color:#c0891a;">
-          <div class="nx-leg-dot" style="background:#f39c12;"></div>À ajuster
-        </div>
-        <div class="nx-leg-item" style="background:rgba(231,76,60,.1);color:var(--rd);">
-          <div class="nx-leg-dot" style="background:#e74c3c;"></div>Trop élevé
-        </div>
-        ${avgKcal?`<span style="margin-left:auto;font-size:.66rem;font-weight:900;color:var(--tx2);">Moy: ${avgKcal} kcal/j</span>`:''}
-      </div>
-    </div>`;
-  }
-
-  // ── DÉTAIL JOURS ──
-  const daysDetailHTML = `<div class="nx-card">
-    <div class="nx-card-title"><span class="nx-card-title-txt">🗓 Détail de la semaine</span></div>
-    <div class="nx-week-pills">
-      ${weekData.map((d,i) => {
-        const isTo = i === today;
-        const meals = [d.b&&'🌅',d.l&&'☀️',d.d&&'🌙',d.snack&&'🍎'].filter(Boolean).join(' ');
-        const mealNames = [d.b,d.l,d.d].filter(Boolean).join(' · ').replace(/[🍽️🥗🍳🍝🍛🥘🥙🍜🥩🐟🦐🥞🫐☕🍞🥐🍱🌮]/g,'').trim() || 'Repas non renseigné';
-        const kcalCol = !d.kcal ? 'var(--tx3)' : Math.abs(d.kcal-(cals||2000))<=(cals||2000)*.12 ? '#2ecc71' : d.kcal>(cals||2000)*1.15 ? '#e74c3c' : '#f39c12';
-        const kcalBg  = !d.kcal ? 'var(--bg3,var(--bg))' : Math.abs(d.kcal-(cals||2000))<=(cals||2000)*.12 ? 'rgba(46,204,113,.12)' : d.kcal>(cals||2000)*1.15 ? 'rgba(231,76,60,.1)' : 'rgba(243,156,18,.1)';
-        return `<div class="nx-day-pill" onclick="switchMenuTab('week');setTimeout(()=>switchDay&&switchDay(${i+1}),200)" style="${isTo?'border:1.5px solid var(--ac);':'border:1.5px solid transparent;'}">
-          <div class="nx-day-pill-name" style="color:${isTo?'var(--ac)':'var(--tx)'};">${DAYS_S[i]}</div>
-          <div style="flex:1;min-width:0;">
-            <div class="nx-day-pill-meals">${d.planned?(meals+' '+mealNames):'Non planifié'}</div>
-            ${d.kcal?`<div style="height:2px;background:var(--bg2);border-radius:99px;margin-top:4px;"><div style="height:100%;width:${Math.min(100,Math.round(d.kcal/(cals||2000)*100))}%;background:${kcalCol};border-radius:99px;"></div></div>`:''}
-          </div>
-          <div class="nx-day-pill-kcal" style="background:${kcalBg};color:${kcalCol};">${d.kcal?d.kcal+' kcal':'—'}</div>
-        </div>`;
-      }).join('')}
-    </div>
-  </div>`;
-
-  // ── MACROS ──
-  let macrosHTML = '';
-  if(!macros && !withKcal.length) {
-    macrosHTML = `<div class="nx-card">
-      <div class="nx-card-title"><span class="nx-card-title-txt">🎯 Macronutriments</span></div>
-      <div style="text-align:center;padding:16px;color:var(--tx2);font-size:.78rem;">
-        Complétez votre profil et planifiez votre semaine pour voir vos macros.
-      </div>
-    </div>`;
-  } else {
-    const R=30,CX=38,CY=38,CIRC=2*Math.PI*R;
-    const macroList = [
-      {label:'Calories', icon:'🔥', actual:avgKcal||0, target:cals||0, color:'#e74c3c', unit:'kcal'},
-      {label:'Protéines',icon:'💪', actual:avgProt||0, target:macros?.prot||0, color:'#3498db', unit:'g'},
-      {label:'Glucides', icon:'🍞', actual:avgCarb||0, target:macros?.carb||0, color:'#f39c12', unit:'g'},
-      {label:'Lipides',  icon:'🥑', actual:avgFat||0,  target:macros?.fat||0,  color:'#9b59b6', unit:'g'},
-    ];
-    macrosHTML = `<div class="nx-card">
-      <div class="nx-card-title"><span class="nx-card-title-txt">🎯 Macronutriments · moyenne semaine</span></div>
-      <div class="nx-macros">
-        ${macroList.map(m => {
-          const pct  = m.target ? Math.min(120,Math.round(m.actual/m.target*100)) : 0;
-          const dash = (Math.min(100,pct)/100)*CIRC;
-          const gap  = CIRC-dash;
-          const stOk = pct>=85&&pct<=112;
-          const stOv = pct>112;
-          const stCol= stOk?'var(--gn)':stOv?'var(--rd)':pct>50?'var(--yl)':'var(--tx3)';
-          const stTxt= !withKcal.length?'Pas de données':stOk?'✅ Objectif':stOv?'⚠️ Dépassé':pct>50?'🔄 En cours':'❌ Insuffisant';
-          return `<div class="nx-macro">
-            <svg width="76" height="76" viewBox="0 0 76 76" style="flex-shrink:0;">
-              <circle cx="${CX}" cy="${CY}" r="${R}" fill="none" stroke="var(--bg2)" stroke-width="8"/>
-              <circle cx="${CX}" cy="${CY}" r="${R}" fill="none" stroke="${m.color}" stroke-width="8"
-                stroke-dasharray="${withKcal.length?dash.toFixed(1):0} ${CIRC.toFixed(1)}"
-                stroke-dashoffset="${(CIRC/4).toFixed(1)}" stroke-linecap="round"/>
-              <text x="${CX}" y="${CY+1}" text-anchor="middle" dominant-baseline="middle" font-size="14" font-weight="900" fill="var(--tx)">${withKcal.length&&m.target?pct+'%':'—'}</text>
-            </svg>
-            <div class="nx-macro-info">
-              <div class="nx-macro-lbl">${m.icon} ${m.label}</div>
-              <div class="nx-macro-val" style="color:${m.color};">${withKcal.length&&m.actual?m.actual:'—'}<span style="font-size:.5rem;"> ${m.unit}</span></div>
-              <div class="nx-macro-tgt">${m.target?'/ '+m.target+' '+m.unit+' objectif':''}</div>
-              <div class="nx-macro-st" style="color:${stCol};">${stTxt}</div>
-              <div class="nx-macro-bar"><div class="nx-macro-fill" style="width:${withKcal.length?Math.min(100,pct):0}%;background:${m.color};"></div></div>
-            </div>
-          </div>`;
-        }).join('')}
-      </div>
-    </div>`;
-  }
-
-  // ── SPORT PIE ──
-  let sportHTML = '';
-  if(hasProfil && cals && typeof getSportBurnSummary==='function') {
-    const sport = getSportBurnSummary(p);
-    const baseBurn  = cals - (sport?.totalBurn||0);
-    const actBurn   = sport?.burn||0;
-    const extraBurn = sport?.extraKcal||0;
-    const segs = [
-      {label:'Métabolisme de base', val:Math.max(0,baseBurn), color:'#3498db', icon:'🫀'},
-      {label:'Activité physique',   val:actBurn+extraBurn,    color:'#e74c3c', icon:'🏃'},
-    ];
-    const total = segs.reduce((s,sg)=>s+sg.val,0);
-    const R2=44,CX2=60,CY2=60,SW=17,CIRC2=2*Math.PI*R2;
-    let off = CIRC2/4;
-    const circles = segs.map(sg => {
-      const dl=(sg.val/total)*CIRC2;
-      const c=`<circle cx="${CX2}" cy="${CY2}" r="${R2}" fill="none" stroke="${sg.color}" stroke-width="${SW}" stroke-dasharray="${dl.toFixed(2)} ${(CIRC2-dl).toFixed(2)}" stroke-dashoffset="${off.toFixed(2)}"/>`;
-      off-=dl; return c;
-    }).join('');
-    const balance = avgKcal ? avgKcal-cals : null;
-    const balOk = balance!==null&&Math.abs(balance)<150;
-    sportHTML = `<div class="nx-card">
-      <div class="nx-card-title"><span class="nx-card-title-txt">🏃 Dépense calorique</span></div>
-      <div class="nx-sport-wrap">
-        <svg width="120" height="120" viewBox="0 0 120 120" style="flex-shrink:0;">
-          <circle cx="${CX2}" cy="${CY2}" r="${R2}" fill="none" stroke="var(--bg2)" stroke-width="${SW}"/>
-          ${circles}
-          <text x="${CX2}" y="${CY2-5}" text-anchor="middle" font-size="14" font-weight="900" fill="var(--tx)">${cals}</text>
-          <text x="${CX2}" y="${CY2+10}" text-anchor="middle" font-size="9" fill="var(--tx2)">kcal/jour</text>
-        </svg>
-        <div class="nx-sport-legend">
-          ${segs.map(sg=>`<div class="nx-sport-row">
-            <div class="nx-sport-dot" style="background:${sg.color};"></div>
-            <div class="nx-sport-lbl">${sg.icon} ${sg.label}</div>
-            <div class="nx-sport-val" style="color:${sg.color};">${sg.val} kcal</div>
-          </div>`).join('')}
-        </div>
-      </div>
-      ${balance!==null?`<div class="nx-balance" style="background:${balOk?'rgba(46,204,113,.08)':balance>0?'rgba(231,76,60,.07)':'rgba(243,156,18,.07)'};border-left:3px solid ${balOk?'var(--gn)':balance>0?'var(--rd)':'var(--yl)'};">
-        <div style="font-size:.7rem;font-weight:800;color:${balOk?'var(--gn)':balance>0?'var(--rd)':'var(--yl)'};">${balance>0?'⬆️ Excédent calorique':balance<0?'⬇️ Déficit calorique':'⚖️ Équilibre parfait'}</div>
-        <div style="font-size:.95rem;font-weight:900;">${balance>0?'+':''}${balance} kcal/j</div>
-        <div style="font-size:.6rem;color:var(--tx2);margin-top:2px;">Menu planifié : ${avgKcal} kcal · Objectif : ${cals} kcal</div>
-        ${balOk?'<div style="font-size:.62rem;color:var(--gn);margin-top:3px;font-weight:700;">🎉 Excellent équilibre cette semaine !</div>':''}
-      </div>`:``}
-    </div>`;
-  }
-
-  // ── ANALYSE IA ──
-  const aiHTML = `<div class="nx-card">
-    <div class="nx-card-title">
-      <div style="display:flex;align-items:center;gap:8px;">
-        <div style="width:28px;height:28px;background:var(--grad);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:.85rem;">🤖</div>
-        <span class="nx-card-title-txt">Analyse IA personnalisée</span>
-      </div>
-    </div>
-    <div id="nx-ai-zone">
-      ${_sc_buildAutoAdvice(weekData, cals, macros, p)}
-    </div>
-    <button class="btn acc" onclick="generateNutriAdvice&&generateNutriAdvice()" style="width:100%;padding:12px;border-radius:var(--rs);font-weight:800;margin-top:10px;" id="nutriAdviceBtn">✨ Analyse IA approfondie</button>
-    <div id="nutriAdviceZone" style="margin-top:10px;"></div>
-  </div>`;
-
-  root.innerHTML = heroHTML + statsHTML + weekChartHTML + daysDetailHTML + macrosHTML + sportHTML + aiHTML;
-}
-
-function _sc_buildAutoAdvice(weekData, cals, macros, p) {
-  if(!weekData.some(d=>d.planned)) {
-    return '<div class="nx-ai-card info"><div class="nx-ai-icon">💡</div><div class="nx-ai-title">Planifiez votre semaine</div><div class="nx-ai-body">Générez un menu IA dans l&#39;onglet Semaine pour recevoir des conseils nutritionnels personnalisés.</div></div>';
-  }
-  const withK   = weekData.filter(d=>d.kcal>0);
-  const avgKcal = withK.length ? Math.round(withK.reduce((s,d)=>s+d.kcal,0)/withK.length) : 0;
-  const avgProt = withK.length ? Math.round(withK.reduce((s,d)=>s+d.prot,0)/withK.length) : 0;
-  const tips = [];
-
-  if(cals && avgKcal) {
-    const diff = avgKcal - cals;
-    if(Math.abs(diff) < 100)
-      tips.push({type:'tip',icon:'🎯',title:'Objectif calorique atteint !',body:`Votre apport moyen de ${avgKcal} kcal est parfaitement aligné avec votre objectif de ${cals} kcal. Continuez ainsi !`});
-    else if(diff > 200)
-      tips.push({type:'warn',icon:'⚠️',title:'Apport calorique élevé',body:`Votre moyenne de ${avgKcal} kcal dépasse votre objectif de ${diff} kcal. Envisagez des portions légèrement réduites ou une collation moins calorique.`});
-    else if(diff < -200)
-      tips.push({type:'warn',icon:'⚡',title:'Apport calorique insuffisant',body:`Votre moyenne de ${avgKcal} kcal est ${Math.abs(diff)} kcal en-dessous de votre objectif. Ajoutez une collation nutritive pour atteindre vos besoins.`});
-  }
-  if(macros && avgProt && macros.prot) {
-    const pptc = Math.round(avgProt/macros.prot*100);
-    if(pptc < 75)
-      tips.push({type:'bad',icon:'💪',title:'Protéines insuffisantes',body:`Votre apport moyen de ${avgProt}g de protéines représente ${pptc}% de l&#39;objectif (${macros.prot}g). Ajoutez des œufs, légumineuses, ou viande maigre à vos repas.`});
-    else if(pptc >= 90 && pptc <= 115)
-      tips.push({type:'tip',icon:'💪',title:'Excellente source de protéines',body:`${avgProt}g de protéines en moyenne — objectif atteint ! Vos muscles vous remercient.`});
-  }
-  const planned = weekData.filter(d=>d.planned).length;
-  if(planned < 5)
-    tips.push({type:'info',icon:'📅',title:(7-planned)+' jours non planifiés',body:`Complétez les jours manquants pour un suivi nutritionnel complet sur la semaine.`});
-  if(p.goal === 'perte' && avgKcal && cals && avgKcal < cals-600)
-    tips.push({type:'bad',icon:'🚨',title:'Déficit trop important',body:`Un déficit de ${cals-avgKcal} kcal/j est trop agressif. Visez −300 à −500 kcal max pour préserver votre masse musculaire.`});
-
-  if(!tips.length)
-    tips.push({type:'tip',icon:'🌟',title:'Semaine équilibrée',body:'Votre menu de la semaine semble bien équilibré. Cliquez sur Analyse IA approfondie pour des conseils encore plus personnalisés.'});
-
-  return tips.map(t=>`<div class="nx-ai-card ${t.type}">
-    <div class="nx-ai-icon">${t.icon}</div>
-    <div class="nx-ai-title">${t.title}</div>
-    <div class="nx-ai-body">${t.body}</div>
-  </div>`).join('');
-}
-
-// ─────────────────────────────────────────────────────────────
-// HOOK — Intercepter switchMenuTab pour appeler sc_nutri_render
-// On patche APRÈS le chargement complet du DOM
-// ─────────────────────────────────────────────────────────────
-(function hookNutri(){
-  function doHook(){
-    const orig = window.switchMenuTab;
-    if(!orig){ setTimeout(doHook, 300); return; }
-    if(window._nutriHooked) return;
-    window._nutriHooked = true;
-
-    window.switchMenuTab = function(tab){
-      orig.apply(this, arguments);
-      if(tab === 'nutri') {
-        // Double setTimeout pour s'assurer que le panel est visible
-        setTimeout(sc_nutri_render, 30);
-        setTimeout(sc_nutri_render, 200);
-      }
-    };
-
-    // Aussi intercepter le onclick direct du tab via MutationObserver sur display
-    const panel = document.getElementById('menuPanelNutri');
-    if(panel){
-      new MutationObserver(()=>{
-        if(panel.style.display !== 'none') setTimeout(sc_nutri_render, 30);
-      }).observe(panel, {attributes:true, attributeFilter:['style']});
-    }
-    console.log('[SC Patch v3] ✅ Nutrition hooked');
-  }
-  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',()=>setTimeout(doHook,500));
-  else setTimeout(doHook, 500);
-})();
-
 // Stats barre menu
-(function menuStats(){
+(function(){
   function createBar(){
-    if(document.getElementById('sc-stats-bar')) return;
-    const vb = document.getElementById('menuVb'); if(!vb) return;
-    const bar = document.createElement('div');
-    bar.id = 'sc-stats-bar';
-    bar.style.cssText = 'display:flex;gap:8px;margin-bottom:14px;';
+    if(document.getElementById('sc-stats-bar'))return;
+    var vb=document.getElementById('menuVb');if(!vb)return;
+    var bar=document.createElement('div');bar.id='sc-stats-bar';bar.style.cssText='display:flex;gap:8px;margin-bottom:14px;';
     function refresh(){
-      const wm=window.state?.weekMenu||{}, p=window.state?.profile||{};
-      const cals=typeof calculateDailyCalories==='function'?calculateDailyCalories(p):null;
-      const days=Object.values(wm).filter(d=>d&&(d.b||d.l||d.d));
-      const avgK=days.length?Math.round(days.reduce((s,d)=>s+(d.nutri?.kcal||0),0)/days.length):0;
-      const diff=cals&&avgK?avgK-cals:null;
-      const dc=diff===null?'var(--tx2)':Math.abs(diff)<120?'var(--gn)':diff>0?'var(--rd)':'var(--yl)';
-      bar.innerHTML=[
-        {i:'📅',v:days.length+'/7',l:'Planifiés',c:'var(--tl)'},
-        {i:'🔥',v:avgK?avgK+' kcal':'—',l:'Moy. kcal/j',c:'var(--or)'},
-        {i:'⚖️',v:diff!==null?(diff>0?'+':'')+diff+' kcal':'—',l:'Écart',c:dc},
-      ].map(s=>`<div style="flex:1;background:var(--bg);border-radius:var(--rs);box-shadow:var(--so);padding:10px 8px;text-align:center;">
-        <div style="font-size:.95rem;margin-bottom:3px;">${s.i}</div>
-        <div style="font-size:.8rem;font-weight:900;color:${s.c};">${s.v}</div>
-        <div style="font-size:.5rem;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.5px;margin-top:2px;">${s.l}</div>
-      </div>`).join('');
+      var wm=state.weekMenu||{},p=state.profile||{},cals=calculateDailyCalories(p);
+      var days=Object.values(wm).filter(function(d){return d&&(d.b||d.l||d.d);});
+      var avgK=days.length?Math.round(days.reduce(function(s,d){var n=_calcDayNutri(d);return s+(n?n.kcal:0);},0)/days.length):0;
+      var diff=cals&&avgK?avgK-cals:null;
+      var dc=diff===null?'var(--tx2)':Math.abs(diff)<120?'var(--gn)':diff>0?'var(--rd)':'var(--yl)';
+      bar.innerHTML=[{i:'📅',v:days.length+'/7',l:'Planifiés',c:'var(--tl)'},{i:'🔥',v:avgK?avgK+' kcal':'—',l:'Moy. kcal/j',c:'var(--or)'},{i:'⚖️',v:diff!==null?(diff>0?'+':'')+diff+' kcal':'—',l:'Écart objectif',c:dc}].map(function(s){return '<div style="flex:1;background:var(--bg);border-radius:var(--rs);box-shadow:var(--so);padding:10px 8px;text-align:center;"><div style="font-size:.95rem;margin-bottom:3px;">'+s.i+'</div><div style="font-size:.8rem;font-weight:900;color:'+s.c+';">'+s.v+'</div><div style="font-size:.5rem;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.5px;margin-top:2px;">'+s.l+'</div></div>';}).join('');
     }
-    const tb=document.getElementById('menuTabBar');
-    if(tb) vb.insertBefore(bar,tb); else vb.prepend(bar);
-    refresh();
-    // Patch switchMenuTab pour refresh stats
-    const orig=window.switchMenuTab;
-    if(orig&&!window._statsHooked){ window._statsHooked=true; window.switchMenuTab=function(t){ orig.apply(this,arguments); setTimeout(refresh,80); }; }
+    var tb=document.getElementById('menuTabBar');if(tb)vb.insertBefore(bar,tb);else vb.prepend(bar);
+    refresh();window._sc_refreshStats=refresh;
   }
-  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',()=>setTimeout(createBar,900));
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',function(){setTimeout(createBar,900);});
   else setTimeout(createBar,900);
 })();
+
+// ── NUTRITION DASHBOARD ──
+// Utilise directement: state, calculateDailyCalories, getMacroTargets, _calcDayNutri, getSportBurnSummary
+// Ces fonctions sont dans le scope global de la page (déclarées avec function/let)
+function sc_nutri_render() {
+  var root=document.getElementById('nutriRoot');
+  if(!root){console.warn('[SC] nutriRoot manquant');return;}
+
+  var p=state.profile||{};
+  var wm=state.weekMenu||{};
+  var cals=calculateDailyCalories(p);
+  var macros=cals?getMacroTargets(p,cals):null;
+  var DS=['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
+  var today=(new Date().getDay()||7)-1;
+
+  var weekData=[];
+  for(var i=0;i<7;i++){
+    var m=wm[i+1];
+    if(!m){weekData.push({idx:i,planned:false,kcal:0,prot:0,carb:0,fat:0,b:'',l:'',d:'',snack:''});continue;}
+    var n=_calcDayNutri(m);
+    weekData.push({idx:i,planned:!!(m.b||m.l||m.d),kcal:n?Math.round(n.kcal):0,prot:n?Math.round(n.prot):0,carb:n?Math.round(n.carb):0,fat:n?Math.round(n.fat):0,b:m.b||'',l:m.l||'',d:m.d||'',snack:m.snack||''});
+  }
+
+  var withKcal=weekData.filter(function(d){return d.kcal>0;});
+  var planned=weekData.filter(function(d){return d.planned;});
+  function avg(k){return withKcal.length?Math.round(withKcal.reduce(function(s,d){return s+d[k];},0)/withKcal.length):0;}
+  var avgKcal=avg('kcal'),avgProt=avg('prot'),avgCarb=avg('carb'),avgFat=avg('fat');
+  var daysOk=cals?withKcal.filter(function(d){return Math.abs(d.kcal-cals)<=cals*.12;}).length:0;
+  var score=withKcal.length===0?'—':daysOk>=5?'A':daysOk>=3?'B':daysOk>=2?'C':'D';
+  var scoreCol={A:'#2ecc71',B:'#3498db',C:'#f39c12',D:'#e74c3c','—':'var(--tx3)'}[score];
+
+  var hasProfil=p.age&&p.poids&&p.taille;
+  var bmi=hasProfil?(+p.poids/Math.pow(+p.taille/100,2)).toFixed(1):null;
+  var bmiLabel=!bmi?'—':bmi<18.5?'Maigreur':bmi<25?'Normal ✅':bmi<30?'Surpoids':'Obésité';
+  var bmiColor=!bmi?'var(--tx)':bmi>=18.5&&bmi<25?'var(--gn)':bmi<18.5?'var(--bl)':'var(--or)';
+  var bmr=hasProfil?(p.sex==='F'?Math.round(10*(+p.poids)+6.25*(+p.taille)-5*(+p.age)-161):Math.round(10*(+p.poids)+6.25*(+p.taille)-5*(+p.age)+5)):null;
+  var goalLbls={equilibre:'Equilibre',perte:'Perte de poids',prise:'Prise de masse',maintien:'Maintien',perf:'Performance'};
+  var goalLabel=goalLbls[p.goal||'equilibre']||'Objectif';
+  var actLabel=['Sedentaire','Lgt actif','Mod. actif','Tres actif','Extreme'][Math.min(+(p.sportFreq||0),4)];
+  var diffKcal=cals&&avgKcal?avgKcal-cals:null;
+  var diffCol=diffKcal===null?'var(--tx2)':Math.abs(diffKcal)<120?'var(--gn)':diffKcal>0?'var(--rd)':'var(--yl)';
+
+  var h='';
+
+  // HERO
+  var chips='';
+  if(bmr)chips+='<div class="nx-chip">BMR '+bmr+' kcal</div>';
+  if(p.goal==='perte')chips+='<div class="nx-chip">-500 kcal deficit</div>';
+  else if(p.goal==='prise')chips+='<div class="nx-chip">+300 kcal surplus</div>';
+  if(planned.length)chips+='<div class="nx-chip">'+planned.length+'/7 planifies</div>';
+  if(avgKcal)chips+='<div class="nx-chip">Moy. '+avgKcal+' kcal</div>';
+  h+='<div class="nx-hero">'
+    +'<div class="nx-hero-label">Objectif calorique journalier</div>'
+    +'<div class="nx-hero-kcal">'+(cals?cals+' kcal':'— kcal')+'</div>'
+    +'<div class="nx-hero-sub">'+(cals?goalLabel+' · '+actLabel:'Completez votre profil')+'</div>'
+    +(chips?'<div class="nx-hero-chips">'+chips+'</div>':'')
+    +'<button class="nx-hero-btn" onclick="openMenuProfile()">Modifier mon profil</button>'
+    +'</div>';
+
+  // STATS
+  h+='<div class="nx-stats">'
+    +'<div class="nx-stat"><div class="nx-stat-icon">⚖️</div><div class="nx-stat-val" style="color:'+bmiColor+';">'+(bmi||'—')+'</div><div class="nx-stat-lbl">IMC</div><div class="nx-stat-sub">'+bmiLabel+'</div></div>'
+    +'<div class="nx-stat"><div class="nx-stat-icon">📊</div><div class="nx-stat-val" style="color:'+scoreCol+';">Score '+score+'</div><div class="nx-stat-lbl">Bilan semaine</div><div class="nx-stat-sub">'+withKcal.length+' j avec donnees</div></div>'
+    +'<div class="nx-stat"><div class="nx-stat-icon">⚡</div><div class="nx-stat-val" style="color:'+diffCol+';">'+(diffKcal!==null?(diffKcal>0?'+':'')+diffKcal+' kcal':'—')+'</div><div class="nx-stat-lbl">Balance</div><div class="nx-stat-sub">'+(diffKcal===null?'—':Math.abs(diffKcal)<120?'Equilibre':'Ecart')+'</div></div>'
+    +'</div>';
+
+  // GRAPHIQUE
+  if(withKcal.length===0){
+    h+='<div class="nx-card"><div class="nx-card-title"><span class="nx-card-title-txt">Bilan calorique semaine</span></div>'
+      +'<div style="text-align:center;padding:24px;"><div style="font-size:2rem;">📅</div><div style="font-size:.8rem;font-weight:700;color:var(--tx2);margin-top:8px;">Semaine non planifiee</div>'
+      +'<button class="btn acc" onclick="switchMenuTab(\'week\')" style="margin-top:12px;padding:10px 20px;border-radius:var(--rs);font-weight:800;">Planifier ma semaine</button></div></div>';
+  } else {
+    var tgt=cals||avgKcal||2000;
+    var maxV=tgt*1.25;
+    for(var di=0;di<weekData.length;di++){if(weekData[di].kcal>maxV)maxV=weekData[di].kcal*1.1;}
+    var tgtPct=Math.round((tgt/maxV)*100);
+    var barsH='';
+    for(var bi=0;bi<7;bi++){
+      var d=weekData[bi];
+      var pct2=d.kcal?Math.max(4,Math.round((d.kcal/maxV)*100)):2;
+      var col2=!d.kcal?'var(--bg2)':Math.abs(d.kcal-tgt)<=tgt*.12?'#2ecc71':d.kcal>tgt*1.15?'#e74c3c':'#f39c12';
+      var isTo=bi===today;
+      barsH+='<div class="nx-bar-col">'
+        +'<div class="nx-bar-val" style="color:'+col2+';">'+(d.kcal||'')+'</div>'
+        +'<div class="nx-bar-wrap"><div class="nx-bar" style="height:'+pct2+'%;background:'+col2+';opacity:'+(d.planned?'1':'.2')+';'+(isTo?'box-shadow:0 0 10px '+col2+'50;':'')+'"></div></div>'
+        +'<div class="nx-bar-day" style="color:'+(isTo?'var(--ac)':'var(--tx)')+';font-weight:'+(isTo?900:d.planned?700:400)+';">'+DS[bi]+'</div>'
+        +'<div style="width:5px;height:5px;border-radius:50%;background:'+(isTo?'var(--ac)':'transparent')+';margin:2px auto 0;"></div>'
+        +'</div>';
+    }
+    h+='<div class="nx-card"><div class="nx-card-title"><span class="nx-card-title-txt">Bilan calorique semaine</span><span class="nx-score-badge" style="background:'+scoreCol+'20;color:'+scoreCol+';">Score '+score+'</span></div>'
+      +'<div style="position:relative;">'
+      +'<div class="nx-bars">'+barsH+'</div>'
+      +(cals?'<div style="position:absolute;top:0;left:0;right:0;bottom:20%;pointer-events:none;"><div style="position:absolute;width:100%;border-top:2px dashed rgba(46,204,113,.55);bottom:'+tgtPct+'%;"></div></div>':'')
+      +'</div>'
+      +'<div class="nx-legend">'
+      +'<div class="nx-leg-item" style="background:rgba(46,204,113,.1);color:var(--gn);"><div class="nx-leg-dot" style="background:#2ecc71;"></div>Objectif</div>'
+      +'<div class="nx-leg-item" style="background:rgba(243,156,18,.1);color:#c0891a;"><div class="nx-leg-dot" style="background:#f39c12;"></div>A ajuster</div>'
+      +(avgKcal?'<span style="margin-left:auto;font-size:.66rem;font-weight:900;color:var(--tx2);">Moy: '+avgKcal+' kcal/j</span>':'')
+      +'</div></div>';
+  }
+
+  // DETAIL JOURS
+  var pillsH='';
+  for(var pi=0;pi<7;pi++){
+    var d=weekData[pi];var isTo=pi===today;
+    var meals=[d.b&&'🌅',d.l&&'☀️',d.d&&'🌙'].filter(Boolean).join(' ');
+    var mnames=[d.b,d.l,d.d].filter(Boolean).join(' · ')||'Non planifie';
+    var tgt2=cals||2000;
+    var kcalCol=!d.kcal?'var(--tx3)':Math.abs(d.kcal-tgt2)<=tgt2*.12?'#2ecc71':d.kcal>tgt2*1.15?'#e74c3c':'#f39c12';
+    var kcalBg=!d.kcal?'var(--bg2)':Math.abs(d.kcal-tgt2)<=tgt2*.12?'rgba(46,204,113,.12)':d.kcal>tgt2*1.15?'rgba(231,76,60,.1)':'rgba(243,156,18,.1)';
+    var prog=d.kcal&&cals?Math.min(100,Math.round(d.kcal/cals*100)):0;
+    pillsH+='<div class="nx-day-pill" style="'+(isTo?'border:1.5px solid var(--ac);':'border:1.5px solid transparent;')+'" onclick="switchMenuTab(\'week\');setTimeout(function(){if(window.switchDay)window.switchDay('+(pi+1)+');},200);">'
+      +'<div class="nx-day-pill-name" style="color:'+(isTo?'var(--ac)':'var(--tx)')+';">'+DS[pi]+'</div>'
+      +'<div style="flex:1;min-width:0;">'
+      +'<div class="nx-day-pill-meals">'+(d.planned?meals+' '+mnames:'Non planifie')+'</div>'
+      +(d.kcal?'<div style="height:2px;background:var(--bg2);border-radius:99px;margin-top:4px;"><div style="height:100%;width:'+prog+'%;background:'+kcalCol+';border-radius:99px;"></div></div>':'')
+      +'</div>'
+      +'<div class="nx-day-pill-kcal" style="background:'+kcalBg+';color:'+kcalCol+';">'+(d.kcal?d.kcal+' kcal':'—')+'</div>'
+      +'</div>';
+  }
+  h+='<div class="nx-card"><div class="nx-card-title"><span class="nx-card-title-txt">Semaine en detail</span></div><div class="nx-week-pills">'+pillsH+'</div></div>';
+
+  // MACROS
+  var R=30,CX=38,CY=38,CIRC=2*Math.PI*R;
+  var macroList=[
+    {label:'Calories',icon:'🔥',actual:avgKcal,target:cals||0,color:'#e74c3c',unit:'kcal'},
+    {label:'Proteines',icon:'💪',actual:avgProt,target:macros?macros.prot:0,color:'#3498db',unit:'g'},
+    {label:'Glucides',icon:'🍞',actual:avgCarb,target:macros?macros.carb:0,color:'#f39c12',unit:'g'},
+    {label:'Lipides',icon:'🥑',actual:avgFat,target:macros?macros.fat:0,color:'#9b59b6',unit:'g'},
+  ];
+  var macroH='';
+  for(var mi=0;mi<macroList.length;mi++){
+    var m=macroList[mi];
+    var pct=m.target&&m.actual?Math.min(120,Math.round(m.actual/m.target*100)):0;
+    var dash2=(Math.min(100,pct)/100)*CIRC,gap2=CIRC-dash2;
+    var stOk=pct>=85&&pct<=112,stOv=pct>112;
+    var stCol=stOk?'var(--gn)':stOv?'var(--rd)':pct>50?'var(--yl)':'var(--tx3)';
+    var stTxt=!withKcal.length?'Pas de donnees':stOk?'Objectif atteint':stOv?'Depasse':pct>50?'En cours':'Insuffisant';
+    macroH+='<div class="nx-macro">'
+      +'<svg width="76" height="76" viewBox="0 0 76 76" style="flex-shrink:0;">'
+      +'<circle cx="'+CX+'" cy="'+CY+'" r="'+R+'" fill="none" stroke="var(--bg2)" stroke-width="8"/>'
+      +'<circle cx="'+CX+'" cy="'+CY+'" r="'+R+'" fill="none" stroke="'+m.color+'" stroke-width="8" stroke-dasharray="'+(withKcal.length?dash2.toFixed(1):0)+' '+CIRC.toFixed(1)+'" stroke-dashoffset="'+(CIRC/4).toFixed(1)+'" stroke-linecap="round"/>'
+      +'<text x="'+CX+'" y="'+(CY+1)+'" text-anchor="middle" dominant-baseline="middle" font-size="14" font-weight="900" fill="var(--tx)">'+(withKcal.length&&m.target?pct+'%':'—')+'</text>'
+      +'</svg>'
+      +'<div class="nx-macro-info">'
+      +'<div class="nx-macro-lbl">'+m.icon+' '+m.label+'</div>'
+      +'<div class="nx-macro-val" style="color:'+m.color+';">'+(withKcal.length?m.actual:'—')+'<span style="font-size:.5rem;"> '+m.unit+'</span></div>'
+      +'<div class="nx-macro-tgt">'+(m.target?'/ '+m.target+' '+m.unit:'')+'</div>'
+      +'<div class="nx-macro-st" style="color:'+stCol+';">'+stTxt+'</div>'
+      +'<div class="nx-macro-bar"><div class="nx-macro-fill" style="width:'+(withKcal.length?Math.min(100,pct):0)+'%;background:'+m.color+';"></div></div>'
+      +'</div></div>';
+  }
+  h+='<div class="nx-card"><div class="nx-card-title"><span class="nx-card-title-txt">Macronutriments · moyenne semaine</span></div><div class="nx-macros">'+macroH+'</div></div>';
+
+  // SPORT PIE
+  if(hasProfil&&cals){
+    var sport=getSportBurnSummary(p);
+    var baseBurn2=cals-(sport?sport.totalBurn:0);
+    var sportBurn2=sport?sport.burn+sport.extraKcal:0;
+    var tot2=Math.max(1,baseBurn2+sportBurn2);
+    var R3=44,CX3=60,CY3=60,SW3=17,CIRC3=2*Math.PI*R3;
+    var off3=CIRC3/4,sc3='',sl3='';
+    var segs3=[{v:Math.max(0,baseBurn2),c:'#3498db',icon:'BMR',l:'Metabolisme de base'},{v:sportBurn2,c:'#e74c3c',icon:'Sport',l:'Activite physique'}];
+    for(var si3=0;si3<segs3.length;si3++){var sg3=segs3[si3];var dl3=(sg3.v/tot2)*CIRC3;sc3+='<circle cx="'+CX3+'" cy="'+CY3+'" r="'+R3+'" fill="none" stroke="'+sg3.c+'" stroke-width="'+SW3+'" stroke-dasharray="'+dl3.toFixed(2)+' '+(CIRC3-dl3).toFixed(2)+'" stroke-dashoffset="'+off3.toFixed(2)+'"/>';off3-=dl3;sl3+='<div class="nx-sport-row"><div class="nx-sport-dot" style="background:'+sg3.c+';"></div><div class="nx-sport-lbl">'+sg3.l+'</div><div class="nx-sport-val" style="color:'+sg3.c+';">'+Math.round(sg3.v)+' kcal</div></div>';}
+    var bal3=avgKcal?avgKcal-cals:null;
+    var balOk3=bal3!==null&&Math.abs(bal3)<150;
+    var balH3=bal3!==null?'<div class="nx-balance" style="background:'+(balOk3?'rgba(46,204,113,.08)':bal3>0?'rgba(231,76,60,.07)':'rgba(243,156,18,.07)')+';border-left:3px solid '+(balOk3?'var(--gn)':bal3>0?'var(--rd)':'var(--yl)')+';">'+'<div style="font-size:.7rem;font-weight:800;color:'+(balOk3?'var(--gn)':bal3>0?'var(--rd)':'var(--yl)')+';">'+(bal3>0?'Excedent calorique':bal3<0?'Deficit calorique':'Equilibre parfait')+'</div><div style="font-size:.95rem;font-weight:900;">'+(bal3>0?'+':'')+bal3+' kcal/j</div><div style="font-size:.6rem;color:var(--tx2);margin-top:2px;">Planifie: '+avgKcal+' kcal · Objectif: '+cals+' kcal</div>'+(balOk3?'<div style="font-size:.62rem;color:var(--gn);font-weight:700;margin-top:3px;">Excellent equilibre !</div>':'')+'</div>':'';
+    h+='<div class="nx-card"><div class="nx-card-title"><span class="nx-card-title-txt">Depense calorique</span></div>'
+      +'<div class="nx-sport-wrap">'
+      +'<svg width="120" height="120" viewBox="0 0 120 120" style="flex-shrink:0;"><circle cx="'+CX3+'" cy="'+CY3+'" r="'+R3+'" fill="none" stroke="var(--bg2)" stroke-width="'+SW3+'"/>'+sc3+'<text x="'+CX3+'" y="'+(CY3-5)+'" text-anchor="middle" font-size="14" font-weight="900" fill="var(--tx)">'+cals+'</text><text x="'+CX3+'" y="'+(CY3+10)+'" text-anchor="middle" font-size="9" fill="var(--tx2)">kcal/jour</text></svg>'
+      +'<div class="nx-sport-legend">'+sl3+'</div></div>'+balH3+'</div>';
+  }
+
+  // CONSEILS
+  var tipsH='';
+  if(!planned.length){tipsH='<div class="nx-ai-card info"><div class="nx-ai-icon">💡</div><div class="nx-ai-title">Planifiez votre semaine</div><div class="nx-ai-body">Generez un menu IA dans Semaine pour des conseils personalises.</div></div>';}
+  else{
+    if(cals&&avgKcal){var df2=avgKcal-cals;if(Math.abs(df2)<100)tipsH+='<div class="nx-ai-card tip"><div class="nx-ai-icon">🎯</div><div class="nx-ai-title">Objectif atteint !</div><div class="nx-ai-body">Votre apport moyen de '+avgKcal+' kcal est ideal (objectif '+cals+' kcal).</div></div>';else if(df2>200)tipsH+='<div class="nx-ai-card warn"><div class="nx-ai-icon">⚠️</div><div class="nx-ai-title">Apport eleve</div><div class="nx-ai-body">+'+df2+' kcal vs objectif. Reduisez legerement les portions.</div></div>';else if(df2<-200)tipsH+='<div class="nx-ai-card warn"><div class="nx-ai-icon">⚡</div><div class="nx-ai-title">Apport insuffisant</div><div class="nx-ai-body">'+(Math.abs(df2))+' kcal sous objectif. Ajoutez une collation.</div></div>';}
+    if(macros&&avgProt&&macros.prot){var pp2=Math.round(avgProt/macros.prot*100);if(pp2<75)tipsH+='<div class="nx-ai-card bad"><div class="nx-ai-icon">💪</div><div class="nx-ai-title">Proteines insuffisantes</div><div class="nx-ai-body">'+avgProt+'g ('+pp2+'% objectif). Ajoutez oeufs, legumineuses ou viande.</div></div>';else if(pp2>=90&&pp2<=115)tipsH+='<div class="nx-ai-card tip"><div class="nx-ai-icon">💪</div><div class="nx-ai-title">Excellent apport proteique !</div><div class="nx-ai-body">'+avgProt+'g de proteines, objectif atteint.</div></div>';}
+    if(planned.length<5)tipsH+='<div class="nx-ai-card info"><div class="nx-ai-icon">📅</div><div class="nx-ai-title">'+(7-planned.length)+' jours non planifies</div><div class="nx-ai-body">Completez pour un suivi nutritionnel complet.</div></div>';
+    if(!tipsH)tipsH='<div class="nx-ai-card tip"><div class="nx-ai-icon">🌟</div><div class="nx-ai-title">Bonne semaine !</div><div class="nx-ai-body">Menu equilibre. Cliquez sur Analyse IA pour des conseils approfondis.</div></div>';
+  }
+  h+='<div class="nx-card"><div class="nx-card-title"><div style="display:flex;align-items:center;gap:8px;"><div style="width:28px;height:28px;background:var(--grad);border-radius:8px;display:flex;align-items:center;justify-content:center;">🤖</div><span class="nx-card-title-txt">Analyse et Conseils</span></div></div>'
+    +tipsH
+    +'<button class="btn acc" onclick="generateNutriAdvice&&generateNutriAdvice()" id="nutriAdviceBtn" style="width:100%;padding:12px;border-radius:var(--rs);font-weight:800;margin-top:8px;">Analyse IA approfondie</button>'
+    +'<div id="nutriAdviceZone" style="margin-top:10px;"></div>'
+    +'</div>';
+
+  root.innerHTML=h;
+  if(window._sc_refreshStats)window._sc_refreshStats();
+}
+
+// MutationObserver secours
+setTimeout(function(){
+  var panel=document.getElementById('menuPanelNutri');
+  if(panel)new MutationObserver(function(){if(panel.style.display!=='none')setTimeout(sc_nutri_render,30);}).observe(panel,{attributes:true,attributeFilter:['style']});
+},600);
+
+console.log('[SC Patch v3 FINAL] charge');
 </script>
 </body>
 </html>

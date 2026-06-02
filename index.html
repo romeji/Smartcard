@@ -951,6 +951,174 @@ body.offline-mode .offline-banner{display:block;}
 .fi-card.expired{border-color:var(--rd);}
 [data-theme=dark] .fi-card{background:var(--bg2);}
 
+
+/* ══════════════════════════════════════════════════════
+   MENU SEMAINE — Premium Design v3
+   ══════════════════════════════════════════════════════ */
+
+/* Header */
+.wk-profile-card {
+  display:flex;align-items:center;justify-content:space-between;
+  background:var(--bg);border-radius:16px;box-shadow:var(--so);
+  padding:14px 16px;margin-bottom:12px;cursor:pointer;
+  border-left:4px solid var(--ac);transition:all .2s;
+}
+.wk-profile-card:active { opacity:.85; }
+.wk-profile-left { display:flex;align-items:center;gap:10px; }
+.wk-profile-avatar { font-size:1.6rem;width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,rgba(255,107,107,.15),rgba(255,142,83,.1));display:flex;align-items:center;justify-content:center;flex-shrink:0; }
+.wk-profile-name { font-size:.82rem;font-weight:900;color:var(--tx); }
+.wk-profile-sub { font-size:.62rem;color:var(--tx3);margin-top:2px; }
+.wk-profile-kcal { font-size:.78rem;font-weight:900;color:var(--ac);text-align:right;white-space:nowrap; }
+
+/* Génération card */
+.wk-gen-card {
+  background:var(--bg);border-radius:20px;box-shadow:var(--so);
+  padding:16px;margin-bottom:14px;
+  border-top:3px solid transparent;
+  background-clip:padding-box;
+  position:relative;overflow:hidden;
+}
+.wk-gen-card::before {
+  content:'';position:absolute;top:0;left:0;right:0;height:3px;
+  background:var(--grad);border-radius:20px 20px 0 0;
+}
+.wk-gen-header { display:flex;align-items:center;gap:10px;margin-bottom:12px; }
+.wk-gen-icon { width:36px;height:36px;background:var(--grad);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:1.1rem;flex-shrink:0;box-shadow:0 3px 10px rgba(255,107,107,.3); }
+.wk-gen-title { font-size:.9rem;font-weight:900;color:var(--tx); }
+.wk-gen-sub { font-size:.62rem;color:var(--tx3);margin-top:1px; }
+.wk-opts-btn { margin-left:auto;background:var(--bg2);border:none;border-radius:var(--rp);padding:6px 10px;font-size:.68rem;font-weight:800;color:var(--tx2);cursor:pointer;flex-shrink:0; }
+.wk-opts-grid { display:grid;grid-template-columns:1fr 1fr;gap:8px; }
+.wk-opt-item {}
+.wk-opt-label { font-size:.6rem;font-weight:800;color:var(--tx3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px; }
+.wk-gen-actions { display:flex;gap:8px;margin-top:14px; }
+.wk-gen-btn {
+  flex:1;padding:13px;border-radius:var(--rs);border:none;cursor:pointer;
+  background:var(--grad);color:#fff;font-size:.85rem;font-weight:900;
+  box-shadow:0 4px 14px rgba(255,107,107,.35);
+  transition:all .2s;
+}
+.wk-gen-btn:active { transform:scale(.97);box-shadow:0 2px 8px rgba(255,107,107,.25); }
+.wk-gen-btn:disabled { opacity:.6;cursor:not-allowed; }
+.wk-summary-btn { padding:13px;border-radius:var(--rs);border:1.5px solid var(--bg2);background:var(--bg);cursor:pointer;font-size:1.1rem; }
+
+/* Calendrier */
+.wk-cal-header { display:flex;align-items:center;justify-content:space-between;margin-bottom:8px; }
+.wk-cal-title { font-size:.7rem;font-weight:900;text-transform:uppercase;letter-spacing:.8px;color:var(--tx3); }
+.wk-cal-score { font-size:.68rem;font-weight:900;padding:2px 8px;border-radius:99px; }
+.wk-scroll { display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;margin-bottom:14px;padding-bottom:4px; }
+.wk-scroll::-webkit-scrollbar { display:none; }
+
+/* Day cards — refonte */
+.dc {
+  flex-shrink:0;width:76px;background:var(--bg);border-radius:16px;
+  box-shadow:var(--so);padding:10px 6px 8px;text-align:center;
+  cursor:pointer;transition:all .2s;position:relative;
+  border:1.5px solid transparent;
+}
+.dc.tod { border-color:var(--ac);box-shadow:var(--so),0 0 0 2px var(--ac)22; }
+.dc.sel {
+  background:var(--grad);color:#fff;
+  box-shadow:0 6px 20px rgba(255,107,107,.4);
+  border-color:transparent;transform:translateY(-2px);
+}
+.dc-lb { font-size:.58rem;font-weight:900;text-transform:uppercase;letter-spacing:.6px;color:var(--tx3);margin-bottom:5px; }
+.dc.sel .dc-lb { color:rgba(255,255,255,.8); }
+.dc.tod:not(.sel) .dc-lb { color:var(--ac); }
+.dc-em { font-size:1.5rem;margin-bottom:3px;line-height:1; }
+.dc-ml { font-size:.54rem;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--tx2); }
+.dc.sel .dc-ml { color:rgba(255,255,255,.9); }
+.dc-kcal { font-size:.52rem;font-weight:800;color:var(--ac);margin-top:3px; }
+.dc.sel .dc-kcal { color:rgba(255,255,255,.85); }
+.dc-dot { width:6px;height:6px;border-radius:50%;position:absolute;top:5px;right:5px; }
+.dc-prog { height:2px;border-radius:99px;background:rgba(255,255,255,.2);margin-top:5px;overflow:hidden; }
+.dc-prog-fill { height:100%;border-radius:99px;background:rgba(255,255,255,.7);transition:width .4s; }
+.dc:not(.sel) .dc-prog { background:var(--bg2); }
+.dc:not(.sel) .dc-prog-fill { background:var(--ac); }
+
+/* Day detail — refonte complète */
+.dd-card {
+  background:var(--bg);border-radius:20px;box-shadow:var(--so);
+  overflow:hidden;margin-bottom:14px;
+}
+.dd-header {
+  padding:16px 16px 12px;
+  border-bottom:1px solid var(--bg2);
+}
+.dd-header-top { display:flex;align-items:center;justify-content:space-between;margin-bottom:8px; }
+.dd-title { font-size:1.05rem;font-weight:900; }
+.dd-badge { font-size:.65rem;font-weight:900;padding:4px 10px;border-radius:99px; }
+.dd-kcal-bar { margin-top:8px; }
+.dd-kcal-row { display:flex;justify-content:space-between;align-items:center;margin-bottom:5px; }
+.dd-kcal-label { font-size:.65rem;font-weight:700;color:var(--tx2); }
+.dd-kcal-val { font-size:.7rem;font-weight:900; }
+.dd-bar { height:5px;border-radius:99px;background:var(--bg2);overflow:hidden; }
+.dd-bar-fill { height:100%;border-radius:99px;transition:width .5s; }
+
+/* Meal slots */
+.dd-meals { padding:10px 10px 0; }
+.dd-slot {
+  display:flex;align-items:center;border-radius:14px;
+  margin-bottom:8px;overflow:hidden;cursor:pointer;
+  transition:all .18s;background:var(--bg2);
+  border:1.5px solid transparent;
+}
+.dd-slot:active { transform:scale(.98); }
+.dd-slot.filled { background:var(--bg);box-shadow:0 2px 8px rgba(0,0,0,.06);border-color:var(--bg2); }
+.dd-slot.empty { background:transparent;border:1.5px dashed var(--bg2); }
+.dd-slot-thumb {
+  width:58px;height:58px;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+  font-size:1.3rem;
+}
+.dd-slot-body { flex:1;min-width:0;padding:9px 10px; }
+.dd-slot-type { font-size:.56rem;font-weight:900;text-transform:uppercase;letter-spacing:.6px;color:var(--tx3);margin-bottom:2px; }
+.dd-slot-name { font-size:.8rem;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--tx); }
+.dd-slot-meta { display:flex;gap:5px;margin-top:3px;flex-wrap:wrap; }
+.dd-slot-meta span { font-size:.58rem;font-weight:700; }
+.dd-slot-action { padding:0 10px;flex-shrink:0;color:var(--tx3);font-size:.75rem; }
+
+/* Bilan nutritionnel du jour */
+.dd-nutri { margin:0 10px 10px;padding:12px;background:var(--bg2);border-radius:14px; }
+.dd-nutri-title { font-size:.68rem;font-weight:900;margin-bottom:8px;display:flex;align-items:center;gap:5px; }
+.dd-nutri-grid { display:grid;grid-template-columns:repeat(4,1fr);gap:6px; }
+.dd-nutri-item { background:var(--bg);border-radius:10px;padding:8px 4px;text-align:center; }
+.dd-nutri-val { font-size:.92rem;font-weight:900; }
+.dd-nutri-lbl { font-size:.5rem;color:var(--tx2);margin-top:1px; }
+
+/* Actions du jour */
+.dd-actions { display:flex;gap:6px;padding:0 10px 12px; }
+.dd-action-btn {
+  flex:1;padding:9px 4px;border-radius:12px;border:1.5px solid var(--bg2);
+  background:var(--bg);cursor:pointer;font-size:.65rem;font-weight:800;
+  color:var(--tx2);text-align:center;transition:all .15s;
+}
+.dd-action-btn:active { background:var(--bg2); }
+.dd-action-btn.danger { color:var(--rd);border-color:rgba(214,63,49,.2); }
+.dd-action-btn.accent { background:var(--grad);color:#fff;border-color:transparent;box-shadow:0 3px 10px rgba(255,107,107,.25); }
+
+/* Tip */
+.dd-tip { margin:0 10px 10px;font-size:.71rem;color:var(--ac);line-height:1.55;padding:8px 12px;background:rgba(255,107,107,.06);border-radius:10px;border-left:3px solid var(--ac); }
+
+/* AI result */
+.wk-ai-result { background:var(--bg);border-radius:20px;box-shadow:var(--so);padding:16px;margin-bottom:14px; }
+.wk-ai-result-head { display:flex;align-items:center;gap:10px;margin-bottom:12px; }
+.wk-ai-result-icon { width:34px;height:34px;background:var(--grad);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:1rem;flex-shrink:0; }
+.wk-ai-day { padding:10px 0;border-bottom:1px solid var(--bg2); }
+.wk-ai-day:last-child { border-bottom:none;padding-bottom:0; }
+.wk-ai-day-head { display:flex;align-items:center;justify-content:space-between;margin-bottom:5px; }
+.wk-ai-day-name { font-size:.8rem;font-weight:900; }
+.wk-ai-day-kcal { font-size:.65rem;font-weight:900;padding:2px 7px;border-radius:99px; }
+.wk-ai-meal { display:flex;align-items:center;gap:6px;margin-bottom:3px; }
+.wk-ai-meal-lbl { font-size:.58rem;font-weight:800;color:var(--tx3);min-width:30px; }
+.wk-ai-meal-name { font-size:.72rem;color:var(--tx2);flex:1; }
+.wk-ai-meal-kcal { font-size:.58rem;color:var(--tx3); }
+
+/* Dark mode overrides */
+[data-theme=dark] .wk-gen-card,[data-theme=dark] .dd-card,[data-theme=dark] .wk-ai-result,[data-theme=dark] .wk-profile-card { background:var(--bg2); }
+[data-theme=dark] .dd-slot.filled { background:var(--bg3); }
+[data-theme=dark] .dd-nutri { background:var(--bg3); }
+[data-theme=dark] .dd-nutri-item { background:var(--bg2); }
+[data-theme=dark] .dc:not(.sel) { background:var(--bg2); }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.19.1/umd/index.min.js"></script>
@@ -1495,96 +1663,119 @@ body.offline-mode .offline-banner{display:block;}
       <!-- ═══ TAB: SEMAINE ═══ -->
       <div id="menuPanelWeek">
 
-        <!-- Profil strip -->
-        <div class="menu-profile-strip" id="menuProfileStrip" onclick="openMenuProfile()">
-          <div style="font-size:.68rem;font-weight:800;color:var(--ac);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;">⚙️ Mon profil nutritionnel</div>
-          <div id="menuProfileSummary" style="font-size:.8rem;color:var(--tx);font-weight:600;">Complétez votre profil pour personnaliser vos menus →</div>
+        <!-- PROFIL STRIP premium -->
+        <div class="wk-profile-card" id="menuProfileStrip" onclick="openMenuProfile()">
+          <div class="wk-profile-left">
+            <div class="wk-profile-avatar" id="wkProfileAvatar">👤</div>
+            <div>
+              <div class="wk-profile-name" id="menuProfileSummary">Compléter mon profil →</div>
+              <div class="wk-profile-sub" id="wkProfileSub">Personnalisez vos recommandations IA</div>
+            </div>
+          </div>
+          <div class="wk-profile-kcal" id="wkProfileKcal"></div>
         </div>
-        <!-- Clé API Claude -->
+
+        <!-- API KEY BANNER -->
         <div id="apiKeyBanner" style="display:none;background:rgba(214,63,49,.08);border:1px solid rgba(214,63,49,.2);border-radius:var(--rs);padding:10px 14px;margin-bottom:10px;">
           <div style="font-size:.72rem;font-weight:800;color:var(--rd);margin-bottom:6px;">🔑 Clé API Claude requise</div>
           <div style="display:flex;gap:6px;">
             <input class="inp" id="apiKeyInput" type="password" placeholder="sk-ant-api03-..." style="flex:1;font-size:.75rem;font-family:monospace;">
             <button onclick="saveApiKey()" class="btn acc sm" style="flex-shrink:0;padding:9px 12px;">✓ Sauver</button>
           </div>
-          <div style="font-size:.65rem;color:var(--tx3);margin-top:4px;">Obtenez votre clé sur console.anthropic.com · Stockée localement</div>
+          <div style="font-size:.65rem;color:var(--tx3);margin-top:4px;">Obtenez votre clé sur console.anthropic.com</div>
         </div>
 
-        <!-- IA Generation -->
-        <div class="card mb14">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-            <div style="font-weight:900;font-size:.92rem;">🤖 Générer avec l'IA</div>
-            <button class="btn ghost sm" onclick="toggleMenuOpts()" style="font-size:.72rem;color:var(--tx2);">⚙️ Options</button>
+        <!-- GÉNÉRATION IA — card premium -->
+        <div class="wk-gen-card">
+          <div class="wk-gen-header">
+            <div class="wk-gen-icon">🤖</div>
+            <div>
+              <div class="wk-gen-title">Générer avec l'IA</div>
+              <div class="wk-gen-sub">Menu personnalisé 7 jours</div>
+            </div>
+            <button class="wk-opts-btn" onclick="toggleMenuOpts()">⚙️ Options</button>
           </div>
-          <div class="diet-chips" id="dietChips">
+
+          <!-- Régimes -->
+          <div class="diet-chips" id="dietChips" style="margin-bottom:0;">
             <div class="diet-chip on" data-v="omnivore" onclick="toggleMenuDiet(this)">🍖 Omnivore</div>
-            <div class="diet-chip" data-v="veg" onclick="toggleMenuDiet(this)">🥬 Végétarien</div>
+            <div class="diet-chip" data-v="veg" onclick="toggleMenuDiet(this)">🥬 Végé</div>
             <div class="diet-chip" data-v="vegan" onclick="toggleMenuDiet(this)">🌱 Vegan</div>
-            <div class="diet-chip" data-v="pesc" onclick="toggleMenuDiet(this)">🐟 Pescétarien</div>
-            <div class="diet-chip" data-v="gluten" onclick="toggleMenuDiet(this)">🌾 Sans gluten</div>
+            <div class="diet-chip" data-v="pesc" onclick="toggleMenuDiet(this)">🐟 Pesc.</div>
+            <div class="diet-chip" data-v="gluten" onclick="toggleMenuDiet(this)">🌾 S. gluten</div>
             <div class="diet-chip" data-v="keto" onclick="toggleMenuDiet(this)">🥑 Keto</div>
             <div class="diet-chip" data-v="halal" onclick="toggleMenuDiet(this)">☪️ Halal</div>
           </div>
-          <div class="menu-opts-panel" id="menuOptsPanel">
-            <div class="menu-opt-row">
-              <span class="menu-opt-label">🌍 Cuisine</span>
-              <select class="inp" id="menuCuisine" style="flex:1;padding:8px 12px;font-size:.8rem;">
-                <option value="">Toutes</option>
-                <option value="française">🇫🇷 Française</option>
-                <option value="méditerranéenne">🫒 Méditerranéenne</option>
-                <option value="asiatique">🥢 Asiatique</option>
-                <option value="indienne">🍛 Indienne</option>
-                <option value="mexicaine">🌮 Mexicaine</option>
-                <option value="japonaise">🍱 Japonaise</option>
-                <option value="italienne">🍝 Italienne</option>
-              </select>
-            </div>
-            <div class="menu-opt-row">
-              <span class="menu-opt-label">⏱ Temps max</span>
-              <select class="inp" id="menuMaxTime" style="flex:1;padding:8px 12px;font-size:.8rem;">
-                <option value="">Illimité</option>
-                <option value="20">20 min</option>
-                <option value="30">30 min</option>
-                <option value="45">45 min</option>
-                <option value="60">1h</option>
-              </select>
-            </div>
-            <div class="menu-opt-row">
-              <span class="menu-opt-label">💰 Budget/sem</span>
-              <input class="inp" id="menuBudget" placeholder="ex: 80€" style="flex:1;padding:8px 12px;font-size:.8rem;">
-            </div>
-            <div class="menu-opt-row">
-              <span class="menu-opt-label">🚫 Exclusions</span>
-              <input class="inp" id="menuAllergies" placeholder="ex: noix, lactose..." style="flex:1;padding:8px 12px;font-size:.8rem;">
-            </div>
-            <div class="menu-opt-row">
-              <span class="menu-opt-label">👥 Personnes</span>
-              <select class="inp" id="menuPersonnes" style="flex:1;padding:8px 12px;font-size:.8rem;">
-                <option value="1">1</option>
-                <option value="2" selected>2</option>
-                <option value="3">3</option>
-                <option value="4">4</option>
-                <option value="6">6</option>
-              </select>
+
+          <!-- Options avancées -->
+          <div class="menu-opts-panel" id="menuOptsPanel" style="margin-top:10px;">
+            <div class="wk-opts-grid">
+              <div class="wk-opt-item">
+                <div class="wk-opt-label">🌍 Cuisine</div>
+                <select class="inp" id="menuCuisine" style="padding:8px 10px;font-size:.78rem;width:100%;">
+                  <option value="">Toutes</option>
+                  <option value="française">🇫🇷 Française</option>
+                  <option value="méditerranéenne">🫒 Méditerranéenne</option>
+                  <option value="asiatique">🥢 Asiatique</option>
+                  <option value="indienne">🍛 Indienne</option>
+                  <option value="mexicaine">🌮 Mexicaine</option>
+                  <option value="japonaise">🍱 Japonaise</option>
+                  <option value="italienne">🍝 Italienne</option>
+                </select>
+              </div>
+              <div class="wk-opt-item">
+                <div class="wk-opt-label">⏱ Temps max</div>
+                <select class="inp" id="menuMaxTime" style="padding:8px 10px;font-size:.78rem;width:100%;">
+                  <option value="">Illimité</option>
+                  <option value="20">20 min</option>
+                  <option value="30">30 min</option>
+                  <option value="45">45 min</option>
+                  <option value="60">1 heure</option>
+                </select>
+              </div>
+              <div class="wk-opt-item">
+                <div class="wk-opt-label">💰 Budget/sem.</div>
+                <input class="inp" id="menuBudget" placeholder="ex: 80€" style="padding:8px 10px;font-size:.78rem;width:100%;box-sizing:border-box;">
+              </div>
+              <div class="wk-opt-item">
+                <div class="wk-opt-label">👥 Personnes</div>
+                <select class="inp" id="menuPersonnes" style="padding:8px 10px;font-size:.78rem;width:100%;">
+                  <option value="1">1 pers.</option>
+                  <option value="2" selected>2 pers.</option>
+                  <option value="3">3 pers.</option>
+                  <option value="4">4 pers.</option>
+                  <option value="6">6 pers.</option>
+                </select>
+              </div>
+              <div class="wk-opt-item" style="grid-column:1/-1;">
+                <div class="wk-opt-label">🚫 Exclusions / Allergies</div>
+                <input class="inp" id="menuAllergies" placeholder="ex: noix, lactose, fruits de mer..." style="padding:8px 10px;font-size:.78rem;width:100%;box-sizing:border-box;">
+              </div>
             </div>
           </div>
-          <div style="display:flex;gap:8px;margin-top:10px;">
-            <button class="btn acc" id="menuGenBtn" onclick="generateAIMenuFull()" style="flex:1;padding:12px;border-radius:var(--rs);font-weight:800;">
-              <span id="menuGenBtnTxt">✨ Générer le menu de la semaine</span>
+
+          <!-- Boutons action -->
+          <div class="wk-gen-actions">
+            <button class="wk-gen-btn" id="menuGenBtn" onclick="generateAIMenuFull()">
+              <span id="menuGenBtnTxt">✨ Générer ma semaine</span>
             </button>
-            <button class="btn" onclick="openWeekSummaryModal()" style="padding:12px;border-radius:var(--rs);" title="Récapitulatif de la semaine">📊</button>
+            <button class="wk-summary-btn" onclick="openWeekSummaryModal()" title="Récapitulatif">📊</button>
           </div>
         </div>
 
         <!-- IA result zone -->
         <div id="aiMenuResultZone"></div>
 
-        <!-- Calendrier semaine -->
-        <div style="font-size:.7rem;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:var(--tx3);margin-bottom:8px;">📅 Semaine en cours</div>
-        <div style="display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;margin-bottom:14px;padding-bottom:4px;" id="weekScroll"></div>
+        <!-- CALENDRIER SEMAINE -->
+        <div class="wk-cal-header">
+          <div class="wk-cal-title">📅 Ma semaine</div>
+          <div class="wk-cal-score" id="wkCalScore"></div>
+        </div>
+        <div class="wk-scroll" id="weekScroll"></div>
 
-        <!-- Détail du jour -->
+        <!-- DÉTAIL DU JOUR -->
         <div id="dayDetail"></div>
+
       </div>
 
       <!-- ═══ TAB: MES RECETTES ═══ -->
@@ -7370,22 +7561,61 @@ function renderWeek() {
   const scroll = document.getElementById('weekScroll');
   if(!scroll) return;
   const todayNum = new Date().getDay() || 7;
-  scroll.innerHTML = DAYS.map((d, i) => {
+  const p = state.profile || {};
+  const calTarget = calculateDailyCalories(p);
+
+  scroll.innerHTML = DAYS.map(function(d, i) {
     const dn = i + 1;
     const menu = state.weekMenu[dn];
     const isSel = dn === selectedDay;
-    const qualColor = menu && menu.quality === 'good' ? 'var(--gn)' : menu && menu.quality === 'warn' ? 'var(--yl)' : 'var(--bl)';
-    const bText = menu && menu.b ? menu.b : '';
-    const bEmoji = bText ? (Array.from(bText)[0] || '🍽️') : '➕';
-    const lText = menu && menu.l ? menu.l : '';
-    const lShort = lText.replace(/^.{1,2}\s/, '').split(' ').slice(0,2).join(' ') || (menu ? 'Planifié' : 'Vide');
-    return '<div class="dc' + (dn===todayNum?' tod':'') + (isSel?' sel':'') + '" onclick="selectDay(' + dn + ')">'
-      + (menu ? '<div class="dc-quality" style="background:' + qualColor + ';"></div>' : '')
+    const isTod = dn === todayNum;
+    const n = menu ? _calcDayNutri(menu) : null;
+    const kcal = n ? n.kcal : 0;
+    const pct = calTarget && kcal ? Math.min(100, Math.round(kcal / calTarget * 100)) : 0;
+    const dot = menu && menu.quality === 'good' ? 'var(--gn)' : menu && menu.quality === 'warn' ? 'var(--yl)' : kcal ? 'var(--bl)' : 'transparent';
+    const bEmoji = menu && menu.b ? (Array.from(menu.b)[0] || '🍽️') : (menu && menu.l ? '☀️' : '➕');
+    const lShort = menu && menu.l ? menu.l.replace(/^.\s/, '').split(' ').slice(0,2).join(' ') : (menu ? 'Planifié' : '');
+    const kcalLabel = kcal ? Math.round(kcal) + '' : '';
+    return '<div class="dc' + (isTod ? ' tod' : '') + (isSel ? ' sel' : '') + '" onclick="selectDay(' + dn + ')">'
+      + '<div class="dc-dot" style="background:' + dot + ';"></div>'
       + '<div class="dc-lb">' + d + '</div>'
       + '<div class="dc-em">' + bEmoji + '</div>'
-      + '<div class="dc-ml">' + lShort + '</div>'
+      + '<div class="dc-ml">' + (lShort || (menu ? '' : '&nbsp;')) + '</div>'
+      + (kcalLabel ? '<div class="dc-kcal">' + kcalLabel + '</div>' : '<div class="dc-kcal">&nbsp;</div>')
+      + '<div class="dc-prog"><div class="dc-prog-fill" style="width:' + pct + '%;"></div></div>'
       + '</div>';
   }).join('');
+
+  // Score badge
+  const wm = state.weekMenu || {};
+  const days = Object.values(wm).filter(function(m){ return m && (m.b||m.l||m.d); });
+  const withK = days.map(function(m){ return _calcDayNutri(m); }).filter(function(n){ return n && n.kcal; });
+  const daysOk = calTarget ? withK.filter(function(n){ return Math.abs(n.kcal-calTarget) <= calTarget*.12; }).length : 0;
+  const score = withK.length === 0 ? null : daysOk>=5?'A':daysOk>=3?'B':daysOk>=2?'C':'D';
+  const scoreCol = {A:'#2ecc71',B:'#3498db',C:'#f39c12',D:'#e74c3c'}[score] || 'var(--tx3)';
+  const scoreEl = document.getElementById('wkCalScore');
+  if(scoreEl && score) {
+    scoreEl.textContent = 'Score ' + score;
+    scoreEl.style.background = scoreCol + '20';
+    scoreEl.style.color = scoreCol;
+  } else if(scoreEl) { scoreEl.textContent = ''; }
+
+  // Profile strip
+  const wkKcal = document.getElementById('wkProfileKcal');
+  const wkSub  = document.getElementById('wkProfileSub');
+  const wkAv   = document.getElementById('wkProfileAvatar');
+  const summary = document.getElementById('menuProfileSummary');
+  if(calTarget && summary) {
+    const goalLbls = {equilibre:'Équilibre',perte:'Perte de poids',prise:'Prise de masse',maintien:'Maintien',perf:'Performance'};
+    const acts = ['Sédentaire','Lgt actif','Mod. actif','Très actif','Extrême'];
+    summary.textContent = (p.name || (p.sex==='H'?'Mon profil':'Mon profil'));
+    if(wkSub) wkSub.textContent = (goalLbls[p.goal||'equilibre']||'') + ' · ' + acts[Math.min(+(p.sportFreq||2),4)];
+    if(wkKcal) wkKcal.innerHTML = calTarget + '<br><span style="font-size:.52rem;color:var(--tx3);font-weight:700;">kcal/j</span>';
+    if(wkAv) wkAv.textContent = p.sex==='F' ? '👩' : p.sex==='H' ? '👨' : '👤';
+  } else if(summary) {
+    summary.textContent = 'Compléter mon profil →';
+  }
+
   renderDayDetail();
 }
 
@@ -7455,163 +7685,183 @@ function renderDayDetail() {
   const detail = document.getElementById('dayDetail');
   if(!detail) return;
   const menu = state.weekMenu[selectedDay];
-  const dayName = (window.DAYS || ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'])[selectedDay-1] || 'Jour '+selectedDay;
+  const dayNames = ['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche'];
+  const dayName = dayNames[selectedDay-1] || ('Jour '+selectedDay);
   const p = state.profile || {};
   const calTarget = calculateDailyCalories(p);
   const macroTarget = getMacroTargets(p, calTarget);
+  const todayNum = new Date().getDay() || 7;
+  const isToday = selectedDay === todayNum;
 
+  // Jour vide
   if(!menu || (!menu.b && !menu.l && !menu.d && !menu.snack)) {
-    detail.innerHTML = `<div class="meal-card" style="text-align:center;padding:20px;">
-      <div style="font-size:2rem;margin-bottom:8px;">📅</div>
-      <div class="meal-card-ti">${dayName}</div>
-      <div class="meal-card-sub" style="margin-bottom:16px;">${calTarget ? '🎯 Objectif: '+calTarget+' kcal/jour' : 'Aucun menu planifié'}</div>
-      <div style="display:flex;gap:6px;flex-direction:column;">
-        <button class="btn acc" onclick="generateAIMenuFull()" style="padding:12px;border-radius:var(--rs);font-weight:800;">🤖 Générer toute la semaine avec IA</button>
-        <div style="display:flex;gap:6px;">
-          <button class="btn sm" style="flex:1;" onclick="openMealEdit(${selectedDay},'b')">🌅 Matin</button>
-          <button class="btn sm" style="flex:1;" onclick="openMealEdit(${selectedDay},'l')">☀️ Midi</button>
-          <button class="btn sm" style="flex:1;" onclick="openMealEdit(${selectedDay},'d')">🌙 Soir</button>
-          <button class="btn sm" style="flex:1;" onclick="openMealEdit(${selectedDay},'snack')">🍎 Snack</button>
-        </div>
-      </div>
-    </div>`;
+    detail.innerHTML = '<div class="dd-card">'
+      + '<div style="text-align:center;padding:28px 16px;">'
+      + '<div style="font-size:2.4rem;margin-bottom:10px;">' + (isToday ? '📅' : '🗓') + '</div>'
+      + '<div style="font-size:1rem;font-weight:900;margin-bottom:4px;">' + dayName + (isToday ? ' — Aujourd\'hui' : '') + '</div>'
+      + (calTarget ? '<div style="font-size:.75rem;color:var(--tx2);margin-bottom:16px;">Objectif : ' + calTarget + ' kcal/jour</div>' : '<div style="font-size:.75rem;color:var(--tx3);margin-bottom:16px;">Aucun menu planifié</div>')
+      + '<div style="display:flex;flex-direction:column;gap:8px;">'
+      + '<button class="wk-gen-btn" onclick="generateAIMenuFull()" style="padding:12px;">🤖 Générer la semaine avec l\'IA</button>'
+      + '<div style="display:flex;gap:6px;">'
+      + '<button class="dd-action-btn" onclick="openMealEdit(' + selectedDay + ',\'b\')">🌅 Matin</button>'
+      + '<button class="dd-action-btn" onclick="openMealEdit(' + selectedDay + ',\'l\')">☀️ Midi</button>'
+      + '<button class="dd-action-btn" onclick="openMealEdit(' + selectedDay + ',\'d\')">🌙 Soir</button>'
+      + '<button class="dd-action-btn" onclick="openMealEdit(' + selectedDay + ',\'snack\')">🍎 Snack</button>'
+      + '</div></div></div></div>';
     return;
   }
 
-  const nutri = menu.nutri || {};
-  const realNutri = _calcDayNutri(menu);
-  const displayKcal = (realNutri && !realNutri.fromAI) ? realNutri.kcal : (nutri.kcal || 0);
+  const n = _calcDayNutri(menu);
+  const displayKcal = n ? Math.round(n.kcal) : 0;
   const pctKcal = calTarget && displayKcal ? Math.min(110, Math.round(displayKcal/calTarget*100)) : 0;
-  const barColor = pctKcal>=85&&pctKcal<=105 ? 'var(--gn)' : pctKcal>110 ? 'var(--rd)' : 'var(--yl)';
+  const barCol = pctKcal>=85&&pctKcal<=105 ? '#2ecc71' : pctKcal>108 ? '#e74c3c' : '#f39c12';
+  const qualLabel = menu.quality==='good' ? '✅ Équilibré' : menu.quality==='warn' ? '⚠️ À améliorer' : '📋 Planifié';
+  const qualBg = menu.quality==='good' ? 'rgba(46,204,113,.12)' : menu.quality==='warn' ? 'rgba(231,76,60,.1)' : 'var(--bg2)';
+  const qualCol = menu.quality==='good' ? 'var(--gn)' : menu.quality==='warn' ? 'var(--rd)' : 'var(--tx2)';
 
-  const SLOT_CFG = [
-    {key:'b',  icon:'🌅', label:'Petit-déjeuner', grad:'135deg,#f6d365,#fda085'},
-    {key:'l',  icon:'☀️', label:'Déjeuner',       grad:'135deg,#a8edea,#fed6e3'},
-    {key:'d',  icon:'🌙', label:'Dîner',           grad:'135deg,#667eea,#764ba2'},
-    {key:'snack',icon:'🍎',label:'Collation',      grad:'135deg,#84fab0,#8fd3f4'},
+  const SLOTS = [
+    {key:'b',   icon:'🌅', label:'Petit-déjeuner', grad:'135deg,#f6d365,#fda085'},
+    {key:'l',   icon:'☀️', label:'Déjeuner',       grad:'135deg,#a8edea,#fed6e3'},
+    {key:'d',   icon:'🌙', label:'Dîner',           grad:'135deg,#667eea,#764ba2'},
+    {key:'snack',icon:'🍎',label:'Collation',       grad:'135deg,#84fab0,#8fd3f4'},
   ];
 
-  detail.innerHTML = `<div class="meal-card">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
-      <div class="meal-card-ti">📅 ${dayName}</div>
-      ${menu.quality ? `<span style="font-size:.7rem;padding:2px 8px;border-radius:99px;background:${menu.quality==='good'?'rgba(0,184,148,.15)':menu.quality==='warn'?"rgba(214,63,49,.1)":"var(--bg2)"};color:${menu.quality==='good'?'var(--gn)':menu.quality==='warn'?"var(--rd)":"var(--tx2)"};">${menu.quality==='good'?'✅ Équilibré':menu.quality==='warn'?"⚠️ À améliorer":"📋 Planifié"}</span>` : ''}
-    </div>
+  var slotsHtml = '';
+  SLOTS.forEach(function(sc) {
+    const val = menu[sc.key];
+    const md  = menu[sc.key+'Data'];
+    if(!val) {
+      if(sc.key==='snack') {
+        slotsHtml += '<div class="dd-slot empty" onclick="openMealEdit(' + selectedDay + ',\'' + sc.key + '\')">'
+          + '<div class="dd-slot-thumb" style="background:linear-gradient(' + sc.grad + ');opacity:.5;">' + sc.icon + '</div>'
+          + '<div class="dd-slot-body"><div class="dd-slot-type">' + sc.label + '</div><div class="dd-slot-name" style="color:var(--tx3);font-style:italic;font-weight:600;">+ Ajouter une collation</div></div>'
+          + '</div>';
+      } else {
+        slotsHtml += '<div class="dd-slot empty" onclick="openMealEdit(' + selectedDay + ',\'' + sc.key + '\')">'
+          + '<div class="dd-slot-thumb" style="background:linear-gradient(' + sc.grad + ');opacity:.4;">' + sc.icon + '</div>'
+          + '<div class="dd-slot-body"><div class="dd-slot-type">' + sc.label + '</div><div class="dd-slot-name" style="color:var(--tx3);font-style:italic;font-weight:600;">Non planifié — appuyer pour saisir</div></div>'
+          + '<div class="dd-slot-action">+</div>'
+          + '</div>';
+      }
+    } else {
+      const bits = [];
+      if(md && md.kcal) bits.push('<span style="color:var(--or);">🔥 ' + md.kcal + ' kcal</span>');
+      if(md && md.time) bits.push('<span style="color:var(--tx3);">⏱ ' + md.time + 'min</span>');
+      if(md && md.prot) bits.push('<span style="color:#3498db;">💪 ' + md.prot + 'g</span>');
+      var thumb = (md && md.photo)
+        ? '<img src="' + md.photo + '" style="width:58px;height:58px;object-fit:cover;" onerror="this.style.display=\'none\'">'
+        : '<div class="dd-slot-thumb" style="background:linear-gradient(' + sc.grad + ');">' + sc.icon + '</div>';
+      var delBtn = sc.key==='snack'
+        ? '<div class="dd-slot-action" onclick="event.stopPropagation();deleteSnackFromDay(' + selectedDay + ')" style="color:var(--rd);">🗑️</div>'
+        : '<div class="dd-slot-action">✏️</div>';
+      slotsHtml += '<div class="dd-slot filled" onclick="openMealEdit(' + selectedDay + ',\'' + sc.key + '\')">'
+        + thumb
+        + '<div class="dd-slot-body">'
+        + '<div class="dd-slot-type">' + sc.label + '</div>'
+        + '<div class="dd-slot-name">' + val + '</div>'
+        + (bits.length ? '<div class="dd-slot-meta">' + bits.join('') + '</div>' : '')
+        + '</div>'
+        + delBtn
+        + '</div>';
+    }
+  });
 
-    ${calTarget ? `<div class="meal-card-sub" style="margin-bottom:8px;">🎯 Objectif: ${calTarget} kcal</div>
-    <div class="cal-bar-wrap" style="margin-bottom:12px;">
-      <div style="display:flex;justify-content:space-between;font-size:.65rem;color:var(--tx2);margin-bottom:3px;">
-        <span>${displayKcal ? displayKcal+' kcal planifiées'+(realNutri&&!realNutri.fromAI?' ✓':' ~') : 'Aucune donnée calorique'}</span>
-        <span>${pctKcal ? pctKcal+'%' : ''}</span>
-      </div>
-      <div class="cal-bar-track"><div class="cal-bar-fill" style="width:${pctKcal}%;background:${barColor};"></div></div>
-    </div>` : ''}
+  // Bilan nutritionnel
+  var nutriHtml = '';
+  if(n && n.kcal) {
+    const src = n.fromAI ? ' <span style="font-size:.52rem;color:var(--tx3);">(estimation IA)</span>' : '';
+    nutriHtml = '<div class="dd-nutri">'
+      + '<div class="dd-nutri-title">📊 Bilan du jour' + src + '</div>'
+      + '<div class="dd-nutri-grid">'
+      + '<div class="dd-nutri-item"><div class="dd-nutri-val" style="color:var(--ac);">' + Math.round(n.kcal) + '</div><div class="dd-nutri-lbl">kcal</div></div>'
+      + (n.prot ? '<div class="dd-nutri-item"><div class="dd-nutri-val" style="color:#3498db;">' + Math.round(n.prot) + 'g</div><div class="dd-nutri-lbl">protéines</div></div>' : '')
+      + (n.carb ? '<div class="dd-nutri-item"><div class="dd-nutri-val" style="color:#f39c12;">' + Math.round(n.carb) + 'g</div><div class="dd-nutri-lbl">glucides</div></div>' : '')
+      + (n.fat  ? '<div class="dd-nutri-item"><div class="dd-nutri-val" style="color:#27ae60;">' + Math.round(n.fat) + 'g</div><div class="dd-nutri-lbl">lipides</div></div>' : '')
+      + '</div></div>';
+  }
 
-    ${SLOT_CFG.map(sc => {
-      const val = menu[sc.key];
-      const isSet = !!val;
-      if(sc.key==='snack' && !isSet) return `
-        <div class="meal-slot" onclick="openMealEdit(${selectedDay},'snack')" style="border:1.5px dashed var(--bg2);background:transparent;">
-          <div style="display:flex;align-items:center;gap:10px;flex:1;">
-            <div style="width:34px;height:34px;border-radius:10px;background:linear-gradient(${sc.grad});display:flex;align-items:center;justify-content:center;font-size:1rem;flex-shrink:0;">${sc.icon}</div>
-            <div style="flex:1;min-width:0;">
-              <div class="meal-slot-type">${sc.label}</div>
-              <div class="meal-slot-name" style="color:var(--tx3);font-style:italic;">+ Ajouter une collation</div>
-            </div>
-          </div>
-        </div>`;
-      if(!isSet) return `
-        <div class="meal-slot" onclick="openMealEdit(${selectedDay},'${sc.key}')" style="border:1.5px dashed var(--bg2);background:transparent;">
-          <div style="display:flex;align-items:center;gap:10px;flex:1;">
-            <div style="width:34px;height:34px;border-radius:10px;background:linear-gradient(${sc.grad});display:flex;align-items:center;justify-content:center;font-size:1rem;flex-shrink:0;">${sc.icon}</div>
-            <div style="flex:1;min-width:0;">
-              <div class="meal-slot-type">${sc.label}</div>
-              <div class="meal-slot-name" style="color:var(--tx3);font-style:italic;">Non planifié — cliquer pour saisir</div>
-            </div>
-          </div>
-          <span style="font-size:.65rem;color:var(--tx3);">+</span>
-        </div>`;
-      return `
-        <div class="meal-slot" onclick="openMealEdit(${selectedDay},'${sc.key}')" style="border-left:3px solid var(--ac);padding:0;overflow:hidden;">
-          <div style="display:flex;align-items:stretch;width:100%;">
-            ${(()=>{ const md=menu[sc.key+'Data']; return md?.photo?`<img src="${md.photo}" style="width:56px;height:56px;object-fit:cover;flex-shrink:0;" onerror="this.style.display='none'">`:
-              `<div style="width:56px;height:56px;background:linear-gradient(${sc.grad});display:flex;align-items:center;justify-content:center;font-size:1.2rem;flex-shrink:0;">${sc.icon}</div>`;})()}
-            <div style="flex:1;min-width:0;padding:8px 10px;">
-              <div class="meal-slot-type" style="font-size:.6rem;">${sc.label}</div>
-              <div class="meal-slot-name" style="font-size:.78rem;">${val}</div>
-              ${(()=>{
-                const md = menu[sc.key+'Data'];
-                const bits = [];
-                if(md?.kcal) bits.push('🔥 '+md.kcal);
-                if(md?.time) bits.push('⏱️ '+md.time+'min');
-                if(md?.prot) bits.push('💪 '+md.prot+'g');
-                return bits.length ? '<div style="font-size:.6rem;color:var(--ac);margin-top:2px;font-weight:700;">'+bits.join(' · ')+'</div>' : '';
-              })()}
-            </div>
-            <div style="display:flex;align-items:center;gap:4px;padding:0 8px;flex-shrink:0;">
-              ${sc.key==='snack' ? `<span onclick="event.stopPropagation();deleteSnackFromDay(${selectedDay})" style="font-size:.75rem;color:var(--rd);cursor:pointer;" title="Supprimer">🗑️</span>` : '<span style="font-size:.65rem;color:var(--tx3);">✏️</span>'}
-            </div>
-          </div>
-        </div>`;
-    }).join('')}
-
-    ${_renderDayNutri(nutri, menu)}
-    ${menu.tip ? `<div style="font-size:.72rem;color:var(--ac);margin-top:8px;line-height:1.5;">💡 ${menu.tip}</div>` : ''}
-
-    <div style="display:flex;gap:7px;margin-top:12px;">
-      <button class="btn sm" style="flex:1;" onclick="regenDayAI(${selectedDay})">🤖 Régénérer</button>
-      <button class="btn sm" style="flex:1;color:var(--gn);" onclick="addDayIngredients(${selectedDay})">🛒 Ingrédients</button>
-      <button class="btn sm" style="flex:1;" onclick="openMenuHistoryModal()" title="Historique">📅</button>
-      <button class="btn sm" style="color:var(--rd);" onclick="clearDayMenu(${selectedDay})">🗑</button>
-    </div>
-  </div>`;
+  detail.innerHTML = '<div class="dd-card">'
+    // Header
+    + '<div class="dd-header">'
+    + '<div class="dd-header-top">'
+    + '<div class="dd-title">' + dayName + (isToday ? ' <span style="font-size:.62rem;color:var(--ac);font-weight:700;">Aujourd\'hui</span>' : '') + '</div>'
+    + (menu.quality ? '<span class="dd-badge" style="background:' + qualBg + ';color:' + qualCol + ';">' + qualLabel + '</span>' : '')
+    + '</div>'
+    + (calTarget && displayKcal ? '<div class="dd-kcal-bar">'
+      + '<div class="dd-kcal-row"><span class="dd-kcal-label">' + displayKcal + ' kcal planifiées' + (n&&!n.fromAI?' ✓':' ~') + '</span><span class="dd-kcal-val" style="color:' + barCol + ';">' + pctKcal + '%</span></div>'
+      + '<div class="dd-bar"><div class="dd-bar-fill" style="width:' + pctKcal + '%;background:' + barCol + ';"></div></div>'
+      + '</div>' : (calTarget ? '<div style="font-size:.65rem;color:var(--tx3);margin-top:4px;">Objectif : ' + calTarget + ' kcal/jour</div>' : ''))
+    + '</div>'
+    // Meals
+    + '<div class="dd-meals">' + slotsHtml + '</div>'
+    // Nutri
+    + nutriHtml
+    // Tip
+    + (menu.tip ? '<div class="dd-tip">💡 ' + menu.tip + '</div>' : '')
+    // Actions
+    + '<div class="dd-actions">'
+    + '<button class="dd-action-btn accent" onclick="regenDayAI(' + selectedDay + ')">🤖 Régénérer</button>'
+    + '<button class="dd-action-btn" onclick="addDayIngredients(' + selectedDay + ')">🛒 Courses</button>'
+    + '<button class="dd-action-btn" onclick="openMenuHistoryModal()">📅 Historique</button>'
+    + '<button class="dd-action-btn danger" onclick="clearDayMenu(' + selectedDay + ')">🗑️</button>'
+    + '</div>'
+    + '</div>';
 }
 
 
 function applyAIMenuResult(data) {
   if(!data.days) return;
-  data.days.forEach((d,i)=>{
+  data.days.forEach(function(d,i){
     const dn=i+1;
-    const fmt = m => m ? {
-      name:(m.emoji||'🍽️')+' '+(m.name||''),
-      kcal:m.kcal||0, prot:m.prot||0, carb:m.carb||0, fat:m.fat||0,
-      time:m.prepTime||m.time||null, notes:m.notes||''
-    } : null;
+    function fmt(m){ return m ? {name:(m.emoji||'🍽️')+' '+(m.name||''),kcal:m.kcal||0,prot:m.prot||0,carb:m.carb||0,fat:m.fat||0,time:m.prepTime||m.time||null,notes:m.notes||''} : null; }
     state.weekMenu[dn]={
       b:(d.breakfast?.emoji||'🍽️')+' '+(d.breakfast?.name||''),
       l:(d.lunch?.emoji||'🍽️')+' '+(d.lunch?.name||''),
       d:(d.dinner?.emoji||'🍽️')+' '+(d.dinner?.name||''),
       snack:d.snack?(d.snack.emoji||'🍎')+' '+(d.snack.name||''):null,
-      bData:fmt(d.breakfast), lData:fmt(d.lunch),
-      dData:fmt(d.dinner),    snackData:d.snack?fmt(d.snack):null,
+      bData:fmt(d.breakfast),lData:fmt(d.lunch),
+      dData:fmt(d.dinner),snackData:d.snack?fmt(d.snack):null,
       nutri:{
         kcal:d.total_kcal||((d.breakfast?.kcal||0)+(d.lunch?.kcal||0)+(d.dinner?.kcal||0)+(d.snack?.kcal||0)),
-        prot:d.prot||0, carb:d.carb||0, fat:d.fat||0
+        prot:d.prot||0,carb:d.carb||0,fat:d.fat||0
       },
-      quality:d.quality||'ok', tip:d.tip||'', raw:d,
+      quality:d.quality||'ok',tip:d.tip||'',raw:d,
     };
   });
   saveWeekMenu();
   renderWeek();
   renderDayDetail();
-  const zone=document.getElementById('aiMenuResultZone');
-  if(zone) {
-    zone.innerHTML=`<div class="ai-menu-result">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
-        <span style="font-size:1.2rem;">🤖</span>
-        <div><div style="font-weight:900;font-size:.9rem;">Menu IA généré ✅</div>
-        <div style="font-size:.72rem;color:var(--tx2);">${data.summary||'7 jours personnalisés'} · ~${data.avg_kcal||'?'} kcal/j moy.</div></div>
-      </div>
-      ${data.days.slice(0,3).map(d=>`
-        <div class="ai-menu-day">
-          <div class="ai-menu-day-title">📅 ${d.day} <span style="font-size:.65rem;font-weight:700;color:${d.quality==='good'?'var(--gn)':d.quality==='warn'?"var(--yl)":"var(--bl)"};">● ${d.total_kcal||'?'} kcal</span></div>
-          <div class="ai-meal-row"><span class="ai-meal-label">Matin</span><span class="ai-meal-content">${d.breakfast?.emoji||''} ${d.breakfast?.name||''}${d.breakfast?.kcal?' <span style="color:var(--tx3);font-size:.62rem;">('+d.breakfast.kcal+' kcal)</span>':''}</span></div>
-          <div class="ai-meal-row"><span class="ai-meal-label">Midi</span><span class="ai-meal-content">${d.lunch?.emoji||''} ${d.lunch?.name||''}${d.lunch?.kcal?' <span style="color:var(--tx3);font-size:.62rem;">('+d.lunch.kcal+' kcal)</span>':''}</span></div>
-          <div class="ai-meal-row"><span class="ai-meal-label">Soir</span><span class="ai-meal-content">${d.dinner?.emoji||''} ${d.dinner?.name||''}${d.dinner?.kcal?' <span style="color:var(--tx3);font-size:.62rem;">('+d.dinner.kcal+' kcal)</span>':''}</span></div>
-          ${d.tip?`<div style="font-size:.68rem;color:var(--ac);margin-top:4px;">💡 ${d.tip}</div>`:''}
-        </div>`).join('')}
-      <div style="text-align:center;font-size:.72rem;color:var(--tx2);padding-top:6px;">↓ Voir les 7 jours dans le calendrier</div>
-    </div>`;
-  }
+
+  const zone = document.getElementById('aiMenuResultZone');
+  if(!zone) return;
+
+  const colGood='rgba(46,204,113,.12)', colWarn='rgba(243,156,18,.12)', colNeutral='var(--bg2)';
+  const textGood='var(--gn)', textWarn='#c0891a', textNeutral='var(--tx2)';
+
+  const daysHtml = data.days.slice(0,3).map(function(d){
+    const qBg  = d.quality==='good' ? colGood  : d.quality==='warn' ? colWarn  : colNeutral;
+    const qCol = d.quality==='good' ? textGood : d.quality==='warn' ? textWarn : textNeutral;
+    const kcalCol = d.total_kcal > 2200 ? '#e74c3c' : d.total_kcal > 1600 ? '#2ecc71' : '#f39c12';
+    return '<div class="wk-ai-day">'
+      + '<div class="wk-ai-day-head">'
+      + '<span class="wk-ai-day-name">📅 '+d.day+'</span>'
+      + '<span class="wk-ai-day-kcal" style="background:'+qBg+';color:'+qCol+';">'+(d.total_kcal||'?')+' kcal</span>'
+      + '</div>'
+      + ['b','l','d'].map(function(k){ const lbl={b:'Matin',l:'Midi',d:'Soir'}[k]; const meal={b:d.breakfast,l:d.lunch,d:d.dinner}[k]; if(!meal)return''; return '<div class="wk-ai-meal"><span class="wk-ai-meal-lbl">'+lbl+'</span><span class="wk-ai-meal-name">'+(meal.emoji||'')+' '+meal.name+'</span>'+(meal.kcal?'<span class="wk-ai-meal-kcal">'+meal.kcal+'</span>':'')+'</div>'; }).join('')
+      + (d.tip ? '<div style="font-size:.65rem;color:var(--ac);margin-top:5px;font-style:italic;">💡 '+d.tip+'</div>' : '')
+      + '</div>';
+  }).join('');
+
+  zone.innerHTML = '<div class="wk-ai-result">'
+    + '<div class="wk-ai-result-head">'
+    + '<div class="wk-ai-result-icon">🤖</div>'
+    + '<div><div style="font-weight:900;font-size:.9rem;">Menu IA généré ✅</div>'
+    + '<div style="font-size:.7rem;color:var(--tx2);">'+(data.summary||'7 jours personnalisés')+' · ~'+(data.avg_kcal||'?')+' kcal/j moy.</div></div>'
+    + '</div>'
+    + daysHtml
+    + '<div style="text-align:center;font-size:.7rem;color:var(--tx3);margin-top:8px;padding-top:8px;border-top:1px solid var(--bg2);">Voir les 7 jours dans le calendrier ↑</div>'
+    + '</div>';
+
   showToast('✨','Menu IA généré !','7 jours personnalisés et équilibrés');
 }
 

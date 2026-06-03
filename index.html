@@ -273,17 +273,17 @@
 
 /* ══ THÈME OCÉAN — Profond (sombre bleu nuit) ══ */
 [data-theme=ocean]{
---bg:#030d1a;--bg2:#081828;--bg3:#051022;
---so:6px 6px 20px rgba(0,0,0,.7),-3px -3px 10px rgba(0,120,255,.06);
---si:inset 4px 4px 12px rgba(0,0,0,.6),inset -4px -4px 10px rgba(0,100,200,.05);
---ss:inset 2px 2px 6px rgba(0,0,0,.55),inset -2px -2px 6px rgba(0,80,160,.04);
---sf:10px 10px 28px rgba(0,0,0,.7),-5px -5px 14px rgba(0,100,200,.06);
---sp:inset 3px 3px 10px rgba(0,0,0,.65),inset -3px -3px 8px rgba(0,80,160,.05);
---tx:#c8e8ff;--tx2:#5a9fd4;--tx3:#1a3a5a;
---ac:#38bdf8;--ac2:#0ea5e9;--tl:#06b6d4;--gn:#10b981;--or:#f59e0b;--rd:#ef4444;--yl:#fbbf24;--pk:#ec4899;--lv:#8b5cf6;--bl:#38bdf8;
---grad:linear-gradient(135deg,#0369a1,#38bdf8);
---grad2:linear-gradient(135deg,#06b6d4,#0369a1);
---grad3:linear-gradient(135deg,#10b981,#06b6d4);
+--bg:#f0f9ff;--bg2:#e0f2fe;--bg3:#bae6fd;
+--so:0 2px 12px rgba(3,105,161,.10),0 1px 4px rgba(3,105,161,.06);
+--si:inset 0 2px 6px rgba(3,105,161,.08);
+--ss:inset 0 1px 3px rgba(3,105,161,.07);
+--sf:0 8px 24px rgba(3,105,161,.15);
+--sp:inset 0 2px 8px rgba(3,105,161,.10);
+--tx:#0c4a6e;--tx2:#0369a1;--tx3:#7dd3fc;
+--ac:#0284c7;--ac2:#0369a1;--tl:#0891b2;--gn:#059669;--or:#d97706;--rd:#dc2626;--yl:#d97706;--pk:#db2777;--lv:#7c3aed;--bl:#0284c7;
+--grad:linear-gradient(135deg,#0369a1,#0284c7);
+--grad2:linear-gradient(135deg,#0891b2,#0369a1);
+--grad3:linear-gradient(135deg,#059669,#0891b2);
 }
 [data-theme=ocean] .tab svg{color:var(--tx3);}
 [data-theme=ocean] .tab.on svg{color:var(--ac);}
@@ -1298,6 +1298,7 @@ body.offline-mode .offline-banner{display:block;}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.19.1/umd/index.min.js"></script>
+<script src="ingredients.js"></script>
 </head>
 <body>
 
@@ -2534,7 +2535,7 @@ async function saveWeekMenu() {
   saveCurrentWeekToHistory();
   saveState();
   syncToFirestore('weekMenu', state.weekMenu).catch(function(){});
-  if(window._menuTab === 'nutri') setTimeout(renderNutriPanel, 100);
+  if(window._menuTab === 'nutri') setTimeout(function(){ if(typeof sc_nutri_render==='function') sc_nutri_render(); }, 100);
   else renderWeek && renderWeek();
 }
 async function saveProfile() {
@@ -2560,6 +2561,10 @@ async function saveProfile() {
   updateMenuProfileCard();
   renderList();
   showToast('✅', 'Profil sauvegardé', '');
+  // Refresh nutrition if open
+  if(window._menuTab === 'nutri' && typeof sc_nutri_render === 'function') {
+    setTimeout(sc_nutri_render, 150);
+  }
   closeProfile();
 }
 
@@ -2567,12 +2572,22 @@ async function loadUserProfile() {
   if(!db || !currentUser) return;
   try {
     const doc = await db.collection('users').doc(currentUser.uid).get();
-    if(doc.exists && doc.data().profile) {
-      state.profile = {...state.profile, ...doc.data().profile};
+    if(!doc.exists) return;
+    const d = doc.data();
+    if(d.profile) {
+      state.profile = {...state.profile, ...d.profile};
       saveState();
       updateMenuProfileCard();
     }
-  } catch(e) {}
+    // Restore houseId if user is member of a household
+    if(d.houseId && !state.houseId) {
+      state.houseId = d.houseId;
+      state.houseCode = d.houseCode || state.houseCode;
+      saveState();
+      subscribeToHousehold();
+      updateFoyerUI();
+    }
+  } catch(e) { console.warn('loadUserProfile error:', e); }
 }
 
 // ═══════════════════════════════════════════════
@@ -3772,8 +3787,15 @@ let acTimeout;
 function onSearchInput(val) {
   clearTimeout(acTimeout);
   if(!val.trim()) { document.getElementById('acList').style.display = 'none'; return; }
-  acTimeout = setTimeout(() => {
-    const matches = PRODUCTS.filter(p => p.name.toLowerCase().includes(val.toLowerCase())).slice(0,8);
+  acTimeout = setTimeout(function() {
+    // Try PRODUCTS (existing) + INGREDIENTS_DB (new)
+    var matches = (PRODUCTS||[]).filter(function(p){ return p.name.toLowerCase().includes(val.toLowerCase()); }).slice(0,6);
+    if(matches.length < 6 && window.INGREDIENTS_DB) {
+      var ingMatches = searchIngredients(val, 6).filter(function(r){
+        return !matches.some(function(m){ return m.name.toLowerCase() === r.name.toLowerCase(); });
+      });
+      matches = matches.concat(ingMatches.slice(0, 8 - matches.length));
+    }
     showAC('acList', 'addInput', matches);
   }, 150);
 }
@@ -3879,10 +3901,38 @@ function saveEdit() {
 // ═══════════════════════════════════════════════
 function onFridgeSearchInput(val) {
   clearTimeout(acTimeout);
-  if(!val.trim()) { document.getElementById('acFridgeList').style.display = 'none'; return; }
-  acTimeout = setTimeout(() => {
-    const matches = PRODUCTS.filter(p => p.name.toLowerCase().includes(val.toLowerCase())).slice(0,8);
-    showAC('acFridgeList', 'fridgeInput', matches);
+  const ac = document.getElementById('acFridgeList');
+  if(!val || !val.trim()) { if(ac) ac.style.display='none'; return; }
+  acTimeout = setTimeout(function() {
+    // INGREDIENTS_DB first
+    if(window.INGREDIENTS_DB && ac) {
+      const results = searchIngredients(val.trim(), 8);
+      if(results.length) {
+        ac.style.display = 'block';
+        ac.innerHTML = results.map(function(r){
+          return '<div onclick="document.getElementById(\'fridgeInput\').value=\''+r.name.replace(/'/g,"\\'")+'\';"
+            +"document.getElementById('acFridgeList').style.display='none';addFridgeItem();"
+            +'" style="padding:8px 12px;cursor:pointer;display:flex;align-items:center;gap:8px;font-size:.8rem;border-bottom:1px solid var(--bg2);">'
+            +'<span>'+r.emoji+'</span>'
+            +'<span style="flex:1;font-weight:700;">'+r.name+'</span>'
+            +'<span style="font-size:.6rem;color:var(--tx3);">'+r.kcal+'kcal</span></div>';
+        }).join('');
+        return;
+      }
+    }
+    // Fallback: ALIMENTS_AC if available
+    if(typeof ALIMENTS_AC !== 'undefined') {
+      const q = val.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+      const matches = ALIMENTS_AC.filter(function(a){
+        return a.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').includes(q);
+      }).slice(0,8);
+      if(ac && matches.length) {
+        ac.style.display='block';
+        ac.innerHTML = matches.map(function(a){
+          return '<div onclick="document.getElementById(\'fridgeInput\').value=\''+a+'\';document.getElementById(\'acFridgeList\').style.display=\'none\';addFridgeItem();" style="padding:8px 12px;cursor:pointer;font-size:.8rem;border-bottom:1px solid var(--bg2);">'+a+'</div>';
+        }).join('');
+      }
+    }
   }, 150);
 }
 
@@ -5369,50 +5419,114 @@ Réponds UNIQUEMENT en JSON: {"recipes":[{"name":"Nom recette","emoji":"🍽️"
 
 function translateQueryToEnglish(query) {
   if(!query) return query;
-  const frToEn = {
-    'poulet':'chicken','boeuf':'beef','veau':'veal','agneau':'lamb',
-    'porc':'pork','dinde':'turkey','canard':'duck','lapin':'rabbit',
-    'saumon':'salmon','thon':'tuna','cabillaud':'cod','crevettes':'shrimp',
-    'moules':'mussels','saint-jacques':'scallops',
-    'pâtes':'pasta','riz':'rice','pain':'bread','farine':'flour',
-    'pomme de terre':'potato','patate douce':'sweet potato',
-    'tomate':'tomato','carotte':'carrot','courgette':'zucchini',
-    'aubergine':'eggplant','oignon':'onion','ail':'garlic',
-    'épinards':'spinach','brocolis':'broccoli','chou-fleur':'cauliflower',
-    'champignon':'mushroom','poivron':'pepper','concombre':'cucumber',
-    'salade':'salad','soupe':'soup','gratin':'gratin','tarte':'tart',
-    'rôti':'roast','grillé':'grilled','sauté':'sauteed','vapeur':'steamed',
-    'végétarien':'vegetarian','vegan':'vegan','sans gluten':'gluten free',
-    'poisson':'fish','viande':'meat','légumes':'vegetables','fruits':'fruits',
-    'rapide':'quick','facile':'easy','sain':'healthy','maison':'homemade',
-    'chocolat':'chocolate','fromage':'cheese','beurre':'butter','crème':'cream',
-    'quinoa':'quinoa','lentilles':'lentils','pois chiches':'chickpeas',
-    'avocats':'avocado','banane':'banana','pomme':'apple','citron':'lemon',
-    'curry':'curry','tajine':'tagine','risotto':'risotto','paella':'paella',
-    'quiche':'quiche','crêpe':'crepe','mousse':'mousse','gâteau':'cake',
-    'soupe de légumes':'vegetable soup','poulet rôti':'roasted chicken',
-    'steak':'steak','escalope':'escalope','filet':'fillet',
-    'lasagne':'lasagna','lasagnes':'lasagna','gratin dauphinois':'gratin',
-    'boeuf bourguignon':'beef bourguignon','blanquette':'white stew',
-    'cassoulet':'cassoulet','ratatouille':'ratatouille',
-    'tartiflette':'tartiflette','raclette':'raclette',
-    'clafoutis':'clafoutis','tarte tatin':'tarte tatin',
-    'croissant':'croissant','brioche':'brioche','baguette':'bread',
-    'velouté':'soup','bourride':'fish stew','daube':'beef stew',
-    'gigot':'lamb leg','côtelette':'chop','magret':'duck breast',
-    'cabillaud':'cod fish','lotte':'monkfish','daurade':'sea bream',
-    'endive':'endive','poireau':'leek','navet':'turnip','artichaut':'artichoke',
-    'fraise':'strawberry','framboise':'raspberry','abricot':'apricot',
-    'cerise':'cherry','poire':'pear','pêche':'peach','prune':'plum',
-  };
-  // If no translation found, keep original (some French names work in English)
-  let translated = query.toLowerCase();
-  const entries = Object.entries(frToEn).sort((a,b) => b[0].length - a[0].length);
-  entries.forEach(([fr, en]) => {
-    const regex = new RegExp('\\b' + fr.replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + '\\b','gi');
-    translated = translated.replace(regex, en);
-  });
-  return translated.charAt(0).toUpperCase() + translated.slice(1);
+  function norm(s){ return s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim(); }
+  var nq = norm(query);
+
+  // Full dish names first (longest match priority)
+  var dishes = [
+    ['salade nicoise','nicoise salad'],['salade niçoise','nicoise salad'],
+    ['salade cesar','caesar salad'],['salade césar','caesar salad'],
+    ['salade lyonnaise','lyonnaise salad'],['salade composee','mixed salad'],
+    ['boeuf bourguignon','beef bourguignon'],['boeuf en daube','beef stew'],
+    ['poulet basquaise','basque chicken'],['poulet roti','roast chicken'],
+    ['poulet au citron','lemon chicken'],['poulet a la creme','chicken cream'],
+    ['coq au vin','coq au vin'],['pot au feu','pot au feu'],
+    ['blanquette de veau','veal blanquette'],['blanquette','white stew'],
+    ['gratin dauphinois','gratin dauphinois'],['gratin de courgettes','zucchini gratin'],
+    ['tarte tatin','tarte tatin'],['tarte aux pommes','apple tart'],
+    ['tarte flambee','flammekueche'],['tarte au citron','lemon tart'],
+    ['soupe a l oignon','french onion soup'],['soupe de legumes','vegetable soup'],
+    ['veloute de butternut','butternut soup'],['veloute de courge','squash soup'],
+    ['quiche lorraine','quiche lorraine'],['quiche','quiche'],
+    ['croque monsieur','croque monsieur'],['pain perdu','french toast'],
+    ['oeufs cocotte','baked eggs'],['oeuf mollet','soft boiled egg'],
+    ['magret de canard','duck breast'],['confit de canard','duck confit'],
+    ['filet de boeuf','beef tenderloin'],['cotes de porc','pork chops'],
+    ['saumon en papillote','salmon en papillote'],['saumon roti','roasted salmon'],
+    ['moules frites','mussels and fries'],['bouillabaisse','bouillabaisse'],
+    ['ratatouille','ratatouille'],['cassoulet','cassoulet'],
+    ['tartiflette','tartiflette'],['raclette','raclette'],
+    ['fondue savoyarde','cheese fondue'],
+    ['pates carbonara','pasta carbonara'],['pates bolognaise','pasta bolognese'],
+    ['spaghetti bolognaise','spaghetti bolognese'],['spaghetti','spaghetti'],
+    ['risotto aux champignons','mushroom risotto'],['risotto de la mer','seafood risotto'],
+    ['risotto','risotto'],['paella','paella'],
+    ['curry de poulet','chicken curry'],['curry de legumes','vegetable curry'],
+    ['tajine de poulet','chicken tagine'],['tajine d agneau','lamb tagine'],
+    ['tajine','tagine'],['couscous royal','royal couscous'],['couscous','couscous'],
+    ['gazpacho','gazpacho'],['tiramisu','tiramisu'],
+    ['mousse au chocolat','chocolate mousse'],
+    ['fondant au chocolat','chocolate lava cake'],
+    ['gateau au chocolat','chocolate cake'],
+    ['crepes suzette','crepes suzette'],['creme brulee','creme brulee'],
+    ['ile flottante','floating island'],
+    ['granola maison','homemade granola'],['smoothie bowl','smoothie bowl'],
+    ['buddha bowl','buddha bowl'],['bowl de quinoa','quinoa bowl'],
+    ['wrap au poulet','chicken wrap'],['bowl proteine','protein bowl'],
+  ];
+
+  // Check full dish match first
+  for(var di=0; di<dishes.length; di++){
+    var nfr = norm(dishes[di][0]);
+    if(nq === nfr || nq.indexOf(nfr) !== -1){
+      nq = nq.replace(nfr, dishes[di][1]);
+    }
+  }
+
+  // Word-by-word translations
+  var words = [
+    ['poulet','chicken'],['boeuf','beef'],['veau','veal'],['agneau','lamb'],
+    ['porc','pork'],['dinde','turkey'],['canard','duck'],['lapin','rabbit'],
+    ['saumon','salmon'],['thon','tuna'],['cabillaud','cod'],['crevettes','shrimp'],
+    ['crevette','shrimp'],['moules','mussels'],['saint-jacques','scallops'],
+    ['daurade','sea bream'],['lotte','monkfish'],['truite','trout'],
+    ['sardines','sardines'],['fruits de mer','seafood'],['poisson','fish'],
+    ['pates','pasta'],['riz','rice'],['pain','bread'],['farine','flour'],
+    ['pommes de terre','potatoes'],['pomme de terre','potato'],
+    ['patate douce','sweet potato'],['quinoa','quinoa'],
+    ['lentilles','lentils'],['pois chiches','chickpeas'],['haricots','beans'],
+    ['tomates','tomatoes'],['tomate','tomato'],['carottes','carrots'],
+    ['carotte','carrot'],['courgettes','zucchini'],['courgette','zucchini'],
+    ['aubergine','eggplant'],['oignons','onions'],['oignon','onion'],
+    ['ail','garlic'],['echalotes','shallots'],['echalote','shallot'],
+    ['epinards','spinach'],['brocolis','broccoli'],['brocoli','broccoli'],
+    ['chou-fleur','cauliflower'],['champignons','mushrooms'],['champignon','mushroom'],
+    ['poivrons','peppers'],['poivron','pepper'],['concombre','cucumber'],
+    ['poireaux','leeks'],['poireau','leek'],['navet','turnip'],
+    ['artichaut','artichoke'],['mais','corn'],['petits pois','peas'],
+    ['haricots verts','green beans'],['asperges','asparagus'],['celeri','celery'],
+    ['pomme','apple'],['banane','banana'],['citron','lemon'],['orange','orange'],
+    ['fraises','strawberries'],['fraise','strawberry'],['framboise','raspberry'],
+    ['abricot','apricot'],['cerises','cherries'],['cerise','cherry'],
+    ['poire','pear'],['peche','peach'],['prune','plum'],['melon','melon'],
+    ['avocats','avocado'],['avocat','avocado'],
+    ['fromage','cheese'],['beurre','butter'],['creme','cream'],
+    ['lait','milk'],['yaourt','yogurt'],['oeufs','eggs'],['oeuf','egg'],
+    ['roti','roast'],['grille','grilled'],['saute','sauteed'],
+    ['vapeur','steamed'],['frits','fried'],['au four','baked'],
+    ['mijote','slow cooked'],['chocolat','chocolate'],['sucre','sugar'],
+    ['vanille','vanilla'],['cannelle','cinnamon'],['miel','honey'],
+    ['huile','oil'],['vinaigre','vinegar'],['moutarde','mustard'],
+    ['salade','salad'],['soupe','soup'],['gratin','gratin'],['tarte','tart'],
+    ['gateau','cake'],['mousse','mousse'],['crepes','crepes'],['crepe','crepe'],
+    ['vegetarien','vegetarian'],['vegan','vegan'],['sans gluten','gluten free'],
+    ['viande','meat'],['legumes','vegetables'],['rapide','quick'],
+    ['facile','easy'],['sain','healthy'],['maison','homemade'],
+    ['leger','light'],['epice','spicy'],['simple','simple'],
+    ['porridge','porridge'],['granola','granola'],['brioche','brioche'],
+    ['croissant','croissant'],['tartine','toast'],
+    ['steak','steak'],['escalope','escalope'],['filet','fillet'],
+    ['gigot','leg of lamb'],['cotes','chops'],['magret','duck breast'],
+    ['filet','fillet'],['rillettes','rillettes'],['foie gras','foie gras'],
+  ];
+
+  for(var wi=0; wi<words.length; wi++){
+    var nfr2 = norm(words[wi][0]);
+    var re = new RegExp('(^|[\\s,])' + nfr2.replace(/[-]/g,'\\-') + '([\\s,]|$)', 'g');
+    nq = nq.replace(re, '$1' + words[wi][1] + '$2');
+  }
+
+  return nq.trim().charAt(0).toUpperCase() + nq.trim().slice(1);
 }
 
 
@@ -8802,26 +8916,27 @@ function openCreateRecipeModal(editRecipe) {
 
 // ── Création recette : helpers ──────────────────────────────
 function crHandlePhoto(input) {
-  const file = input.files[0];
-  if(!file) return;
-  // Validate: max 5MB
-  if(file.size > 5 * 1024 * 1024) { showToast('⚠️', 'Image trop lourde', 'Maximum 5 Mo'); return; }
-  const reader = new FileReader();
-  reader.onload = e => {
+  const file=input.files[0]; if(!file) return;
+  if(file.size > 5*1024*1024){ showToast('⚠️','Image trop lourde','Maximum 5 Mo'); return; }
+  const reader=new FileReader();
+  reader.onload=function(e){
     window._crPhotoData = e.target.result;
-    // Update preview (works for both id variants)
-    const prev = document.getElementById('crPhotoPreview');
-    if(prev) {
-      prev.style.border = 'none';
-      prev.style.fontSize = '0';
-      prev.innerHTML = '<img src="'+e.target.result+'" style="width:100%;height:100%;object-fit:cover;border-radius:calc(var(--rs) - 2px);">';
+    if(window._crState) window._crState.photo = e.target.result;
+    // Preview variant A (new modal)
+    const prev=document.getElementById('crPhotoPreview');
+    if(prev && prev.tagName !== 'IMG'){
+      prev.style.border='none'; prev.style.fontSize='0';
+      prev.innerHTML='<img src="'+e.target.result+'" style="width:100%;height:100%;object-fit:cover;border-radius:12px;">';
+    } else if(prev && prev.tagName === 'IMG'){
+      prev.src=e.target.result; prev.style.display='block';
     }
-    // Show delete button
-    const delBtn = document.getElementById('crPhotoDelBtn');
-    if(delBtn) delBtn.style.display = '';
-    // Also update old-style preview if present
-    const oldPrev = document.getElementById('crPhotoPreviewImg');
-    if(oldPrev) { oldPrev.src = e.target.result; oldPrev.style.display = 'block'; }
+    // Preview variant B (old modal)
+    const ph=document.getElementById('crPhotoPh');
+    if(ph) ph.style.display='none';
+    const delBtn=document.getElementById('crPhotoDelBtn');
+    if(delBtn) delBtn.style.display='';
+    const oldPrev=document.getElementById('crPhotoPreviewImg');
+    if(oldPrev){ oldPrev.src=e.target.result; oldPrev.style.display='block'; }
   };
   reader.readAsDataURL(file);
 }
@@ -8840,6 +8955,21 @@ function crSearchIngr(q) {
   const ac = document.getElementById('crIngrAC');
   if(!ac) return;
   if(!q || q.length < 1) { ac.style.display='none'; ac.innerHTML=''; return; }
+  // Try INGREDIENTS_DB first if available
+  if(window.INGREDIENTS_DB) {
+    const results = searchIngredients(q, 10);
+    if(results.length) {
+      ac.style.display='block';
+      ac.innerHTML = results.map(r =>
+        '<div onclick="crSelectIngr(''+r.name.replace(/'/g,"\'")+'')" style="padding:8px 12px;cursor:pointer;display:flex;align-items:center;gap:8px;font-size:.82rem;border-bottom:1px solid var(--bg2);">'
+        +'<span>'+r.emoji+'</span>'
+        +'<span style="flex:1;font-weight:700;">'+r.name+'</span>'
+        +'<span style="font-size:.62rem;color:var(--tx3);">'+r.kcal+' kcal/100g</span>'
+        +'</div>'
+      ).join('');
+      return;
+    }
+  }
   // Search PRODUCTS + fridge items + common ingredients
   const allItems = [
     ...(typeof PRODUCTS!=='undefined' ? PRODUCTS : []),
@@ -9005,9 +9135,18 @@ function crCalcAutoKcal() {
 
 async function saveCustomRecipeFull() {
   const name = document.getElementById('crName')?.value?.trim();
-  const ingrs = window._crIngredients || _crIngredients || [];
-  if(!name) { showToast('⚠️','Incomplet','Entrez un nom de recette.'); return; }
-  if(!ingrs.length) { showToast('⚠️','Incomplet','Ajoutez au moins un ingrédient.'); return; }
+  const ingrs = window._crIngredients || [];
+  // Validation with visual feedback
+  if(!name) {
+    const nameEl = document.getElementById('crName');
+    if(nameEl){ nameEl.style.border='2px solid var(--rd)'; nameEl.focus(); setTimeout(()=>nameEl.style.border='',2000); }
+    showToast('⚠️','Nom manquant','Donnez un nom à votre recette.'); return;
+  }
+  if(!ingrs.length) {
+    const inp = document.getElementById('crIngrInput');
+    if(inp){ inp.style.border='2px solid var(--rd)'; inp.focus(); setTimeout(()=>inp.style.border='',2000); }
+    showToast('⚠️','Ingrédients manquants','Ajoutez au moins un ingrédient.'); return;
+  }
 
   const emoji = document.getElementById('crEmoji')?.value?.trim() || '🍽️';
   const time = parseInt(document.getElementById('crTime')?.value)||30;
@@ -9040,9 +9179,15 @@ async function saveCustomRecipeFull() {
     ciqualNutri = getRecipeNutri(tmpRecipe);
   }
   const kcal = kcalManual || (ciqualNutri ? ciqualNutri.perPortion.kcal : Math.round(totalKcal/portions)) || 0;
-  const protAuto = ciqualNutri ? ciqualNutri.perPortion.prot : 0;
-  const carbAuto = ciqualNutri ? ciqualNutri.perPortion.carb : 0;
-  const fatAuto  = ciqualNutri ? ciqualNutri.perPortion.fat  : 0;
+  let protAuto = ciqualNutri ? ciqualNutri.perPortion.prot : 0;
+  let carbAuto = ciqualNutri ? ciqualNutri.perPortion.carb : 0;
+  let fatAuto  = ciqualNutri ? ciqualNutri.perPortion.fat  : 0;
+  // If macros still 0 and we have kcal, estimate from standard ratios
+  if(kcal > 0 && !protAuto && !carbAuto && !fatAuto) {
+    protAuto = Math.round(kcal * 0.20 / 4);
+    carbAuto = Math.round(kcal * 0.50 / 4);
+    fatAuto  = Math.round(kcal * 0.30 / 9);
+  }
 
   const recipe = {
     id: window._crEditId || ('custom_'+Date.now()),
@@ -12564,17 +12709,17 @@ try {
 </style>
 
 <script>
-// Fix portions bug
+// Fix portions: ensure recipe.portions never 0/null
 (function(){
-  function tryP(){
-    if(!window.renderRecipeModal){setTimeout(tryP,400);return;}
-    if(window._portionPatched)return;
-    window._portionPatched=true;
-    var orig=window.renderRecipeModal;
-    window.renderRecipeModal=function(r,p,bm){if(!r.portions||r.portions<1)r.portions=4;orig(r,p||r.portions,bm);};
-    window.changePortions=function(n){window._currentPortions=n;var r=window._currentRecipe;if(!r)return;if(!r.portions||r.portions<1)r.portions=4;var bm=(state.recipeBookmarks||[]).some(function(b){return b.id===r.id;});window.renderRecipeModal(r,n,bm);};
-  }
-  setTimeout(tryP,300);
+  var origCp = window.changePortions;
+  window.changePortions = function(n){
+    window._currentPortions = n;
+    var r = window._currentRecipe;
+    if(!r) return;
+    if(!r.portions || r.portions < 1) r.portions = 4;
+    var bm = (state.recipeBookmarks||[]).some(function(b){return b.id===r.id;});
+    renderRecipeModal(r, n, bm);
+  };
 })();
 
 // Fusion Favoris
@@ -12641,7 +12786,12 @@ function sc_nutri_render() {
     var m=wm[i+1];
     if(!m){weekData.push({idx:i,planned:false,kcal:0,prot:0,carb:0,fat:0,b:'',l:'',d:'',snack:''});continue;}
     var n=_calcDayNutri(m);
-    weekData.push({idx:i,planned:!!(m.b||m.l||m.d),kcal:n?Math.round(n.kcal):0,prot:n?Math.round(n.prot):0,carb:n?Math.round(n.carb):0,fat:n?Math.round(n.fat):0,b:m.b||'',l:m.l||'',d:m.d||'',snack:m.snack||''});
+    // If _calcDayNutri returns macros all 0 (slots have no per-slot macros), fallback to menu.nutri directly
+    var kcalFinal = n?Math.round(n.kcal):0;
+    var protFinal = (n&&n.prot>0)?Math.round(n.prot):(m.nutri&&m.nutri.prot?Math.round(m.nutri.prot):0);
+    var carbFinal = (n&&n.carb>0)?Math.round(n.carb):(m.nutri&&m.nutri.carb?Math.round(m.nutri.carb):0);
+    var fatFinal  = (n&&n.fat>0) ?Math.round(n.fat) :(m.nutri&&m.nutri.fat ?Math.round(m.nutri.fat) :0);
+    weekData.push({idx:i,planned:!!(m.b||m.l||m.d),kcal:kcalFinal,prot:protFinal,carb:carbFinal,fat:fatFinal,b:m.b||'',l:m.l||'',d:m.d||'',snack:m.snack||''});
   }
 
   var withKcal=weekData.filter(function(d){return d.kcal>0;});
@@ -12659,7 +12809,7 @@ function sc_nutri_render() {
   var bmr=hasProfil?(p.sex==='F'?Math.round(10*(+p.poids)+6.25*(+p.taille)-5*(+p.age)-161):Math.round(10*(+p.poids)+6.25*(+p.taille)-5*(+p.age)+5)):null;
   var goalLbls={equilibre:'Equilibre',perte:'Perte de poids',prise:'Prise de masse',maintien:'Maintien',perf:'Performance'};
   var goalLabel=goalLbls[p.goal||'equilibre']||'Objectif';
-  var actLabel=['Sedentaire','Lgt actif','Mod. actif','Tres actif','Extreme'][Math.min(+(p.sportFreq||0),4)];
+  var actLabel=['Sédentaire','Lgt actif','Mod. actif','Très actif','Extrême'][Math.min(+(p.sportFreq||2),4)];
   var diffKcal=cals&&avgKcal?avgKcal-cals:null;
   var diffCol=diffKcal===null?'var(--tx2)':Math.abs(diffKcal)<120?'var(--gn)':diffKcal>0?'var(--rd)':'var(--yl)';
 

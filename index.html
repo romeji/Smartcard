@@ -4486,6 +4486,9 @@ async function generateFridgeAIRecipes() {
 }
 
 function _renderFridgeAIResults(recipes, results, status) {
+  // Store AI fridge recipes in state for openRecipeDetail lookup
+  if(!state._fridgeAIRecipes) state._fridgeAIRecipes = {};
+  recipes.forEach(r => { if(r.id) state._fridgeAIRecipes[r.id] = r; });
   if(status) status.textContent = recipes.length + ' recettes générées · sauvegardées 💾';
   results.style.display = 'block';
   results.innerHTML = '<div style="border-top:1px solid rgba(108,92,231,.15);padding-top:12px;margin-top:4px;">'
@@ -4626,6 +4629,8 @@ function _renderFridgeRecipes(grid, recipes) {
   const empty = document.getElementById('emptyRecipes');
   if(!recipes.length){ grid.innerHTML=''; if(empty) empty.style.display='block'; return; }
   if(empty) empty.style.display='none';
+  // Store recipes on grid element so showRecipe(i) can access them
+  grid._recipes = recipes;
   const fridgeNames = state.fridge.map(f => f.name.toLowerCase());
   grid.innerHTML = recipes.slice(0,10).map((r,i) => {
     const isMDB = r.source==='mealdb' && r.mdbId;
@@ -4701,66 +4706,61 @@ const recipes = (parsed.recipes||[]).map((r,idx)=>({
 
 function showRecipe(i) {
   const grid = document.getElementById('recipesGrid');
-  const recipes = grid._recipes || [];
+  const recipes = grid ? (grid._recipes || []) : [];
   const r = recipes[i];
   if(!r) return;
 
-  // Redirect to rich modal if available (for MealDB / Claude recipes with full data)
+  // MealDB avec API call
   if(r.mdbId) { openMealDBRecipe(r.mdbId); return; }
-  if(r.source === 'claude' || r.source === 'mealdb' || r.source === 'custom' || r.source === 'claude_fridge') {
-    const modal = document.getElementById('recipeDetailModal');
-    if(modal) {
-      // Normalize portions
-      if(!r.portions || r.portions < 1) r.portions = 4;
-      // Normalize ingredients: convert strings to {qty, name} objects
-      if(Array.isArray(r.ingredients) && r.ingredients.length > 0 && typeof r.ingredients[0] === 'string') {
-        r.ingredients = r.ingredients.map(function(s) {
-          if(typeof s !== 'string') return s;
-          const m = s.match(/^([\d.,\/½¼¾]+\s*(?:g|kg|ml|l|cl|cs|cc|tasse|cup|oz|lb|pincée)?)?\s*(?:de |d')?(.+)$/i);
-          return m && m[1] ? {qty: m[1].trim(), name: (m[2]||s).trim(), unit:''} : {qty:'', name: s.trim(), unit:''};
-        });
-      }
-      window._currentRecipe = r;
-      window._currentPortions = r.portions;
-      const isBookmarked = (state.recipeBookmarks||[]).some(b => b.id === r.id);
-      renderRecipeModal(r, r.portions, isBookmarked);
-      modal.parentElement.classList.add('on');
-      return;
-    }
+
+  // Normaliser la recette
+  if(!r.portions || r.portions < 1) r.portions = 4;
+
+  // Normaliser les ingrédients : strings → {qty, unit, name}
+  if(Array.isArray(r.ingredients)) {
+    r.ingredients = r.ingredients.map(function(ing) {
+      if(!ing) return {qty:'', unit:'', name:''};
+      if(typeof ing === 'object' && ing.name) return ing;
+      // String: extraire qty + unit + name
+      const s = String(ing).trim();
+      // "400 g de poulet", "2 cs d'huile", "1 oignon", "200g tomates"
+      const m = s.match(/^([\d.,\/½¼¾⅓⅔⅛⅙⅕⅖⅗⅘]+)\s*(g|kg|ml|l|cl|cs|cc|tasse|cup|cups|oz|lb|tbsp|tsp|tablespoon|teaspoon|pincée|pincee|bouquet|gousse|gousses|tranche|tranches|piece|pièce)?\s*(?:de |d'|du |des |la |le |les )?(.+)$/i);
+      if(m && m[1]) return {qty: m[1].trim(), unit: (m[2]||'').trim(), name: (m[3]||s).trim()};
+      return {qty: '', unit: '', name: s};
+    });
   }
 
-  const fridgeNames = state.fridge.map(f => f.name.toLowerCase());
-  const ingrs = Array.isArray(r.ingredients) ? r.ingredients.map(i => typeof i === 'string' ? i : ((i.qty||'') + ' ' + (i.name||'')).trim()) : [];
-  const instructions = Array.isArray(r.instructions) ? r.instructions : [];
+  // Utiliser renderRecipeModal pour TOUTES les recettes
+  const modal = document.getElementById('recipeDetailModal');
+  if(modal) {
+    window._currentRecipe = r;
+    window._currentPortions = r.portions;
+    const isBookmarked = (state.recipeBookmarks||[]).some(b => b.id === r.id);
+    renderRecipeModal(r, r.portions, isBookmarked);
+    modal.parentElement.classList.add('on');
+    return;
+  }
 
-  document.getElementById('recipeModalContent').innerHTML = `
-    <div style="font-size:2.5rem;text-align:center;margin-bottom:12px;">${r.emoji||'🍳'}</div>
-    <div class="modal-ti">${r.name}</div>
-    <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin:8px 0 14px;">
-      ${r.time?`<span class="nutri-pill cal">⏱ ${r.time}min</span>`:''}
-      ${r.kcal?`<span class="nutri-pill cal">🔥 ${r.kcal} kcal</span>`:''}
-      ${r.prot?`<span class="nutri-pill prot">💪 ${r.prot}g prot</span>`:''}
-    </div>
-    <div style="font-weight:800;font-size:.78rem;text-transform:uppercase;color:var(--tx3);letter-spacing:1px;margin-bottom:8px;">Ingrédients</div>
-    <div class="ingr-list" style="margin-bottom:14px;">
-      ${ingrs.map(ing => {
-        const inStock = fridgeNames.some(fn => fn.includes(ing.split(' ')[0].toLowerCase()) || ing.toLowerCase().includes(fn.split(' ')[0]));
-        return `<div class="ig-it"><div class="ig-dot ${inStock?'h':'n'}"></div><div class="ig-nm">${ing}</div><span style="font-size:.68rem;color:${inStock?'var(--gn)':'var(--rd)'};">${inStock?'✓ En stock':'✗ Manquant'}</span></div>`;
-      }).join('')}
-    </div>
-    ${instructions.length ? `
-    <div style="font-weight:800;font-size:.78rem;text-transform:uppercase;color:var(--tx3);letter-spacing:1px;margin-bottom:10px;">Préparation</div>
-    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px;">
-      ${instructions.map((step, si) => `<div style="display:flex;gap:10px;align-items:flex-start;">
-        <div style="width:22px;height:22px;border-radius:50%;background:var(--ac);color:#fff;font-size:.65rem;font-weight:900;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px;">${si+1}</div>
-        <div style="font-size:.78rem;line-height:1.5;flex:1;">${step}</div>
-      </div>`).join('')}
-    </div>` : ''}
-    <button class="btn acc" style="width:100%;margin-top:4px;" onclick="addMissingToList(${i})">🛒 Ajouter les manquants à la liste</button>
-    <button class="btn" style="width:100%;margin-top:8px;" onclick="closeRecipe()">Fermer</button>`;
-  document.getElementById('recipeOverlay').classList.add('on');
-  const _modal = document.querySelector('#recipeOverlay .modal');
-  if(_modal) _attachSwipeClose(_modal.id || 'recipeModalContent', ()=>closeRecipe());
+  // Fallback: ancien modal sans portions
+  const fridgeNames = (state.fridge||[]).map(f => (f.name||'').toLowerCase());
+  const ingrs = (r.ingredients||[]).map(function(i) {
+    return typeof i === 'string' ? i : ((i.qty||'') + ' ' + (i.unit ? i.unit+' ' : '') + (i.name||'')).trim();
+  });
+
+  document.getElementById('recipeModalContent').innerHTML =
+    '<div style="font-size:2.5rem;text-align:center;margin-bottom:12px;">' + (r.emoji||'🍳') + '</div>'
+    + '<div class="modal-ti">' + r.name + '</div>'
+    + '<div style="font-weight:800;font-size:.78rem;text-transform:uppercase;color:var(--tx3);letter-spacing:1px;margin-bottom:8px;">Ingrédients</div>'
+    + '<div class="ingr-list" style="margin-bottom:14px;">'
+    + ingrs.map(function(ing) {
+        const inStock = fridgeNames.some(function(fn){ return fn.includes((ing.split(' ')[0]||'').toLowerCase()) || ing.toLowerCase().includes(fn.split(' ')[0]||''); });
+        return '<div class="ig-it"><div class="ig-dot ' + (inStock?'h':'n') + '"></div><div class="ig-nm">' + ing + '</div><span style="font-size:.68rem;color:' + (inStock?'var(--gn)':'var(--rd)') + ';">' + (inStock?'✓ En stock':'✗ Manquant') + '</span></div>';
+      }).join('')
+    + '</div>'
+    + '<button class="btn acc" style="width:100%;margin-top:4px;" onclick="addMissingToList(' + i + ')">🛒 Ajouter les manquants</button>'
+    + '<button class="btn" style="width:100%;margin-top:8px;" onclick="closeRecipe()">Fermer</button>';
+  const ov = document.getElementById('recipeOverlay');
+  if(ov) ov.classList.add('on');
 }
 
 function closeRecipe() { document.getElementById('recipeOverlay').classList.remove('on'); }
@@ -10765,7 +10765,8 @@ function openRecipeDetail(idOrName) {
     ...getAllRecipes(),
     ...(state._mdbCache||[]),
     ...globalDB,
-    ...Object.values(state.spoonCache||{}).flat()
+    ...Object.values(state.spoonCache||{}).flat(),
+    ...Object.values(state._fridgeAIRecipes||{})
   ];
   const seen = new Set();
   const deduped = all.filter(x => {
@@ -10775,8 +10776,19 @@ function openRecipeDetail(idOrName) {
   const r = deduped.find(x => x.id===idOrName || x.name===idOrName);
   if(!r) { showToast('ℹ️','Recette','Introuvable'); return; }
   if(r.mdbId) { openMealDBRecipe(r.mdbId); return; }
+  // Normalize
+  if(!r.portions || r.portions < 1) r.portions = 4;
+  if(Array.isArray(r.ingredients)) {
+    r.ingredients = r.ingredients.map(function(ing) {
+      if(!ing) return {qty:'',unit:'',name:''};
+      if(typeof ing === 'object' && ing.name) return ing;
+      const s = String(ing).trim();
+      const m = s.match(/^([\d.,\/½¼¾⅓⅔⅛]+)\s*(g|kg|ml|l|cl|cs|cc|tasse|cup|oz|lb|tbsp|tsp|pincée)?\s*(?:de |d'|du |des )?(.+)$/i);
+      return m && m[1] ? {qty:m[1].trim(),unit:(m[2]||'').trim(),name:(m[3]||s).trim()} : {qty:'',unit:'',name:s};
+    });
+  }
   window._currentRecipe = r;
-  window._currentPortions = r.portions || 4;
+  window._currentPortions = r.portions;
   const isBookmarked = state.recipeBookmarks.some(b => b.id === r.id);
   const modal = document.getElementById('recipeDetailModal');
   if(!modal) {
@@ -10784,7 +10796,7 @@ function openRecipeDetail(idOrName) {
     if(grid) { grid._recipes = [r]; showRecipe(0); }
     return;
   }
-  renderRecipeModal(r, window._currentPortions, isBookmarked);
+  renderRecipeModal(r, r.portions, isBookmarked);
   document.getElementById('recipeDetailModal').parentElement.classList.add('on');
 }
 

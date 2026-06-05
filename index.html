@@ -2061,8 +2061,8 @@ if(typeof module !== 'undefined') module.exports = { INGREDIENTS_DB, INGREDIENTS
               <input class="inp" id="fridgeInput" placeholder="Ex: lait, œufs, tomates…" autocomplete="off"
                 oninput="onFridgeSearchInput(this.value)"
                 onkeydown="if(event.key==='Enter')addFridgeItem()"
-                onblur="setTimeout(()=>{const a=document.getElementById('acFridgeList');if(a)a.style.display='none';},200)">
-              <div class="ac-list" id="acFridgeList" style="display:none;z-index:2000;position:absolute;left:0;right:0;top:100%;"></div>
+                onblur="setTimeout(()=>{const a=document.getElementById('acFridgeList');if(a)a.style.display='none';},400)">
+              <div class="ac-list" id="acFridgeList" style="display:none;z-index:9999;position:absolute;left:-16px;right:-16px;top:calc(100% + 4px);border-radius:var(--rs);box-shadow:0 8px 24px rgba(0,0,0,.15);max-height:260px;overflow-y:auto;"></div>
             </div>
             <button class="btn ico voice-btn" onclick="toggleVoice('frigo')" title="Voix" style="padding:11px 12px;">🎤</button>
             <button class="sc-cam-btn primary" onclick="addFridgeItem()" style="width:44px;flex-shrink:0;border-radius:12px;padding:0;">＋</button>
@@ -4125,14 +4125,16 @@ function onSearchInput(val) {
         + (p.kcal ? '<span style="font-size:.62rem;color:var(--tx3);">' + p.kcal + ' kcal</span>' : '')
         + '</div>';
     }).join('');
-    ac.onclick = function(e) {
+    // Use mousedown — fires before input blur
+    ac.onmousedown = function(e) {
       const item = e.target.closest('[data-ac-name]');
       if(!item) return;
+      e.preventDefault();
       const name = item.dataset.acName;
       const inp = document.getElementById('addInput');
-      if(inp) inp.value = name;
+      if(inp) { inp.value = name; inp.focus(); }
       ac.style.display = 'none';
-      if(typeof addItem === 'function') addItem();
+      setTimeout(function(){ if(typeof addItemFromInput==='function') addItemFromInput(); else if(typeof addItem==='function') addItem(); }, 10);
     };
   }, 150);
 }
@@ -4263,14 +4265,16 @@ function onFridgeSearchInput(val) {
         + '</div>';
     }).join('');
     // Event delegation — no onclick string escaping needed
-    ac.onclick = function(e) {
+    // Use mousedown instead of click — fires before input blur
+    ac.onmousedown = function(e) {
       const item = e.target.closest('[data-ac-name]');
       if(!item) return;
+      e.preventDefault(); // prevent blur on input
       const name = item.dataset.acName;
       const inp = document.getElementById('fridgeInput');
-      if(inp) inp.value = name;
+      if(inp) { inp.value = name; inp.focus(); }
       ac.style.display = 'none';
-      addFridgeItem();
+      setTimeout(addFridgeItem, 10);
     };
   }, 150);
 }
@@ -4664,14 +4668,31 @@ async function _loadRecipesWithClaude(grid, fridgeNames, localMatches) {
       method:'POST', headers:{'Content-Type':'application/json'},
       body:JSON.stringify({model:'claude-sonnet-4-20250514', max_tokens:2000,
         messages:[{role:'user',content:`Tu es chef cuisinier. Avec ces ingrédients: ${ingrList}
-Propose 4 recettes réalisables. Réponds UNIQUEMENT en JSON:
-{"recipes":[{"name":"Nom","emoji":"🍳","time":25,"kcal":400,"ingredients":["ingr1","ingr2"],"instructions":["Étape 1","Étape 2"]}]}`}]})
+Propose 4 recettes réalisables. Réponds UNIQUEMENT en JSON (kcal = calories PAR portion, quantities = pour 4 personnes):
+{"recipes":[{"name":"Nom","emoji":"🍳","time":25,"kcal":450,"prot":32,"carb":48,"fat":14,"portions":4,"ingredients":[{"qty":"400","unit":"g","name":"poulet"},{"qty":"2","unit":"cs","name":"huile d'olive"}],"instructions":["Étape 1","Étape 2"]}]}`}]})
     });
     const data = await resp.json();
     const text = (data.content||[]).find(x=>x.type==='text')?.text||'';
     const j = text.slice(text.indexOf('{'), text.lastIndexOf('}')+1);
     const parsed = JSON.parse(j);
-    const recipes = (parsed.recipes||[]).map((r,i)=>({...r,id:'fr_'+Date.now()+'_'+i,source:'claude_fridge',ingredients:r.ingredients||[]}));
+    function parseIngredientStr(s) {
+  if(typeof s === 'object') return s;
+  if(typeof s !== 'string') return {qty:'', name: String(s), unit:''};
+  // Parse "200g de poulet" / "2 cs d'huile" / "1 oignon"
+  const m = s.match(/^([\d.,\/½¼¾]+\s*(?:g|kg|ml|l|cl|cs|cc|tasse|cup|oz|lb|pincée)?)?\s*(?:de |d')?(.+)$/i);
+  if(m && m[1]) return {qty: m[1].trim(), name: (m[2]||s).trim(), unit:''};
+  return {qty:'', name: s.trim(), unit:''};
+}
+const recipes = (parsed.recipes||[]).map((r,idx)=>({
+  ...r,
+  id:'fr_'+Date.now()+'_'+idx,
+  source:'claude_fridge',
+  portions: r.portions || 4,
+  ingredients:(r.ingredients||[]).map(function(ing) {
+    if(ing && typeof ing === 'object' && ing.name) return ing; // Already structured
+    return parseIngredientStr(ing);
+  })
+}));
     _renderFridgeRecipes(grid, [...localMatches, ...recipes]);
   } catch(e) {
     _renderFridgeRecipes(grid, localMatches);
@@ -4687,12 +4708,22 @@ function showRecipe(i) {
   // Redirect to rich modal if available (for MealDB / Claude recipes with full data)
   if(r.mdbId) { openMealDBRecipe(r.mdbId); return; }
   if(r.source === 'claude' || r.source === 'mealdb' || r.source === 'custom' || r.source === 'claude_fridge') {
-    // Try to open via rich modal
     const modal = document.getElementById('recipeDetailModal');
     if(modal) {
+      // Normalize portions
+      if(!r.portions || r.portions < 1) r.portions = 4;
+      // Normalize ingredients: convert strings to {qty, name} objects
+      if(Array.isArray(r.ingredients) && r.ingredients.length > 0 && typeof r.ingredients[0] === 'string') {
+        r.ingredients = r.ingredients.map(function(s) {
+          if(typeof s !== 'string') return s;
+          const m = s.match(/^([\d.,\/½¼¾]+\s*(?:g|kg|ml|l|cl|cs|cc|tasse|cup|oz|lb|pincée)?)?\s*(?:de |d')?(.+)$/i);
+          return m && m[1] ? {qty: m[1].trim(), name: (m[2]||s).trim(), unit:''} : {qty:'', name: s.trim(), unit:''};
+        });
+      }
       window._currentRecipe = r;
-      window._currentPortions = r.portions || 4;
-      renderRecipeModal(r, window._currentPortions, false);
+      window._currentPortions = r.portions;
+      const isBookmarked = (state.recipeBookmarks||[]).some(b => b.id === r.id);
+      renderRecipeModal(r, r.portions, isBookmarked);
       modal.parentElement.classList.add('on');
       return;
     }

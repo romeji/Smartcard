@@ -8025,13 +8025,42 @@ function renderRecipeModal(recipe, portions, isBookmarked) {
     const frIngr = translateRecipeName(i.name || '');
     const qty = i.qty;
     let scaledQty = '';
-    if(qty) {
-      const num = parseFloat(qty);
+    if(qty !== undefined && qty !== null && qty !== '') {
+      const qtyStr = String(qty).trim();
+      // Fraction unicode map
+      const fracMap = {'½':0.5,'⅓':0.333,'⅔':0.667,'¼':0.25,'¾':0.75,'⅕':0.2,'⅖':0.4,'⅗':0.6,'⅘':0.8,'⅙':0.167,'⅛':0.125};
+      let num = NaN;
+      // 1) Pure fraction unicode: "½"
+      if(fracMap[qtyStr]) {
+        num = fracMap[qtyStr];
+      }
+      // 2) "X Y/Z" → e.g. "1 1/2" → 1.5
+      else if(/^(\d+)\s+(\d+)\/(\d+)/.test(qtyStr)) {
+        const m = qtyStr.match(/^(\d+)\s+(\d+)\/(\d+)/);
+        num = parseInt(m[1]) + parseInt(m[2])/parseInt(m[3]);
+      }
+      // 3) "X/Y" → e.g. "1/2 cup" → 0.5
+      else if(/^(\d+)\/(\d+)/.test(qtyStr)) {
+        const m = qtyStr.match(/^(\d+)\/(\d+)/);
+        num = parseInt(m[1])/parseInt(m[2]);
+      }
+      // 4) "½ cup" — unicode fraction + text
+      else {
+        const ufm = qtyStr.match(/^([½⅓⅔¼¾⅕⅖⅗⅘⅙⅛])/);
+        if(ufm && fracMap[ufm[1]]) {
+          num = fracMap[ufm[1]];
+        }
+        // 5) "200g", "1.5", "2 tbsp", "3 cloves" → extract leading number
+        else {
+          num = parseFloat(qtyStr);
+        }
+      }
       if(!isNaN(num) && num > 0) {
         const scaled = num * ratio;
-        scaledQty = scaled % 1 === 0 ? scaled.toString() : scaled.toFixed(1);
+        const rounded = Math.round(scaled * 100) / 100;
+        scaledQty = rounded % 1 === 0 ? rounded.toString() : rounded.toFixed(1);
       } else {
-        scaledQty = qty; // keep as-is if not a number
+        scaledQty = qtyStr; // keep as-is: "au goût", "quelques", "pinch"
       }
     }
     const frUnit = translateIngredientUnit(i.unit || '');
@@ -13056,21 +13085,7 @@ try {
 </style>
 
 <script>
-// Fix portions: ensure recipe.portions is always valid
-(function(){
-  window.changePortions = function(n){
-    window._currentPortions = n;
-    var r = window._currentRecipe;
-    if(!r) return;
-    // Normalize: portions must be >= 1
-    if(!r.portions || r.portions < 1) r.portions = 4;
-    var bm = false;
-    if(state && state.recipeBookmarks) {
-      bm = state.recipeBookmarks.some(function(b){return b.id===r.id;});
-    }
-    renderRecipeModal(r, n, bm);
-  };
-})();
+// Portions: handled by native changePortions() function
 
 // Normalize recipe before opening modal
 (function(){

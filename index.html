@@ -5211,8 +5211,14 @@ function _showMealDBDetail(meal) {
   if(meal._ingredients && meal._ingredients.length) {
     // Format traduit : tableau de strings "qty nom"
     ingredients = meal._ingredients.map(s => {
-      if(typeof s === 'string') return { name: s, qty: '', unit: '', emoji: '🛍️' };
-      return { name: s.name||s, qty: s.qty||'', unit: '', emoji: '🛍️' };
+      if(typeof s === 'object' && s.name) {
+        return { name: s.name, qty: s.qty||'', unit: s.unit||'', emoji: '🛍️' };
+      }
+      const str = String(s).trim();
+      // Extraire qty+unit depuis "400 g de poulet", "2 cs d'huile", "1 oignon"
+      const m = str.match(/^([\d.,\/½¼¾⅓⅔⅛]+)\s*(g|kg|ml|l|cl|cs|cc|tasse|cup|cups|oz|lb|tbsp|tsp|pincée|pincee|gousse|gousses|tranche|tranches|branche|branches)?\s*(?:de |d'|du |des |la |le |les |un |une )?(.+)$/i);
+      if(m && m[1] && m[3]) return { qty: m[1].trim(), unit: (m[2]||'').trim(), name: m[3].trim(), emoji: '🛍️' };
+      return { name: str, qty: '', unit: '', emoji: '🛍️' };
     });
   } else {
     for(let i = 1; i <= 20; i++) {
@@ -8014,6 +8020,19 @@ function renderRecipeModal(recipe, portions, isBookmarked) {
   const modal = document.getElementById('recipeDetailModal');
   if(!modal) return;
   
+  // Normaliser les ingrédients avant scaling — gère strings ET objets
+  if(Array.isArray(recipe.ingredients)) {
+    recipe.ingredients = recipe.ingredients.map(function(ing) {
+      if(!ing) return {qty:'', unit:'', name:''};
+      if(typeof ing === 'object' && (ing.name || ing.qty !== undefined)) return ing;
+      // String: "400 g de poulet", "2 cs d'huile", "1 oignon", "sel"
+      const s = String(ing).trim();
+      const m = s.match(/^([\d.,\/½¼¾⅓⅔⅛]+(?:\s+[\d]\/[\d])?)\s*(g|kg|ml|l|cl|cs|cc|tasse|cup|cups|oz|lb|tbsp|tsp|pincée|pincee|gousse|gousses|tranche|tranches|brin|brins|bouquet|bouquets)?\s*(?:de |d'|du |des |la |le |les |un |une )?(.*)/i);
+      if(m && m[1] && m[3]) return {qty: m[1].trim(), unit: (m[2]||'').trim(), name: m[3].trim()};
+      return {qty:'', unit:'', name: s};
+    });
+  }
+
   const base = recipe.portions || 4;
   const ratio = portions / base;
   
@@ -8134,9 +8153,22 @@ function renderRecipeModal(recipe, portions, isBookmarked) {
 function changePortions(n) {
   window._currentPortions = n;
   const recipe = window._currentRecipe;
-  if(!recipe) return;
-  const isBookmarked = state.recipeBookmarks.some(b => b.id === recipe.id);
-  // Re-render with new portions (updates everything)
+  console.log('[changePortions] n='+n+' recipe=', recipe ? recipe.name : 'NULL',
+    'portions='+( recipe ? recipe.portions : '?'),
+    'ingr[0]=', recipe && recipe.ingredients && recipe.ingredients[0] ? JSON.stringify(recipe.ingredients[0]) : 'none');
+  if(!recipe) { console.warn('[changePortions] No _currentRecipe!'); return; }
+  // Normalize portions on recipe
+  if(!recipe.portions || recipe.portions < 1) recipe.portions = 4;
+  // Normalize ingredients if they are strings
+  if(Array.isArray(recipe.ingredients) && recipe.ingredients.length > 0 && typeof recipe.ingredients[0] === 'string') {
+    recipe.ingredients = recipe.ingredients.map(function(s) {
+      if(typeof s !== 'string') return s;
+      const m = s.match(/^([\d.,\/½¼¾]+)\s*([a-zA-ZéèàùûôÀ-ÿ]*)\s*(?:de |d'|du |des )?(.+)$/i);
+      return m && m[1] ? {qty: m[1].trim(), unit: (m[2]||'').trim(), name: (m[3]||s).trim()} : {qty:'', unit:'', name: s};
+    });
+    console.log('[changePortions] Normalized ingredients:', recipe.ingredients.slice(0,2));
+  }
+  const isBookmarked = (state.recipeBookmarks||[]).some(b => b.id === recipe.id);
   renderRecipeModal(recipe, n, isBookmarked);
 }
 

@@ -4733,7 +4733,7 @@ function showRecipe(i) {
   // Utiliser renderRecipeModal pour TOUTES les recettes
   const modal = document.getElementById('recipeDetailModal');
   if(modal) {
-    window._currentRecipe = r;
+    r._baseIngredients = null; window._currentRecipe = r;
     window._currentPortions = r.portions;
     const isBookmarked = (state.recipeBookmarks||[]).some(b => b.id === r.id);
     renderRecipeModal(r, r.portions, isBookmarked);
@@ -5265,7 +5265,7 @@ function _showMealDBDetail(meal) {
     youtubeUrl: meal.strYoutube || null,
   };
 
-  window._currentRecipe = recipe;
+  recipe._baseIngredients = null; window._currentRecipe = recipe;
 
   // Afficher dans un modal
   const existing = document.getElementById('mdbDetailOverlay');
@@ -7957,7 +7957,7 @@ function openMealDBRecipeDetail(id) {
   const recipe = Object.values(state.spoonCache).flat().find(r => r.id === id)
     || state.recipeBookmarks.find(r => r.id === id);
   if(!recipe) return;
-  window._currentRecipe = recipe;
+  recipe._baseIngredients = null; window._currentRecipe = recipe;
   window._currentPortions = recipe.portions || 4;
   const isBookmarked = state.recipeBookmarks.some(b => b.id === id);
   if(typeof renderRecipeModal === "function") {
@@ -7971,7 +7971,7 @@ function openClaudeRecipe(id) {
   const recipe = Object.values(state.spoonCache).flat().find(r => r.id === id)
     || state.recipeBookmarks.find(r => r.id === id);
   if(!recipe) return;
-  window._currentRecipe = recipe;
+  recipe._baseIngredients = null; window._currentRecipe = recipe;
   window._currentPortions = recipe.portions || 4;
   const isBookmarked = state.recipeBookmarks.some(b => b.id === id);
   if(typeof renderRecipeModal === "function") {
@@ -8020,7 +8020,7 @@ function openSpoonRecipe(id) {
   if(!recipe) { showToast('⚠️','Introuvable','Recette non trouvée'); return; }
   
   // Store for portion adjuster
-  window._currentRecipe = recipe;
+  recipe._baseIngredients = null; window._currentRecipe = recipe;
   window._currentPortions = recipe.portions || 4;
   
   const modal = document.getElementById('recipeDetailModal');
@@ -8035,9 +8035,10 @@ function renderRecipeModal(recipe, portions, isBookmarked) {
   const modal = document.getElementById('recipeDetailModal');
   if(!modal) return;
   
-  // Normaliser les ingrédients avant scaling — gère strings ET objets
-  if(Array.isArray(recipe.ingredients)) {
-    recipe.ingredients = recipe.ingredients.map(_parseIngredientString);
+  // Normaliser les ingrédients originaux (NE PAS muter recipe.ingredients)
+  // On stocke les originaux sur _baseIngredients pour éviter la double-mutation
+  if(!recipe._baseIngredients) {
+    recipe._baseIngredients = (recipe.ingredients||[]).map(_parseIngredientString);
   }
   const base = recipe.portions || 4;
   const ratio = portions / base;
@@ -8046,7 +8047,7 @@ function renderRecipeModal(recipe, portions, isBookmarked) {
   const frName = translateRecipeName(recipe.name);
   
   // Scale ingredients
-  const scaledIngr = (recipe.ingredients||[]).map(i => {
+  const scaledIngr = (recipe._baseIngredients||recipe.ingredients||[]).map(i => {
     const frIngr = translateRecipeName(i.name || '');
     const qty = i.qty;
     let scaledQty = '';
@@ -10713,7 +10714,7 @@ function toggleFavoritesView() {
 function openCustomRecipeDetail(id) {
   const r = (state.customRecipes||[]).find(x=>x.id===id);
   if(!r) return;
-  window._currentRecipe = r;
+  r._baseIngredients = null; window._currentRecipe = r;
   const overlay = document.createElement('div');
   overlay.className = 'overlay on';
   overlay.id = 'customDetailOverlay';
@@ -10835,7 +10836,7 @@ function openRecipeDetail(idOrName) {
       return m && m[1] ? {qty:m[1].trim(),unit:(m[2]||'').trim(),name:(m[3]||s).trim()} : {qty:'',unit:'',name:s};
     });
   }
-  window._currentRecipe = r;
+  r._baseIngredients = null; window._currentRecipe = r;
   window._currentPortions = r.portions;
   const isBookmarked = state.recipeBookmarks.some(b => b.id === r.id);
   const modal = document.getElementById('recipeDetailModal');
@@ -13181,7 +13182,7 @@ try {
         || (state.recipeBookmarks||[]).find(function(r){return r.id===id;});
       if(!recipe) return;
       normalizeRecipe(recipe);
-      window._currentRecipe = recipe;
+      recipe._baseIngredients = null; window._currentRecipe = recipe;
       window._currentPortions = recipe.portions;
       var bm = (state.recipeBookmarks||[]).some(function(b){return b.id===id;});
       if(typeof renderRecipeModal === 'function') {

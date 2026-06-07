@@ -4978,7 +4978,7 @@ async function saveTranslatedRecipe() {
     kcal: t.kcal || 0,
     diet: 'omnivore',
     mealTypes: ['l','d'],
-    ingredients: (t.ingredients||[]).map(i => ({name:i, qty:'', unit:'', emoji:'🛍️'})),
+    ingredients: (t.ingredients||[]).map(function(i){ const p=_parseIngredientString(i); return {...p, emoji:'🛍️'}; }),
     instructions: t.instructions || [],
     steps: t.instructions || [],
     photo: src.image || null,
@@ -5129,7 +5129,13 @@ async function openMealDBRecipe(mealId) {
       kcal: 0,
       diet: 'omnivore',
       mealTypes: ['l','d'],
-      ingredients: (translated._ingredients||[]).map(s => typeof s === 'string' ? {name:s,qty:'',unit:'',emoji:'🛍️'} : s),
+      ingredients: (translated._ingredients||[]).map(function(s) {
+        if(typeof s === 'object' && s.name) return s;
+        const str = String(s||'').trim();
+        const m = str.match(/^([\d.,\/½¼¾⅓⅔⅛]+(?:\s+[\d]+\/[\d]+)?)\s*(g|kg|ml|l|cl|cs|cc|tasse|cup|cups|oz|lb|tbsp|tsp|pincée|pincee|gousse|gousses|tranche|tranches)?\ *(?:de |d'|du |des |la |le |les |un |une )?(.+)$/i);
+        if(m && m[1] && m[3]) return {qty:m[1].trim(), unit:(m[2]||'').trim(), name:m[3].trim(), emoji:'🛍️'};
+        return {qty:'', unit:'', name:str, emoji:'🛍️'};
+      }),
       instructions: translated._steps || [],
       source: 'mealdb',
       area: translated.strArea,
@@ -5184,13 +5190,22 @@ async function _translateMealDB(meal) {
     const t = JSON.parse(jsonStr);
     if(!t.title || !t.ingredients) throw new Error('bad response');
 
+    // Normaliser les ingrédients — accepte [{qty,unit,name}] ou ["qty unit nom"]
+    function parseIng(ing) {
+      if(!ing) return {qty:'', unit:'', name:''};
+      if(typeof ing === 'object' && ing.name) return {qty:String(ing.qty||''), unit:String(ing.unit||''), name:String(ing.name), emoji:'🛍️'};
+      const str = String(ing).trim();
+      const m = str.match(/^([\d.,\/½¼¾⅓⅔⅛]+(?:\s+[\d]+\/[\d]+)?)\s*(g|kg|ml|l|cl|cs|cc|tasse|cup|cups|oz|lb|tbsp|tsp|pincée|pincee|gousse|gousses|tranche|tranches)?\s*(?:de |d'|du |des |la |le |les |un |une )?(.+)$/i);
+      if(m && m[1] && m[3]) return {qty:m[1].trim(), unit:(m[2]||'').trim(), name:m[3].trim(), emoji:'🛍️'};
+      return {qty:'', unit:'', name:str, emoji:'🛍️'};
+    }
     // Reconstruire le meal traduit avec calories et temps
     return {
       ...meal,
       _translated: true,
       strMeal: t.title,
       strInstructions: (t.steps||[]).join('\n'),
-      _ingredients: t.ingredients,
+      _ingredients: (t.ingredients||[]).map(parseIng),
       _steps: t.steps || [],
       _kcal: t.kcal || 0,
       _prepTime: t.prepTime || null,
@@ -8022,17 +8037,8 @@ function renderRecipeModal(recipe, portions, isBookmarked) {
   
   // Normaliser les ingrédients avant scaling — gère strings ET objets
   if(Array.isArray(recipe.ingredients)) {
-    recipe.ingredients = recipe.ingredients.map(function(ing) {
-      if(!ing) return {qty:'', unit:'', name:''};
-      if(typeof ing === 'object' && (ing.name || ing.qty !== undefined)) return ing;
-      // String: "400 g de poulet", "2 cs d'huile", "1 oignon", "sel"
-      const s = String(ing).trim();
-      const m = s.match(/^([\d.,\/½¼¾⅓⅔⅛]+(?:\s+[\d]\/[\d])?)\s*(g|kg|ml|l|cl|cs|cc|tasse|cup|cups|oz|lb|tbsp|tsp|pincée|pincee|gousse|gousses|tranche|tranches|brin|brins|bouquet|bouquets)?\s*(?:de |d'|du |des |la |le |les |un |une )?(.*)/i);
-      if(m && m[1] && m[3]) return {qty: m[1].trim(), unit: (m[2]||'').trim(), name: m[3].trim()};
-      return {qty:'', unit:'', name: s};
-    });
+    recipe.ingredients = recipe.ingredients.map(_parseIngredientString);
   }
-
   const base = recipe.portions || 4;
   const ratio = portions / base;
   
@@ -8150,6 +8156,16 @@ function renderRecipeModal(recipe, portions, isBookmarked) {
   `;
 }
 
+
+// Parse une string d'ingrédient "400 g de poulet" → {qty:"400", unit:"g", name:"poulet"}
+function _parseIngredientString(s) {
+  if(!s) return {qty:'', unit:'', name:''};
+  if(typeof s === 'object' && s.name !== undefined) return s;
+  const str = String(s).trim();
+  const m = str.match(/^([\d.,\/½¼¾⅓⅔⅛]+(?:\s+\d+\/\d+)?)\s*(g|kg|ml|l|cl|cs|cc|tasse|cup|cups|oz|lb|tbsp|tsp|pincée|pincee|gousse|gousses|tranche|tranches|brin|brins|bouquet|bouquets)?\s*(?:de |d'|du |des |la |le |les |un |une )?(.+)$/i);
+  if(m && m[1] && m[3]) return {qty:m[1].trim(), unit:(m[2]||'').trim(), name:m[3].trim()};
+  return {qty:'', unit:'', name:str};
+}
 function changePortions(n) {
   window._currentPortions = n;
   const recipe = window._currentRecipe;

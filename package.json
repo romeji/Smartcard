@@ -4,5 +4,10 @@
   "type": "module",
   "dependencies": {
     "firebase-admin": "^12.0.0"
+  },
+  "scripts": {
+    "start": "vercel dev",
+    "build": "echo build",
+    "deploy": "vercel --prod"
   }
 }

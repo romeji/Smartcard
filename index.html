@@ -3048,22 +3048,13 @@ function renderMenuPremiumLock() {
 }
 
 function switchTab(tab) {
-  // Menu tab shows premium paywall
-  if(tab === 'menu' && !isPremium()) {
-    // Switch to menu view but show the premium overlay
-    _doSwitchTab(tab);
-    renderMenuPremiumLock();
-    return;
-  }
-  if(tab === 'menu') {
-    _doSwitchTab(tab);
-    // Hide premium lock if user is now premium
-    const lock = document.getElementById('menuPremiumLockOverlay');
-    if(lock) lock.remove();
-    return;
-  }
   _doSwitchTab(tab);
   if(tab === 'frigo') loadRecipes();
+  // Remove any premium lock overlay if present
+  if(tab === 'menu') {
+    const lock = document.getElementById('menuPremiumLockOverlay');
+    if(lock) lock.remove();
+  }
 }
 
 function _doSwitchTab(tab) {
@@ -3638,7 +3629,7 @@ function _getCachedRecipe(type, key) {
 }
 
 async function generateFridgeAIRecipes() {
-  if(!isPremium()){openPremiumModal('Recettes IA depuis le frigo');return;}
+  // Premium check removed
   const btn = document.getElementById('fridgeAIBtn');
   const status = document.getElementById('fridgeAIStatus');
   const results = document.getElementById('fridgeAIResults');
@@ -4738,7 +4729,7 @@ function toggleMenuOpts() {
 
 // ── Génération IA complète ─────────────────────────────────
 async function generateAIMenuFull() {
-  if(!isPremium()){openPremiumModal('Menu IA de la semaine');return;}
+  // Premium check removed
   const btn=document.getElementById('menuGenBtn');
   const txt=document.getElementById('menuGenBtnTxt');
   if(btn) btn.disabled=true;
@@ -4993,7 +4984,7 @@ async function searchSpoonacular(query) {
 }
 
 async function searchWithClaude(query) {
-  if(!isPremium()){openPremiumModal('Recherche de recettes par IA');return;}
+  // Premium check removed
   const grid = document.getElementById("spoonResults");
   if(!grid) return;
 
@@ -9204,7 +9195,7 @@ function closeMealEdit() { document.getElementById('mealEditOverlay')?.classList
 
 // ── Génération IA d'un jour ─────────────────────────────────
 async function regenDayAI(day) {
-  if(!isPremium()){openPremiumModal('Régénération IA du menu');return;}
+  // Premium check removed
   const btn = document.querySelector('[onclick*="regenDayAI"]');
   if(btn) { const old=btn.textContent; btn.textContent='⏳'; btn.disabled=true; setTimeout(()=>{btn.textContent=old;btn.disabled=false;},8000); }
   const p=state.profile||{};

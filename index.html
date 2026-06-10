@@ -951,6 +951,72 @@ body.offline-mode .offline-banner{display:block;}
 .fi-card.expired{border-color:var(--rd);}
 [data-theme=dark] .fi-card{background:var(--bg2);}
 
+
+/* ══ NUTRITION DASHBOARD ══════════════════════════════════ */
+.nx-hero{background:var(--grad);border-radius:20px;padding:22px 20px 20px;margin-bottom:14px;color:#fff;position:relative;overflow:hidden;}
+.nx-hero::before{content:'';position:absolute;top:-40px;right:-30px;width:140px;height:140px;border-radius:50%;background:rgba(255,255,255,.07);}
+.nx-hero::after{content:'';position:absolute;bottom:-25px;left:-20px;width:90px;height:90px;border-radius:50%;background:rgba(255,255,255,.05);}
+.nx-hero-label{font-size:.7rem;font-weight:700;opacity:.85;margin-bottom:6px;position:relative;}
+.nx-hero-kcal{font-size:2.4rem;font-weight:900;letter-spacing:-2px;line-height:1;position:relative;}
+.nx-hero-sub{font-size:.75rem;opacity:.9;margin-top:5px;position:relative;}
+.nx-hero-chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:12px;position:relative;}
+.nx-chip{background:rgba(255,255,255,.2);border-radius:99px;padding:4px 10px;font-size:.62rem;font-weight:800;}
+.nx-hero-btn{margin-top:14px;background:rgba(255,255,255,.22);border:none;border-radius:10px;padding:8px 18px;font-size:.72rem;font-weight:800;color:#fff;cursor:pointer;position:relative;display:inline-block;}
+
+.nx-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px;}
+.nx-stat{background:var(--bg);border-radius:var(--rs);box-shadow:var(--so);padding:12px 8px;text-align:center;}
+.nx-stat-icon{font-size:1.3rem;margin-bottom:5px;}
+.nx-stat-val{font-size:.88rem;font-weight:900;}
+.nx-stat-lbl{font-size:.5rem;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.5px;margin-top:3px;}
+.nx-stat-sub{font-size:.58rem;color:var(--tx2);margin-top:2px;}
+
+.nx-card{background:var(--bg);border-radius:var(--rs);box-shadow:var(--so);padding:14px;margin-bottom:12px;}
+.nx-card-title{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
+.nx-card-title-txt{font-weight:900;font-size:.88rem;}
+.nx-score-badge{font-size:.68rem;font-weight:900;padding:3px 9px;border-radius:99px;}
+
+.nx-bars{display:flex;align-items:flex-end;gap:4px;height:90px;padding:0 2px;margin-bottom:4px;}
+.nx-bar-col{flex:1;display:flex;flex-direction:column;align-items:center;height:100%;}
+.nx-bar-val{font-size:.52rem;font-weight:800;color:var(--tx2);height:14px;text-align:center;line-height:14px;}
+.nx-bar-wrap{flex:1;width:100%;display:flex;align-items:flex-end;}
+.nx-bar{width:100%;border-radius:6px 6px 0 0;min-height:3px;}
+.nx-bar-day{font-size:.62rem;font-weight:700;margin-top:4px;}
+.nx-legend{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;align-items:center;}
+.nx-leg-item{display:flex;align-items:center;gap:4px;font-size:.58rem;font-weight:700;padding:3px 7px;border-radius:var(--rp);}
+.nx-leg-dot{width:8px;height:8px;border-radius:2px;flex-shrink:0;}
+
+.nx-macros{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.nx-macro{background:var(--bg);border-radius:var(--rs);box-shadow:var(--so);padding:10px;display:flex;align-items:center;gap:8px;}
+.nx-macro-info{flex:1;min-width:0;}
+.nx-macro-lbl{font-size:.74rem;font-weight:800;}
+.nx-macro-val{font-size:1rem;font-weight:900;margin-top:1px;}
+.nx-macro-tgt{font-size:.58rem;color:var(--tx3);}
+.nx-macro-st{font-size:.58rem;font-weight:700;margin-top:2px;}
+.nx-macro-bar{height:3px;background:var(--bg2);border-radius:99px;margin-top:5px;}
+.nx-macro-fill{height:100%;border-radius:99px;transition:width .6s;}
+
+.nx-week-pills{display:flex;flex-direction:column;gap:6px;}
+.nx-day-pill{display:flex;align-items:center;gap:8px;background:var(--bg2);border-radius:var(--rs);padding:8px 10px;cursor:pointer;}
+.nx-day-pill-name{font-size:.74rem;font-weight:900;min-width:28px;}
+.nx-day-pill-meals{font-size:.62rem;color:var(--tx2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.nx-day-pill-kcal{font-size:.7rem;font-weight:900;padding:2px 7px;border-radius:99px;white-space:nowrap;flex-shrink:0;}
+
+.nx-sport-wrap{display:flex;align-items:center;gap:14px;}
+.nx-sport-legend{flex:1;}
+.nx-sport-row{display:flex;align-items:center;gap:8px;margin-bottom:8px;}
+.nx-sport-dot{width:11px;height:11px;border-radius:3px;flex-shrink:0;}
+.nx-sport-lbl{flex:1;font-size:.72rem;font-weight:700;}
+.nx-sport-val{font-size:.8rem;font-weight:900;}
+.nx-balance{margin-top:10px;padding:10px 12px;border-radius:var(--rs);}
+
+.nx-ai-card{background:var(--bg2);border-radius:var(--rs);padding:12px;margin-bottom:8px;}
+.nx-ai-card.tip{border-left:3px solid var(--gn);}
+.nx-ai-card.warn{border-left:3px solid var(--yl);}
+.nx-ai-card.bad{border-left:3px solid var(--rd);}
+.nx-ai-card.info{border-left:3px solid var(--bl);}
+.nx-ai-icon{font-size:1rem;}
+.nx-ai-title{font-weight:900;font-size:.8rem;margin:3px 0 2px;}
+.nx-ai-body{font-size:.72rem;color:var(--tx2);line-height:1.5;}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.19.1/umd/index.min.js"></script>

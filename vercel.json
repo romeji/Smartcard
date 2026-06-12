@@ -7,6 +7,11 @@
     "api/claude.js": {
       "memory": 128,
       "maxDuration": 30
+    },
+    "api/jow.py": { 
+      "memory": 128,
+      "maxDuration": 15,
+      "runtime": "python3.9" 
     }
   }
 }

@@ -1677,33 +1677,50 @@ body.offline-mode .offline-banner{display:block;}
 
       <!-- ═══ TAB: EXPLORER (Claude IA + MealDB) ═══ -->
       <div id="menuPanelSearch" style="display:none;">
-        <div style="display:flex;gap:8px;margin-bottom:12px;background:var(--bg2);border-radius:var(--rs);padding:3px;">
-          <button id="exptab-ai" onclick="switchExplTab('ai')" style="flex:1;padding:8px 4px;border-radius:var(--rs);border:none;font-size:.76rem;font-weight:800;cursor:pointer;background:var(--ac);color:#fff;">🤖 Claude IA</button>
-          <button id="exptab-mdb" onclick="switchExplTab('mdb')" style="flex:1;padding:8px 4px;border-radius:var(--rs);border:none;font-size:.76rem;font-weight:700;cursor:pointer;background:transparent;color:var(--tx2);">🌐 TheMealDB</button>
+        <!-- Explorer tabs -->
+        <div style="display:flex;gap:6px;margin-bottom:12px;background:var(--bg2);border-radius:var(--rs);padding:3px;">
+          <button id="exptab-ai" onclick="switchExplTab('ai')" style="flex:1;padding:8px 4px;border-radius:var(--rs);border:none;font-size:.72rem;font-weight:800;cursor:pointer;background:var(--ac);color:#fff;">🤖 Claude IA</button>
+          <button id="exptab-mdb" onclick="switchExplTab('mdb')" style="flex:1;padding:8px 4px;border-radius:var(--rs);border:none;font-size:.72rem;font-weight:700;cursor:pointer;background:transparent;color:var(--tx2);">🌐 MealDB</button>
+          <button id="exptab-jow" onclick="switchExplTab('jow')" style="flex:1;padding:8px 4px;border-radius:var(--rs);border:none;font-size:.72rem;font-weight:700;cursor:pointer;background:transparent;color:var(--tx2);">🇫🇷 Jow.fr</button>
         </div>
         <div id="explinfo" style="font-size:.7rem;color:var(--tx2);margin-bottom:10px;padding:6px 10px;background:rgba(108,92,231,.06);border-radius:var(--rs);">
-          🤖 <strong>Claude</strong> génère des recettes 100% françaises · 🌐 <strong>TheMealDB</strong> si Claude indisponible
+          🤖 <strong>Claude</strong> · 🌐 <strong>MealDB</strong> · 🇫🇷 <strong>Jow.fr</strong> recettes françaises
         </div>
+
+        <!-- Barre de recherche partagée -->
         <div class="spoon-search-bar">
-          <input class="spoon-search-inp" id="spoonSearchInp" placeholder="🔍 Ex: poulet curry, salade niçoise..." 
-            onkeydown="if(event.key==='Enter')searchSpoonacular()">
-          <button class="btn acc" onclick="searchSpoonacular()" style="flex-shrink:0;padding:10px 16px;border-radius:var(--rs);">Chercher</button>
+          <input class="spoon-search-inp" id="spoonSearchInp" placeholder="🔍 Ex: poulet curry, salade niçoise..."
+            onkeydown="if(event.key==='Enter')explorerSearch()">
+          <button class="btn acc" onclick="explorerSearch()" style="flex-shrink:0;padding:10px 16px;border-radius:var(--rs);">Chercher</button>
         </div>
+
         <!-- Quick tags -->
-        <div style="display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;margin-bottom:14px;">
-          <button class="spoon-recipe-tag" onclick="searchSpoonacularQuery('pasta')">🍝 Pâtes</button>
-          <button class="spoon-recipe-tag" onclick="searchSpoonacularQuery('salad')">🥗 Salades</button>
-          <button class="spoon-recipe-tag" onclick="searchSpoonacularQuery('chicken')">🍗 Poulet</button>
-          <button class="spoon-recipe-tag" onclick="searchSpoonacularQuery('soup')">🍲 Soupes</button>
-          <button class="spoon-recipe-tag" onclick="searchSpoonacularQuery('dessert')">🍮 Desserts</button>
-          <button class="spoon-recipe-tag" onclick="searchSpoonacularQuery('vegan breakfast')">🌱 Vegan</button>
-          <button class="spoon-recipe-tag" onclick="searchSpoonacularQuery('quick 15 minutes')">⚡ Rapide</button>
+        <div id="explorerTags" style="display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;margin-bottom:14px;">
+          <button class="spoon-recipe-tag" onclick="explorerSearchQuery('pâtes')">🍝 Pâtes</button>
+          <button class="spoon-recipe-tag" onclick="explorerSearchQuery('salade')">🥗 Salades</button>
+          <button class="spoon-recipe-tag" onclick="explorerSearchQuery('poulet')">🍗 Poulet</button>
+          <button class="spoon-recipe-tag" onclick="explorerSearchQuery('soupe')">🍲 Soupes</button>
+          <button class="spoon-recipe-tag" onclick="explorerSearchQuery('dessert')">🍮 Desserts</button>
+          <button class="spoon-recipe-tag" onclick="explorerSearchQuery('vegan')">🌱 Vegan</button>
+          <button class="spoon-recipe-tag" onclick="explorerSearchQuery('rapide')">⚡ Rapide</button>
         </div>
+
+        <!-- Résultats -->
         <div id="spoonResults">
           <div style="text-align:center;padding:30px;color:var(--tx3);">
             <div style="font-size:2rem;margin-bottom:8px;">🌐</div>
-            <div style="font-size:.82rem;">Recherchez parmi des millions de recettes du monde entier</div>
+            <div style="font-size:.82rem;">Recherchez parmi des millions de recettes</div>
           </div>
+        </div>
+
+        <!-- Panneau Jow séparé -->
+        <div id="jowPanel" style="display:none;">
+          <div style="text-align:center;padding:30px;color:var(--tx3);" id="jowDefault">
+            <div style="font-size:2.5rem;margin-bottom:10px;">🇫🇷</div>
+            <div style="font-weight:800;font-size:.88rem;margin-bottom:6px;">Recettes Jow.fr</div>
+            <div style="font-size:.75rem;">Des milliers de recettes françaises avec ingrédients et portions</div>
+          </div>
+          <div id="jowResults"></div>
         </div>
       </div>
 
@@ -5012,31 +5029,245 @@ function translateQueryToEnglish(query) {
 
 
 function switchExplTab(t) {
-  const aiBtn = document.getElementById('exptab-ai');
-  const mdbBtn = document.getElementById('exptab-mdb');
-  if(aiBtn) { aiBtn.style.background = t==='ai'?'var(--ac)':'transparent'; aiBtn.style.color = t==='ai'?'#fff':'var(--tx2)'; aiBtn.style.fontWeight = t==='ai'?'800':'700'; }
-  if(mdbBtn) { mdbBtn.style.background = t==='mdb'?'var(--ac)':'transparent'; mdbBtn.style.color = t==='mdb'?'#fff':'var(--tx2)'; mdbBtn.style.fontWeight = t==='mdb'?'800':'700'; }
   window._explTab = t;
-  // Clear results when switching tabs to avoid mixing Claude/MealDB results
-  const grid = document.getElementById('spoonResults');
-  if(grid) {
-    grid.innerHTML = '<div style="text-align:center;padding:30px;color:var(--tx3);">'
-      + '<div style="font-size:2rem;margin-bottom:8px;">' + (t==='ai'?'🤖':'🌐') + '</div>'
-      + '<div style="font-size:.82rem;">' + (t==='ai'?'Recherchez et Claude générera des recettes en français':'Recherchez parmi les recettes du monde entier') + '</div></div>';
+  const tabs = ['ai','mdb','jow'];
+  tabs.forEach(function(id) {
+    const btn = document.getElementById('exptab-'+id);
+    if(!btn) return;
+    const on = id === t;
+    btn.style.background = on ? 'var(--ac)' : 'transparent';
+    btn.style.color      = on ? '#fff' : 'var(--tx2)';
+    btn.style.fontWeight = on ? '800' : '700';
+  });
+
+  // Afficher/masquer les panneaux
+  const spoonPanel = document.getElementById('spoonResults');
+  const jowPanel   = document.getElementById('jowPanel');
+  const tags       = document.getElementById('explorerTags');
+  if(spoonPanel) spoonPanel.style.display = t === 'jow' ? 'none' : 'block';
+  if(jowPanel)   jowPanel.style.display   = t === 'jow' ? 'block' : 'none';
+
+  // Info bar
+  const info = document.getElementById('explinfo');
+  if(info) {
+    if(t==='ai')  info.innerHTML = '🤖 <strong>Claude</strong> génère des recettes 100% françaises';
+    if(t==='mdb') info.innerHTML = '🌐 <strong>TheMealDB</strong> — recettes du monde, traduites en français';
+    if(t==='jow') info.innerHTML = '🇫🇷 <strong>Jow.fr</strong> — recettes françaises avec quantités précises';
   }
-  // Clear search input for fresh start
+
+  // Tags adaptés
+  if(tags) {
+    if(t === 'jow') {
+      tags.innerHTML = [
+        ['poulet rôti','🍗'],['pâtes','🍝'],['salade','🥗'],['soupe','🍲'],
+        ['tarte','🥧'],['risotto','🍚'],['quiche','🥚'],['dessert','🍮']
+      ].map(function(it){
+        return '<button class="spoon-recipe-tag" onclick="explorerSearchQuery(\''+it[0]+'\')">'+it[1]+' '+it[0]+'</button>';
+      }).join('');
+    } else {
+      tags.innerHTML = [
+        ['pâtes','🍝'],['salade','🥗'],['poulet','🍗'],['soupe','🍲'],
+        ['dessert','🍮'],['vegan','🌱'],['rapide','⚡']
+      ].map(function(it){
+        return '<button class="spoon-recipe-tag" onclick="explorerSearchQuery(\''+it[0]+'\')">'+it[1]+' '+it[0]+'</button>';
+      }).join('');
+    }
+  }
+
+  // Reset input
   const inp = document.getElementById('spoonSearchInp');
   if(inp) inp.value = '';
-  const info = document.getElementById('explinfo');
-  if(info) info.innerHTML = t==='ai'
-    ? '🤖 <strong>Claude</strong> génère des recettes 100% françaises adaptées à votre profil'
-    : '🌐 <strong>TheMealDB</strong> — milliers de recettes du monde entier, <strong>traduites en français</strong> par IA';
 }
 
 async function searchSpoonacularQuery(q) {
   const inp = document.getElementById('spoonSearchInp');
   if(inp) inp.value = q;
   searchSpoonacular(q);
+}
+
+
+// ─────────────────────────────────────────────────────
+// EXPLORER — fonctions unifiées
+// ─────────────────────────────────────────────────────
+function explorerSearch() {
+  const q = (document.getElementById('spoonSearchInp').value||'').trim();
+  if(!q) return;
+  const tab = window._explTab || 'ai';
+  if(tab === 'jow') { searchJow(q); return; }
+  searchSpoonacular(q);
+}
+
+function explorerSearchQuery(q) {
+  const inp = document.getElementById('spoonSearchInp');
+  if(inp) inp.value = q;
+  const tab = window._explTab || 'ai';
+  if(tab === 'jow') { searchJow(q); return; }
+  searchSpoonacularQuery(q);
+}
+
+// ─────────────────────────────────────────────────────
+// JOW.FR — recherche côté client (CORS navigateur)
+// ─────────────────────────────────────────────────────
+async function searchJow(query) {
+  const zone = document.getElementById('jowResults');
+  const dflt = document.getElementById('jowDefault');
+  if(!zone) return;
+  if(dflt) dflt.style.display = 'none';
+
+  zone.innerHTML = '<div style="text-align:center;padding:24px;">'
+    + '<div class="ai-loading-spinner" style="margin:0 auto 10px;"></div>'
+    + '<div style="font-size:.8rem;color:var(--tx2);">Recherche sur Jow.fr…</div></div>';
+
+  try {
+    // Appel direct navigateur — Jow autorise les requêtes depuis un vrai browser
+    const params = new URLSearchParams({
+      query: query,
+      limit: '12',
+      start: '0',
+      availabilityZoneId: 'FR'
+    });
+    const resp = await fetch('https://api.jow.fr/public/recipe/quicksearch?' + params, {
+      method: 'POST',
+      headers: {
+        'accept': 'application/json',
+        'accept-language': 'fr-FR,fr',
+        'content-type': 'application/json',
+        'x-jow-withmeta': '1',
+        'origin': 'https://jow.fr',
+        'referer': 'https://jow.fr/'
+      },
+      body: '{}'
+    });
+
+    if(!resp.ok) {
+      // Fallback : essayer l'endpoint GET public
+      const resp2 = await fetch('https://api.jow.fr/public/recipe/quicksearch?' + params, {
+        headers: { 'accept': 'application/json', 'x-jow-withmeta': '1' }
+      });
+      if(!resp2.ok) throw new Error('Jow API unavailable (' + resp.status + ')');
+      const d2 = await resp2.json();
+      _renderJowResults(d2, query);
+      return;
+    }
+
+    const data = await resp.json();
+    _renderJowResults(data, query);
+  } catch(err) {
+    console.warn('Jow error:', err);
+    zone.innerHTML = '<div style="text-align:center;padding:24px;color:var(--tx2);">'
+      + '<div style="font-size:1.5rem;margin-bottom:8px;">⚠️</div>'
+      + '<div style="font-size:.82rem;font-weight:700;margin-bottom:4px;">Jow.fr indisponible</div>'
+      + '<div style="font-size:.72rem;">Essayez les onglets Claude IA ou MealDB</div></div>';
+  }
+}
+
+function _renderJowResults(data, query) {
+  const zone = document.getElementById('jowResults');
+  if(!zone) return;
+
+  const recipes = data.data || data.recipes || data || [];
+  if(!recipes.length) {
+    zone.innerHTML = '<div style="text-align:center;padding:24px;color:var(--tx3);">'
+      + '<div style="font-size:1.5rem;">🇫🇷</div>'
+      + '<div style="font-size:.82rem;margin-top:8px;">Aucune recette trouvée pour "'+query+'"</div></div>';
+    return;
+  }
+
+  zone.innerHTML = '<div class="spoon-grid">'
+    + recipes.map(function(r) {
+      // Normaliser les ingrédients Jow
+      const ingrs = (r.components||[]).map(function(c) {
+        const covers = r.coversCount || 4;
+        const qty = c.quantityPerCover ? (c.quantityPerCover * covers) : 0;
+        return {
+          qty:  qty ? String(Math.round(qty * 10) / 10) : '',
+          unit: (c.unit && c.unit.name) ? c.unit.name : '',
+          name: (c.ingredient && c.ingredient.name) ? c.ingredient.name : ''
+        };
+      }).filter(function(i){ return i.name; });
+
+      const recipe = {
+        id:           'jow_' + r._id,
+        name:         r.title || r.name || 'Recette Jow',
+        photo:        r.imageUrl || r.image || null,
+        time:         (r.preparationTime||0) + (r.cookingTime||0),
+        portions:     r.coversCount || 4,
+        kcal:         Math.round(r.totalCaloriesPerCover || 0),
+        prot:         Math.round((r.proteinsPerCover||0)),
+        carb:         Math.round((r.carbohydratesPerCover||0)),
+        fat:          Math.round((r.fatPerCover||0)),
+        ingredients:  ingrs,
+        instructions: (r.steps||[]).map(function(s){ return s.description||s; }),
+        source:       'jow',
+        diet:         'omnivore',
+        url:          r.slug ? 'https://jow.fr/recettes/'+r.slug : null,
+        _baseIngredients: null
+      };
+
+      const kcalStr = recipe.kcal ? '<span style="font-size:.58rem;color:var(--or);">🔥 '+recipe.kcal+' kcal</span>' : '';
+      const timeStr = recipe.time ? '<span style="font-size:.58rem;color:var(--tx3);">⏱ '+recipe.time+'min</span>' : '';
+      const portStr = '<span style="font-size:.58rem;color:var(--tx3);">👥 '+recipe.portions+' pers.</span>';
+
+      return '<div class="spoon-recipe-body" onclick="_openJowRecipe(\''+recipe.id+'\')" data-jow-id="'+recipe.id+'">'
+        + (recipe.photo
+          ? '<img src="'+recipe.photo+'" style="width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:var(--rs) var(--rs) 0 0;" loading="lazy" onerror="this.style.display=\'none\'">'
+          : '<div style="width:100%;aspect-ratio:4/3;background:linear-gradient(135deg,rgba(255,107,107,.15),rgba(255,142,83,.1));border-radius:var(--rs) var(--rs) 0 0;display:flex;align-items:center;justify-content:center;font-size:2rem;">🇫🇷</div>')
+        + '<div style="padding:10px 10px 8px;">'
+        + '<div style="font-weight:800;font-size:.82rem;margin-bottom:5px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">'+recipe.name+'</div>'
+        + '<div style="display:flex;gap:6px;flex-wrap:wrap;">'+kcalStr+timeStr+portStr+'</div>'
+        + '</div></div>';
+    }).join('')
+    + '</div>';
+
+  // Stocker les recettes pour ouverture
+  if(!window._jowCache) window._jowCache = {};
+  recipes.forEach(function(r) {
+    if(r._id) window._jowCache['jow_'+r._id] = r;
+  });
+}
+
+function _openJowRecipe(id) {
+  const raw = window._jowCache && window._jowCache[id];
+  if(!raw) { showToast('⚠️','Erreur','Recette introuvable'); return; }
+
+  const covers = raw.coversCount || 4;
+  const ingrs = (raw.components||[]).map(function(c) {
+    const qty = c.quantityPerCover ? (c.quantityPerCover * covers) : 0;
+    return {
+      qty:  qty ? String(Math.round(qty * 10) / 10) : '',
+      unit: (c.unit && c.unit.name) ? c.unit.name : '',
+      name: (c.ingredient && c.ingredient.name) ? c.ingredient.name : ''
+    };
+  }).filter(function(i){ return i.name; });
+
+  const recipe = {
+    id:           'jow_' + raw._id,
+    name:         raw.title || raw.name || 'Recette Jow',
+    photo:        raw.imageUrl || raw.image || null,
+    time:         (raw.preparationTime||0) + (raw.cookingTime||0),
+    portions:     covers,
+    kcal:         Math.round(raw.totalCaloriesPerCover || 0),
+    prot:         Math.round(raw.proteinsPerCover || 0),
+    carb:         Math.round(raw.carbohydratesPerCover || 0),
+    fat:          Math.round(raw.fatPerCover || 0),
+    ingredients:  ingrs,
+    instructions: (raw.steps||[]).map(function(s){ return s.description||s; }),
+    source:       'jow',
+    diet:         'omnivore',
+    url:          raw.slug ? 'https://jow.fr/recettes/'+raw.slug : null,
+    _baseIngredients: null
+  };
+
+  recipe._baseIngredients = null;
+  window._currentRecipe   = recipe;
+  window._currentPortions = recipe.portions;
+
+  const modal = document.getElementById('recipeDetailModal');
+  if(modal) {
+    const isBookmarked = (state.recipeBookmarks||[]).some(function(b){ return b.id===recipe.id; });
+    renderRecipeModal(recipe, recipe.portions, isBookmarked);
+    modal.parentElement.classList.add('on');
+  }
 }
 
 async function searchSpoonacular(query) {

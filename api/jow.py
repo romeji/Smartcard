@@ -174,24 +174,13 @@ class handler(BaseHTTPRequestHandler):
             if recipe_id:
 
                 try:
-                    response = self._get_recipe_details(
+                    details = self._get_recipe_details(
                         recipe_id
-                    )
-
-                    details = (
-                        response.get("data")
-                        or response.get("recipe")
-                        or response
                     )
 
                 except Exception:
                     details = {}
-            print(
-                json.dumps(
-                    details,
-                    ensure_ascii=False
-                )[:3000]
-            )
+
             steps, step_fields = (
                 self._extract_steps(details)
             )
@@ -242,32 +231,15 @@ class handler(BaseHTTPRequestHandler):
                 recipe.get("videoUrl")
             )
 
-            nutrition = {
-                "calories": (
-                    details.get("calories")
-                ),
-
-                "fat": (
-                    details.get("matiereGrasses")
-                ),
-
-                "carbohydrates": (
-                    details.get("glucides")
-                ),
-
-                "proteins": (
-                    details.get("proteines")
-                ),
-
-                "fibers": (
-                    details.get("fibres")
-                )
-            }
+            nutrition = details.get(
+                "nutritionalValues",
+                {}
+            )
 
             eating_habits = details.get(
                 "eatingHabitsCompatibility",
                 {}
-                )
+            )
 
             required_tools = [
                 tool.get("name")
@@ -280,7 +252,10 @@ class handler(BaseHTTPRequestHandler):
 
             result.append({
 
-                "id": recipe.get("_id", ""),
+                "id": recipe.get(
+                    "_id",
+                    ""
+                ),
 
                 "name": (
                     recipe.get("title")
@@ -316,9 +291,7 @@ class handler(BaseHTTPRequestHandler):
                     video_url
                     if (
                         video_url
-                        and video_url.startswith(
-                            "http"
-                        )
+                        and video_url.startswith("http")
                     )
                     else (
                         STATIC + video_url
@@ -387,65 +360,90 @@ class handler(BaseHTTPRequestHandler):
                     2
                 ),
 
-                "nutriScore": (
-                    details.get("note_nutriscore")
-                    or details.get("eco_score_new")
+                "nutriScore": details.get(
+                    "note_nutriscore"
                 ),
 
-                "greenScore": (
-                    details.get("note_environment")
+                "greenScore": details.get(
+                    "note_environment"
                 ),
 
                 "caloriesPerPortion": (
                     details.get("calories")
+                    or nutrition.get("calories")
                 ),
 
                 "nutrition": {
 
                     "calories": (
                         details.get("calories")
+                        or nutrition.get(
+                            "calories"
+                        )
                     ),
 
                     "fat": (
-                        details.get("matiereGrasses")
+                        nutrition.get("fat")
+                        or nutrition.get(
+                            "lipids"
+                        )
                     ),
 
                     "carbohydrates": (
-                        details.get("glucides")
+                        nutrition.get(
+                            "carbohydrates"
+                        )
                     ),
 
                     "proteins": (
-                        details.get("proteines")
+                        nutrition.get(
+                            "proteins"
+                        )
                     ),
 
                     "fibers": (
-                        details.get("fibres")
+                        nutrition.get(
+                            "fibers"
+                        )
                     )
                 },
 
                 "eatingHabits": {
-                    "vegetarian": eating_habits.get(
-                        "vegetarian"
+
+                    "vegetarian": (
+                        eating_habits.get(
+                            "vegetarian"
+                        )
                     ),
 
-                    "vegan": eating_habits.get(
-                        "vegan"
+                    "vegan": (
+                        eating_habits.get(
+                            "vegan"
+                        )
                     ),
 
-                    "glutenFree": eating_habits.get(
-                        "glutenFree"
+                    "glutenFree": (
+                        eating_habits.get(
+                            "glutenFree"
+                        )
                     ),
 
-                    "dairyFree": eating_habits.get(
-                        "dairyFree"
+                    "dairyFree": (
+                        eating_habits.get(
+                            "dairyFree"
+                        )
                     ),
 
-                    "pescatarian": eating_habits.get(
-                        "pescatarian"
+                    "pescatarian": (
+                        eating_habits.get(
+                            "pescatarian"
+                        )
                     ),
 
-                    "porkless": eating_habits.get(
-                        "porkless"
+                    "porkless": (
+                        eating_habits.get(
+                            "porkless"
+                        )
                     )
                 },
 
@@ -478,11 +476,7 @@ class handler(BaseHTTPRequestHandler):
 
         return result
 
-    def _json(
-        self,
-        data,
-        code=200
-    ):
+    def _json(self, data, code=200):
 
         body = json.dumps(
             data,
@@ -524,8 +518,5 @@ class handler(BaseHTTPRequestHandler):
             "Content-Type"
         )
 
-    def log_message(
-        self,
-        *args
-    ):
+    def log_message(self, *args):
         pass

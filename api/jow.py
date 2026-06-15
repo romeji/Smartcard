@@ -96,8 +96,12 @@ class handler(BaseHTTPRequestHandler):
 
         try:
             with urllib.request.urlopen(req_post, timeout=10) as resp:
-                raw = json.loads(resp.read().decode("utf-8"))
-            raise Exception(json.dumps(raw)[:3000])
+    raw = json.loads(resp.read().decode("utf-8"))
+
+# DEBUG : afficher la réponse exacte de Jow
+raise Exception(
+    json.dumps(raw, ensure_ascii=False)[:3000]
+)
             except urllib.error.HTTPError as e:
             body = ""
 

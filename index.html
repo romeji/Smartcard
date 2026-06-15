@@ -5116,48 +5116,55 @@ async function searchJow(query) {
 
   zone.innerHTML = '<div style="text-align:center;padding:24px;">'
     + '<div class="ai-loading-spinner" style="margin:0 auto 10px;"></div>'
-    + '<div style="font-size:.8rem;color:var(--tx2);">Recherche sur Jow.fr…</div></div>';
+    + '<div style="font-size:.8rem;color:var(--tx2);">Recherche sur Jow.fr\u2026</div></div>';
 
   try {
-    // Appel direct navigateur — Jow autorise les requêtes depuis un vrai browser
-    const params = new URLSearchParams({
-      query: query,
-      limit: '12',
-      start: '0',
-      availabilityZoneId: 'FR'
-    });
-    const resp = await fetch('https://api.jow.fr/public/recipe/quicksearch?' + params, {
-      method: 'POST',
-      headers: {
-        'accept': 'application/json',
-        'accept-language': 'fr-FR,fr',
-        'content-type': 'application/json',
-        'x-jow-withmeta': '1',
-        'origin': 'https://jow.fr',
-        'referer': 'https://jow.fr/'
-      },
-      body: '{}'
-    });
+    // Appel via notre proxy Vercel /api/jow
+    const params = new URLSearchParams({ q: query, limit: '12' });
+    const resp = await fetch('/api/jow?' + params);
 
     if(!resp.ok) {
-      // Fallback : essayer l'endpoint GET public
-      const resp2 = await fetch('https://api.jow.fr/public/recipe/quicksearch?' + params, {
-        headers: { 'accept': 'application/json', 'x-jow-withmeta': '1' }
-      });
-      if(!resp2.ok) throw new Error('Jow API unavailable (' + resp.status + ')');
-      const d2 = await resp2.json();
-      _renderJowResults(d2, query);
-      return;
+      const err = await resp.json().catch(function(){ return {}; });
+      throw new Error(err.error || 'Erreur ' + resp.status);
     }
 
     const data = await resp.json();
-    _renderJowResults(data, query);
+
+    // Transformer le format proxy vers _renderJowResults
+    const normalized = {
+      data: (data.recipes || []).map(function(r) {
+        return {
+          _id:                    r.id,
+          title:                  r.name,
+          imageUrl:               r.imageUrl,
+          slug:                   r.slug,
+          coversCount:            r.portions,
+          preparationTime:        r.prepTime,
+          cookingTime:            r.cookTime,
+          totalCaloriesPerCover:  r.kcalPerCover,
+          proteinsPerCover:       r.protPerCover,
+          carbohydratesPerCover:  r.carbPerCover,
+          fatPerCover:            r.fatPerCover,
+          steps:                  (r.steps||[]).map(function(s){ return {description: s}; }),
+          components: (r.ingredients||[]).map(function(i) {
+            return {
+              quantityPerCover: i.qty ? parseFloat(i.qty) / (r.portions||4) : 0,
+              unit:       { name: i.unit || '' },
+              ingredient: { name: i.name || '' }
+            };
+          })
+        };
+      })
+    };
+
+    _renderJowResults(normalized, query);
   } catch(err) {
     console.warn('Jow error:', err);
     zone.innerHTML = '<div style="text-align:center;padding:24px;color:var(--tx2);">'
-      + '<div style="font-size:1.5rem;margin-bottom:8px;">⚠️</div>'
+      + '<div style="font-size:1.5rem;margin-bottom:8px;">\u26a0\ufe0f</div>'
       + '<div style="font-size:.82rem;font-weight:700;margin-bottom:4px;">Jow.fr indisponible</div>'
-      + '<div style="font-size:.72rem;">Essayez les onglets Claude IA ou MealDB</div></div>';
+      + '<div style="font-size:.72rem;color:var(--tx3);">' + (err.message||'') + '</div>'
+      + '<div style="font-size:.72rem;margin-top:6px;">Essayez les onglets Claude IA ou MealDB</div></div>';
   }
 }
 

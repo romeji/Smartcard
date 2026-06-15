@@ -231,10 +231,27 @@ class handler(BaseHTTPRequestHandler):
                 recipe.get("videoUrl")
             )
 
-            nutrition = details.get(
-                "nutritionalValues",
-                {}
-            )
+            nutrition = {
+                "calories": (
+                    details.get("calories")
+                ),
+
+                "fat": (
+                    details.get("matiereGrasses")
+                ),
+
+                "carbohydrates": (
+                    details.get("glucides")
+                ),
+
+                "proteins": (
+                    details.get("proteines")
+                ),
+
+                "fibers": (
+                    details.get("fibres")
+                )
+            }
 
             eating_habits = details.get(
                 "eatingHabitsCompatibility",
@@ -359,52 +376,39 @@ class handler(BaseHTTPRequestHandler):
                     2
                 ),
 
-                "nutriScore": details.get(
-                    "note_nutriscore"
+                "nutriScore": (
+                    details.get("note_nutriscore")
+                    or details.get("eco_score_new")
                 ),
 
-                "greenScore": details.get(
-                    "note_environment"
+                "greenScore": (
+                    details.get("note_environment")
                 ),
 
                 "caloriesPerPortion": (
-                    details.get(
-                        "calories"
-                    )
-                    or nutrition.get(
-                        "calories"
-                    )
+                    details.get("calories")
                 ),
 
                 "nutrition": {
+
                     "calories": (
-                        details.get(
-                            "calories"
-                        )
-                        or nutrition.get(
-                            "calories"
-                        )
+                        details.get("calories")
                     ),
 
                     "fat": (
-                        nutrition.get(
-                            "fat"
-                        )
-                        or nutrition.get(
-                            "lipids"
-                        )
+                        details.get("matiereGrasses")
                     ),
 
-                    "carbohydrates": nutrition.get(
-                        "carbohydrates"
+                    "carbohydrates": (
+                        details.get("glucides")
                     ),
 
-                    "proteins": nutrition.get(
-                        "proteins"
+                    "proteins": (
+                        details.get("proteines")
                     ),
 
-                    "fibers": nutrition.get(
-                        "fibers"
+                    "fibers": (
+                        details.get("fibres")
                     )
                 },
 

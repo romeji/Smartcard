@@ -2,7 +2,6 @@ from http.server import BaseHTTPRequestHandler
 import json
 import urllib.parse
 import urllib.request
-import urllib.error
 import traceback
 
 
@@ -14,6 +13,7 @@ class handler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self):
+
         parsed = urllib.parse.urlparse(self.path)
         params = urllib.parse.parse_qs(parsed.query)
 
@@ -28,7 +28,11 @@ class handler(BaseHTTPRequestHandler):
             return
 
         try:
-            recipes = self._search_jow(query, limit)
+
+            recipes = self._search_jow(
+                query,
+                limit
+            )
 
             self._json({
                 "query": query,
@@ -36,11 +40,30 @@ class handler(BaseHTTPRequestHandler):
             })
 
         except Exception as e:
+
             self._json({
                 "error": str(e),
                 "traceback": traceback.format_exc(),
                 "recipes": []
             }, 500)
+
+    def _get_recipe_details(self, recipe_id):
+
+        url = f"https://api.jow.fr/public/recipe/{recipe_id}"
+
+        req = urllib.request.Request(
+            url,
+            headers={
+                "Accept": "application/json",
+                "User-Agent": "Mozilla/5.0"
+            }
+        )
+
+        with urllib.request.urlopen(req, timeout=20) as resp:
+
+            return json.loads(
+                resp.read().decode("utf-8")
+            )
 
     def _extract_steps(self, recipe):
 
@@ -53,16 +76,20 @@ class handler(BaseHTTPRequestHandler):
             "recipeSteps",
             "instructions",
             "directions",
-            "method"
+            "method",
+            "preparation"
         ]
 
         for field in candidate_fields:
 
             value = recipe.get(field)
 
-            if isinstance(value, list):
+            if not value:
+                continue
 
-                fields_found.append(field)
+            fields_found.append(field)
+
+            if isinstance(value, list):
 
                 for item in value:
 
@@ -73,22 +100,30 @@ class handler(BaseHTTPRequestHandler):
                             or item.get("description")
                             or item.get("text")
                             or item.get("title")
+                            or item.get("content")
                         )
 
                         if text:
                             steps.append(text)
 
                     elif isinstance(item, str):
+
                         steps.append(item)
 
-                if steps:
-                    break
+            elif isinstance(value, str):
+
+                steps.append(value)
+
+            if steps:
+                break
 
         return steps, fields_found
 
     def _search_jow(self, query, limit=12):
 
-        search_url = "https://api.jow.fr/public/recipe/quicksearch"
+        search_url = (
+            "https://api.jow.fr/public/recipe/quicksearch"
+        )
 
         params = urllib.parse.urlencode({
             "query": query,
@@ -111,7 +146,11 @@ class handler(BaseHTTPRequestHandler):
             }
         )
 
-        with urllib.request.urlopen(req, timeout=20) as resp:
+        with urllib.request.urlopen(
+            req,
+            timeout=20
+        ) as resp:
+
             raw = json.loads(
                 resp.read().decode("utf-8")
             )
@@ -128,20 +167,56 @@ class handler(BaseHTTPRequestHandler):
             if not isinstance(recipe, dict):
                 continue
 
-            def parse_ingr(c):
+            recipe_id = recipe.get("_id")
 
-                ingredient = c.get("ingredient", {})
+            details = {}
+
+            if recipe_id:
+
+                try:
+                    details = self._get_recipe_details(
+                        recipe_id
+                    )
+
+                except Exception:
+                    details = {}
+
+            steps, step_fields = (
+                self._extract_steps(details)
+            )
+
+            def parse_ingredient(item):
+
+                ingredient = item.get(
+                    "ingredient",
+                    {}
+                )
+
+                quantity = (
+                    item.get("quantityPerCover")
+                    or item.get("quantity")
+                    or ""
+                )
+
+                unit = ""
+
+                if isinstance(
+                    item.get("unit"),
+                    dict
+                ):
+                    unit = (
+                        item["unit"].get("name")
+                        or ""
+                    )
 
                 return {
-                    "name": ingredient.get("name", ""),
-                    "qty": str(
-                        ingredient.get(
-                            "quantityPerCover",
-                            ""
-                        )
+                    "name": ingredient.get(
+                        "name",
+                        ""
                     ),
-                    "unit": "",
-                    "isOptional": c.get(
+                    "qty": str(quantity),
+                    "unit": unit,
+                    "isOptional": item.get(
                         "isOptional",
                         False
                     )
@@ -152,17 +227,39 @@ class handler(BaseHTTPRequestHandler):
                 or recipe.get("imageUrl")
             )
 
-            video_url = recipe.get("videoUrl")
-
-            steps, step_fields = self._extract_steps(recipe)
+            video_url = (
+                recipe.get("videoUrl")
+            )
 
             result.append({
 
-                "id": recipe.get("_id", ""),
-                "name": recipe.get("title", ""),
+                "id": recipe.get(
+                    "_id",
+                    ""
+                ),
+
+                "name": (
+                    recipe.get("title")
+                    or recipe.get("name")
+                    or ""
+                ),
+
                 "description": recipe.get(
                     "description",
                     ""
+                ),
+
+                "slug": recipe.get(
+                    "slug",
+                    ""
+                ),
+
+                "url": (
+                    "https://jow.fr/recettes/"
+                    + recipe.get(
+                        "slug",
+                        ""
+                    )
                 ),
 
                 "imageUrl": (
@@ -177,47 +274,56 @@ class handler(BaseHTTPRequestHandler):
                     else None
                 ),
 
-                "slug": recipe.get(
-                    "slug",
-                    ""
+                "prepTime": (
+                    recipe.get(
+                        "preparationTime",
+                        0
+                    )
+                    or 0
                 ),
 
-                "url": (
-                    "https://jow.fr/recettes/"
-                    + recipe.get("slug", "")
-                ),
-
-                "prepTime": recipe.get(
-                    "preparationTime",
-                    0
-                ),
-
-                "cookTime": recipe.get(
-                    "cookingTime",
-                    0
+                "cookTime": (
+                    recipe.get(
+                        "cookingTime",
+                        0
+                    )
+                    or 0
                 ),
 
                 "totalTime": (
-                    (recipe.get(
-                        "preparationTime"
-                    ) or 0)
+                    (
+                        recipe.get(
+                            "preparationTime",
+                            0
+                        )
+                        or 0
+                    )
                     +
-                    (recipe.get(
-                        "cookingTime"
-                    ) or 0)
+                    (
+                        recipe.get(
+                            "cookingTime",
+                            0
+                        )
+                        or 0
+                    )
                 ),
 
                 "steps": steps,
 
-                "debugStepFields": step_fields,
+                "debugStepFields": (
+                    step_fields
+                ),
 
                 "ingredients": [
 
-                    parse_ingr(c)
+                    parse_ingredient(c)
 
-                    for c in recipe.get(
+                    for c in details.get(
                         "constituents",
-                        []
+                        recipe.get(
+                            "constituents",
+                            []
+                        )
                     )
 
                     if c.get(

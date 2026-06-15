@@ -1,10 +1,4 @@
-/*
- * ═══════════════════════════════════════════════════════════
- *  SMARTCARD — MODULE SCAN (JS uniquement)
- *  Contient : Barcode live scan, Ticket scan, Frigo scan, switchScanTab, Open Food Facts
- *  Dépendances : Tesseract.js, ZXing (chargés dans index.html)
- * ═══════════════════════════════════════════════════════════
- */
+/* SMARTCARD — MODULE SCAN */
 async function startLiveBarcodeScan() {
   const videoEl = document.getElementById('barcodeVideo');
   if(!videoEl) return;
@@ -1429,7 +1423,6 @@ function _addSelectedFridgeItems(aliments) {
   showToast('🧊', total + ' aliment' + (total>1?'s':'') + ' ajouté' + (total>1?'s':''), 'Votre frigo a été mis à jour !');
   switchTab('frigo');
 }
-
 
 
 function switchScanTab(tab) {

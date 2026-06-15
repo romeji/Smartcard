@@ -1,9 +1,4 @@
-/*
- * ═══════════════════════════════════════════════════════════
- *  SMARTCARD — MODULE LISTE (JS uniquement)
- *  Contient : Liste, Chariot, Historique, Autocomplete, Swipe, Edit Modal
- * ═══════════════════════════════════════════════════════════
- */
+/* SMARTCARD — MODULE LISTE */
 // LISTE
 // ═══════════════════════════════════════════════
 const CATEGORIES = ['🥛 Laitage','🥩 Viande','🥦 Légumes','🍎 Fruits','🥖 Boulangerie','🐟 Poisson','🧴 Hygiène','🧹 Ménager','🍝 Épicerie','🥤 Boissons','🐾 Animaux'];

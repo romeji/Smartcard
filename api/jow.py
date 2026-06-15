@@ -241,179 +241,276 @@ class handler(BaseHTTPRequestHandler):
                 {}
                 )
 
-required_tools = [
+            required_tools = [
+                tool.get("name")
+                for tool in details.get(
+                    "requiredTools",
+                    []
+                )
+                if tool.get("name")
+            ]
 
-    tool.get("name")
+            result.append({
 
-    for tool in details.get(
-        "requiredTools",
-        []
-    )
+                "id": recipe.get("_id", ""),
 
-    if tool.get("name")
-]
+                "name": (
+                    recipe.get("title")
+                    or recipe.get("name")
+                    or ""
+                ),
 
-result.append({
-    "id": recipe.get("_id", ""),
+                "description": recipe.get(
+                    "description",
+                    ""
+                ),
 
-    "name": (
-        recipe.get("title")
-        or recipe.get("name")
-        or ""
-    ),
+                "slug": recipe.get(
+                    "slug",
+                    ""
+                ),
 
-    "description": recipe.get("description", ""),
+                "url": (
+                    "https://jow.fr/recettes/"
+                    + recipe.get(
+                        "slug",
+                        ""
+                    )
+                ),
 
-    "slug": recipe.get("slug", ""),
+                "imageUrl": (
+                    STATIC + image_url
+                    if image_url
+                    else None
+                ),
 
-    "url": (
-        "https://jow.fr/recettes/"
-        + recipe.get("slug", "")
-    ),
+                "videoUrl": (
+                    video_url
+                    if (
+                        video_url
+                        and video_url.startswith(
+                            "http"
+                        )
+                    )
+                    else (
+                        STATIC + video_url
+                        if video_url
+                        else None
+                    )
+                ),
 
-    "imageUrl": (
-        STATIC + image_url
-        if image_url
-        else None
-    ),
+                "prepTime": (
+                    details.get(
+                        "preparationTime"
+                    )
+                    or recipe.get(
+                        "preparationTime",
+                        0
+                    )
+                    or 0
+                ),
 
-    "videoUrl": (
-        video_url
-        if video_url and video_url.startswith("http")
-        else (
-            STATIC + video_url
-            if video_url
-            else None
-        )
-    ),
+                "cookTime": (
+                    details.get(
+                        "cookingTime"
+                    )
+                    or recipe.get(
+                        "cookingTime",
+                        0
+                    )
+                    or 0
+                ),
 
-    "prepTime": (
-        details.get("preparationTime")
-        or recipe.get("preparationTime", 0)
-        or 0
-    ),
+                "totalTime": (
+                    (
+                        details.get(
+                            "preparationTime"
+                        )
+                        or recipe.get(
+                            "preparationTime",
+                            0
+                        )
+                        or 0
+                    )
+                    +
+                    (
+                        details.get(
+                            "cookingTime"
+                        )
+                        or recipe.get(
+                            "cookingTime",
+                            0
+                        )
+                        or 0
+                    )
+                ),
 
-    "cookTime": (
-        details.get("cookingTime")
-        or recipe.get("cookingTime", 0)
-        or 0
-    ),
+                "pricePerPortion": details.get(
+                    "pricePerPortion"
+                ),
 
-    "totalTime": (
-        (
-            details.get("preparationTime")
-            or recipe.get("preparationTime", 0)
-            or 0
-        )
-        +
-        (
-            details.get("cookingTime")
-            or recipe.get("cookingTime", 0)
-            or 0
-        )
-    ),
+                "pricePerPortionEuro": round(
+                    (
+                        details.get(
+                            "pricePerPortion"
+                        )
+                        or 0
+                    ) / 100,
+                    2
+                ),
 
-    "pricePerPortion": details.get("pricePerPortion"),
+                "nutriScore": details.get(
+                    "note_nutriscore"
+                ),
 
-    "pricePerPortionEuro": round(
-        (details.get("pricePerPortion") or 0) / 100,
-        2
-    ),
+                "greenScore": details.get(
+                    "note_environment"
+                ),
 
-    "nutriScore": details.get("note_nutriscore"),
+                "caloriesPerPortion": (
+                    details.get(
+                        "calories"
+                    )
+                    or nutrition.get(
+                        "calories"
+                    )
+                ),
 
-    "greenScore": details.get("note_environment"),
+                "nutrition": {
+                    "calories": (
+                        details.get(
+                            "calories"
+                        )
+                        or nutrition.get(
+                            "calories"
+                        )
+                    ),
 
-    "caloriesPerPortion": (
-        details.get("calories")
-        or nutrition.get("calories")
-    ),
+                    "fat": (
+                        nutrition.get(
+                            "fat"
+                        )
+                        or nutrition.get(
+                            "lipids"
+                        )
+                    ),
 
-    "nutrition": {
-        "calories": (
-            details.get("calories")
-            or nutrition.get("calories")
-        ),
+                    "carbohydrates": nutrition.get(
+                        "carbohydrates"
+                    ),
 
-        "fat": (
-            nutrition.get("fat")
-            or nutrition.get("lipids")
-        ),
+                    "proteins": nutrition.get(
+                        "proteins"
+                    ),
 
-        "carbohydrates": nutrition.get("carbohydrates"),
+                    "fibers": nutrition.get(
+                        "fibers"
+                    )
+                },
 
-        "proteins": nutrition.get("proteins"),
+                "eatingHabits": {
+                    "vegetarian": eating_habits.get(
+                        "vegetarian"
+                    ),
 
-        "fibers": nutrition.get("fibers")
-    },
+                    "vegan": eating_habits.get(
+                        "vegan"
+                    ),
 
-    "eatingHabits": {
-        "vegetarian": eating_habits.get("vegetarian"),
-        "vegan": eating_habits.get("vegan"),
-        "glutenFree": eating_habits.get("glutenFree"),
-        "dairyFree": eating_habits.get("dairyFree"),
-        "pescatarian": eating_habits.get("pescatarian"),
-        "porkless": eating_habits.get("porkless")
-    },
+                    "glutenFree": eating_habits.get(
+                        "glutenFree"
+                    ),
 
-    "requiredTools": required_tools,
+                    "dairyFree": eating_habits.get(
+                        "dairyFree"
+                    ),
 
-    "steps": steps,
+                    "pescatarian": eating_habits.get(
+                        "pescatarian"
+                    ),
 
-    "debugStepFields": step_fields,
+                    "porkless": eating_habits.get(
+                        "porkless"
+                    )
+                },
 
-    "ingredients": [
-        parse_ingredient(c)
-        for c in details.get(
-            "constituents",
-            recipe.get("constituents", [])
-        )
-        if c.get("ingredient", {}).get("name")
-    ]
-})
+                "requiredTools": required_tools,
 
+                "steps": steps,
 
-def _json(self, data, code=200):
-    body = json.dumps(
+                "debugStepFields": (
+                    step_fields
+                ),
+
+                "ingredients": [
+
+                    parse_ingredient(c)
+
+                    for c in details.get(
+                        "constituents",
+                        recipe.get(
+                            "constituents",
+                            []
+                        )
+                    )
+
+                    if c.get(
+                        "ingredient",
+                        {}
+                    ).get("name")
+                ]
+            })
+
+        return result
+
+    def _json(
+        self,
         data,
-        ensure_ascii=False
-    ).encode("utf-8")
+        code=200
+    ):
 
-    self.send_response(code)
+        body = json.dumps(
+            data,
+            ensure_ascii=False
+        ).encode("utf-8")
 
-    self._cors()
+        self.send_response(code)
 
-    self.send_header(
-        "Content-Type",
-        "application/json; charset=utf-8"
-    )
+        self._cors()
 
-    self.send_header(
-        "Content-Length",
-        str(len(body))
-    )
+        self.send_header(
+            "Content-Type",
+            "application/json; charset=utf-8"
+        )
 
-    self.end_headers()
+        self.send_header(
+            "Content-Length",
+            str(len(body))
+        )
 
-    self.wfile.write(body)
+        self.end_headers()
 
+        self.wfile.write(body)
 
-def _cors(self):
-    self.send_header(
-        "Access-Control-Allow-Origin",
-        "*"
-    )
+    def _cors(self):
 
-    self.send_header(
-        "Access-Control-Allow-Methods",
-        "GET, OPTIONS"
-    )
+        self.send_header(
+            "Access-Control-Allow-Origin",
+            "*"
+        )
 
-    self.send_header(
-        "Access-Control-Allow-Headers",
-        "Content-Type"
-    )
+        self.send_header(
+            "Access-Control-Allow-Methods",
+            "GET, OPTIONS"
+        )
 
+        self.send_header(
+            "Access-Control-Allow-Headers",
+            "Content-Type"
+        )
 
-def log_message(self, *args):
-    pass
+    def log_message(
+        self,
+        *args
+    ):
+        pass

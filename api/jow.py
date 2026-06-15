@@ -183,10 +183,6 @@ class handler(BaseHTTPRequestHandler):
                         or response.get("recipe")
                         or response
                     )
-            print(
-                "DETAIL_KEYS:",
-                list(details.keys())[:30]
-            )
 
                 except Exception:
                     details = {}

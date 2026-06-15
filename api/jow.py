@@ -42,6 +42,50 @@ class handler(BaseHTTPRequestHandler):
                 "recipes": []
             }, 500)
 
+    def _extract_steps(self, recipe):
+
+        fields_found = []
+        steps = []
+
+        candidate_fields = [
+            "steps",
+            "preparationSteps",
+            "recipeSteps",
+            "instructions",
+            "directions",
+            "method"
+        ]
+
+        for field in candidate_fields:
+
+            value = recipe.get(field)
+
+            if isinstance(value, list):
+
+                fields_found.append(field)
+
+                for item in value:
+
+                    if isinstance(item, dict):
+
+                        text = (
+                            item.get("label")
+                            or item.get("description")
+                            or item.get("text")
+                            or item.get("title")
+                        )
+
+                        if text:
+                            steps.append(text)
+
+                    elif isinstance(item, str):
+                        steps.append(item)
+
+                if steps:
+                    break
+
+        return steps, fields_found
+
     def _search_jow(self, query, limit=12):
 
         search_url = "https://api.jow.fr/public/recipe/quicksearch"
@@ -53,7 +97,7 @@ class handler(BaseHTTPRequestHandler):
             "availabilityZoneId": "FR"
         })
 
-        req_post = urllib.request.Request(
+        req = urllib.request.Request(
             f"{search_url}?{params}",
             data=b"{}",
             method="POST",
@@ -67,36 +111,13 @@ class handler(BaseHTTPRequestHandler):
             }
         )
 
-        try:
-            with urllib.request.urlopen(req_post, timeout=15) as resp:
-                raw = json.loads(
-                    resp.read().decode("utf-8")
-                )
-
-        except urllib.error.HTTPError as e:
-            body = ""
-
-            try:
-                body = e.read().decode("utf-8")
-            except Exception:
-                pass
-
-            raise Exception(
-                f"Jow POST failed ({e.code}) : {body}"
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            raw = json.loads(
+                resp.read().decode("utf-8")
             )
 
         data = raw.get("data", {})
         recipes = data.get("content", [])
-
-        if not isinstance(recipes, list):
-            recipes = []
-            if recipes:
-    raise Exception(
-        json.dumps(
-            recipes[0],
-            ensure_ascii=False
-        )[:15000]
-    )
 
         STATIC = "https://static.jow.fr/"
 
@@ -111,60 +132,15 @@ class handler(BaseHTTPRequestHandler):
 
                 ingredient = c.get("ingredient", {})
 
-                unit_id = (
-                    c.get("unit", {}).get("_id", "")
-                    or c.get("unit", {}).get("id", "")
-                )
-
-                unit_name = ""
-
-                natural_unit = ingredient.get(
-                    "naturalUnit",
-                    {}
-                )
-
-                if (
-                    natural_unit.get("_id") == unit_id
-                    or natural_unit.get("id") == unit_id
-                ):
-                    unit_name = natural_unit.get("name", "")
-
-                else:
-                    for alt in ingredient.get(
-                        "alternativeUnits",
-                        []
-                    ):
-                        au = alt.get("unit", {})
-
-                        if (
-                            au.get("_id") == unit_id
-                            or au.get("id") == unit_id
-                        ):
-                            unit_name = au.get("name", "")
-                            break
-
-                qty_per_cover = (
-                    ingredient.get("quantityPerCover")
-                    or c.get("quantityPerCover")
-                    or 0
-                )
-
-                covers = (
-                    recipe.get("roundedCoversCount")
-                    or recipe.get("coversCount")
-                    or 1
-                )
-
-                qty = (
-                    round(qty_per_cover * covers, 2)
-                    if qty_per_cover
-                    else 0
-                )
-
                 return {
                     "name": ingredient.get("name", ""),
-                    "qty": str(qty) if qty else "",
-                    "unit": unit_name,
+                    "qty": str(
+                        ingredient.get(
+                            "quantityPerCover",
+                            ""
+                        )
+                    ),
+                    "unit": "",
                     "isOptional": c.get(
                         "isOptional",
                         False
@@ -178,84 +154,72 @@ class handler(BaseHTTPRequestHandler):
 
             video_url = recipe.get("videoUrl")
 
-            covers = (
-                recipe.get("roundedCoversCount")
-                or recipe.get("coversCount")
-                or 1
-            )
-            print("FIELDS =", recipe.keys())
-            for key, value in recipe.items():
-    if isinstance(value, list) and len(value) > 0:
-        first = value[0]
-        if isinstance(first, dict) and "label" in first:
-            print("FOUND STEP FIELD =", key)
+            steps, step_fields = self._extract_steps(recipe)
+
             result.append({
+
                 "id": recipe.get("_id", ""),
                 "name": recipe.get("title", ""),
-                "description": recipe.get("description", ""),
+                "description": recipe.get(
+                    "description",
+                    ""
+                ),
+
                 "imageUrl": (
                     STATIC + image_url
                     if image_url
                     else None
                 ),
+
                 "videoUrl": (
                     STATIC + video_url
                     if video_url
                     else None
                 ),
-                "portions": covers,
-                "prepTime": recipe.get(
-                    "preparationTime",
-                    0
+
+                "slug": recipe.get(
+                    "slug",
+                    ""
                 ),
-                "cookTime": recipe.get(
-                    "cookingTime",
-                    0
-                ),
-                "totalTime": (
-                    (recipe.get("preparationTime") or 0)
-                    + (recipe.get("cookingTime") or 0)
-                ),
-                "kcalPerCover": round(
-                    recipe.get(
-                        "totalCaloriesPerCover"
-                    ) or 0
-                ),
-                "protPerCover": round(
-                    recipe.get(
-                        "proteinsPerCover"
-                    ) or 0
-                ),
-                "carbPerCover": round(
-                    recipe.get(
-                        "carbohydratesPerCover"
-                    ) or 0
-                ),
-                "fatPerCover": round(
-                    recipe.get(
-                        "fatPerCover"
-                    ) or 0
-                ),
-                "slug": recipe.get("slug", ""),
+
                 "url": (
                     "https://jow.fr/recettes/"
                     + recipe.get("slug", "")
                 ),
-                "steps": [
-                    s.get("description", s)
-                    if isinstance(s, dict)
-                    else s
-                    for s in recipe.get(
-                        "steps",
-                        []
-                    )
-                ],
+
+                "prepTime": recipe.get(
+                    "preparationTime",
+                    0
+                ),
+
+                "cookTime": recipe.get(
+                    "cookingTime",
+                    0
+                ),
+
+                "totalTime": (
+                    (recipe.get(
+                        "preparationTime"
+                    ) or 0)
+                    +
+                    (recipe.get(
+                        "cookingTime"
+                    ) or 0)
+                ),
+
+                "steps": steps,
+
+                "debugStepFields": step_fields,
+
                 "ingredients": [
+
                     parse_ingr(c)
+
                     for c in recipe.get(
                         "constituents",
                         []
                     )
+
                     if c.get(
                         "ingredient",
                         {}
@@ -273,6 +237,7 @@ class handler(BaseHTTPRequestHandler):
         ).encode("utf-8")
 
         self.send_response(code)
+
         self._cors()
 
         self.send_header(
@@ -286,9 +251,11 @@ class handler(BaseHTTPRequestHandler):
         )
 
         self.end_headers()
+
         self.wfile.write(body)
 
     def _cors(self):
+
         self.send_header(
             "Access-Control-Allow-Origin",
             "*"

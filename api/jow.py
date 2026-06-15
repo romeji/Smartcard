@@ -183,7 +183,7 @@ class handler(BaseHTTPRequestHandler):
                 or recipe.get("coversCount")
                 or 1
             )
-
+            print(recipe.keys())
             result.append({
                 "id": recipe.get("_id", ""),
                 "name": recipe.get("title", ""),

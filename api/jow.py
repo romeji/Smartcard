@@ -90,6 +90,13 @@ class handler(BaseHTTPRequestHandler):
 
         if not isinstance(recipes, list):
             recipes = []
+            if recipes:
+    raise Exception(
+        json.dumps(
+            recipes[0],
+            ensure_ascii=False
+        )[:15000]
+    )
 
         STATIC = "https://static.jow.fr/"
 

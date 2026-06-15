@@ -5361,46 +5361,39 @@ function _openJowRecipe(id) {
 
   // Badges régimes
   const habitBadgesHtml = _jowHabitBadges(habits, false).join('');
-const nsFallback =
-`<span style="padding:5px 12px;border-radius:6px;background:${nsColors?.[ns.score] || "#999"};color:#fff;font-size:.85rem;font-weight:900;">
-${ns.score}
-</span>`;
+const gsFallback = `
+<span
+style="
+padding:5px 12px;
+border-radius:6px;
+background:${gsColors?.[gs.score] || "#27ae60"};
+color:#fff;
+font-size:.85rem;
+font-weight:900;
+"
 
-const nsHtml =
-ns?.score
-? (
-    ns?.svgUrl || ns?.imageUrl
-      ? `
-<img
-src="${ns.svgUrl || ns.imageUrl}"
-alt="Nutri-score ${ns.score}"
-style="height:36px;object-fit:contain;"
-onerror="this.replaceWith(document.createRange().createContextualFragment(\`${nsFallback}\`))"
->`
-      : nsFallback
-)
-: "";
+>
 
-
-const gsFallback =
-`<span style="padding:5px 12px;border-radius:6px;background:${gsColors?.[gs.score] || "#27ae60"};color:#fff;font-size:.85rem;font-weight:900;">
-🌍 ${gs.score}
-</span>`;
+🌍 ${gs.score} </span>
+`;
 
 const gsHtml =
 gs?.score
 ? (
-    gs?.imageUrl
-      ? `
+gs?.imageUrl
+? `
 <img
 src="${gs.imageUrl}"
 alt="Green-score ${gs.score}"
 style="height:36px;object-fit:contain;"
-onerror="this.replaceWith(document.createRange().createContextualFragment(\`${gsFallback}\`))"
->`
-      : gsFallback
+
+>
+
+`
+: gsFallback
 )
 : "";
+
 
   // Difficulté
   const diffMap = {1:'⭐ Facile',2:'⭐⭐ Moyen',3:'⭐⭐⭐ Avancé'};

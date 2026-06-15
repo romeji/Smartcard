@@ -1,381 +1,275 @@
+from http.server import BaseHTTPRequestHandler
 import json
-import traceback
 import urllib.parse
 import urllib.request
 import urllib.error
+import traceback
 
 
-STATIC = "https://static.jow.fr/"
+class handler(BaseHTTPRequestHandler):
 
+    def do_OPTIONS(self):
+        self.send_response(200)
+        self._cors()
+        self.end_headers()
 
-def handler(request):
+    def do_GET(self):
+        parsed = urllib.parse.urlparse(self.path)
+        params = urllib.parse.parse_qs(parsed.query)
 
-    try:
-        query = request.args.get("q", "").strip()
-        limit = int(request.args.get("limit", "12"))
+        query = params.get("q", [""])[0].strip()
+        limit = int(params.get("limit", ["12"])[0])
 
         if not query:
-            return response(
-                {
-                    "error": "Missing query parameter ?q="
-                },
+            self._json(
+                {"error": "Missing query parameter ?q="},
                 400
             )
+            return
 
-        recipes = search_jow(query, limit)
+        try:
+            recipes = self._search_jow(query, limit)
 
-        return response({
+            self._json({
+                "query": query,
+                "recipes": recipes
+            })
+
+        except Exception as e:
+            self._json({
+                "error": str(e),
+                "traceback": traceback.format_exc(),
+                "recipes": []
+            }, 500)
+
+    def _extract_steps(self, recipe):
+
+        fields_found = []
+        steps = []
+
+        candidate_fields = [
+            "steps",
+            "preparationSteps",
+            "recipeSteps",
+            "instructions",
+            "directions",
+            "method"
+        ]
+
+        for field in candidate_fields:
+
+            value = recipe.get(field)
+
+            if isinstance(value, list):
+
+                fields_found.append(field)
+
+                for item in value:
+
+                    if isinstance(item, dict):
+
+                        text = (
+                            item.get("label")
+                            or item.get("description")
+                            or item.get("text")
+                            or item.get("title")
+                        )
+
+                        if text:
+                            steps.append(text)
+
+                    elif isinstance(item, str):
+                        steps.append(item)
+
+                if steps:
+                    break
+
+        return steps, fields_found
+
+    def _search_jow(self, query, limit=12):
+
+        search_url = "https://api.jow.fr/public/recipe/quicksearch"
+
+        params = urllib.parse.urlencode({
             "query": query,
-            "recipes": recipes
+            "limit": limit,
+            "start": 0,
+            "availabilityZoneId": "FR"
         })
 
-    except Exception as e:
-
-        return response(
-            {
-                "error": str(e),
-                "traceback": traceback.format_exc()
-            },
-            500
+        req = urllib.request.Request(
+            f"{search_url}?{params}",
+            data=b"{}",
+            method="POST",
+            headers={
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+                "x-jow-withmeta": "1",
+                "Origin": "https://jow.fr",
+                "Referer": "https://jow.fr/",
+                "User-Agent": "Mozilla/5.0"
+            }
         )
 
-
-def response(data, status=200):
-
-    return (
-        json.dumps(
-            data,
-            ensure_ascii=False
-        ),
-        status,
-        {
-            "Content-Type":
-            "application/json; charset=utf-8",
-
-            "Access-Control-Allow-Origin":
-            "*",
-
-            "Access-Control-Allow-Methods":
-            "GET, OPTIONS",
-
-            "Access-Control-Allow-Headers":
-            "Content-Type"
-        }
-    )
-
-
-def search_jow(query, limit=12):
-
-    url = (
-        "https://api.jow.fr/public/recipe/quicksearch"
-    )
-
-    params = urllib.parse.urlencode({
-        "query": query,
-        "limit": limit,
-        "start": 0,
-        "availabilityZoneId": "FR"
-    })
-
-    req = urllib.request.Request(
-        f"{url}?{params}",
-        method="POST",
-        data=b"{}",
-        headers={
-            "Accept": "application/json",
-            "Content-Type": "application/json",
-            "x-jow-withmeta": "1",
-            "Origin": "https://jow.fr",
-            "Referer": "https://jow.fr/",
-            "User-Agent": "Mozilla/5.0"
-        }
-    )
-
-    with urllib.request.urlopen(
-        req,
-        timeout=20
-    ) as r:
-
-        raw = json.loads(
-            r.read().decode("utf-8")
-        )
-
-    recipes = (
-        raw
-        .get("data", {})
-        .get("content", [])
-    )
-
-    result = []
-
-    for recipe in recipes:
-
-        if not isinstance(recipe, dict):
-            continue
-
-        recipe_id = recipe.get("_id")
-
-        detail = {}
-
-        if recipe_id:
-            detail = fetch_recipe_detail(
-                recipe_id
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            raw = json.loads(
+                resp.read().decode("utf-8")
             )
 
-        steps = extract_steps(
-            detail
-        )
+        data = raw.get("data", {})
+        recipes = data.get("content", [])
 
-        result.append({
+        STATIC = "https://static.jow.fr/"
 
-            "id":
-            recipe_id,
+        result = []
 
-            "name":
-            recipe.get(
-                "title",
-                ""
-            ),
+        for recipe in recipes:
 
-            "description":
-            recipe.get(
-                "description",
-                ""
-            ),
+            if not isinstance(recipe, dict):
+                continue
 
-            "slug":
-            recipe.get(
-                "slug",
-                ""
-            ),
+            def parse_ingr(c):
 
-            "url":
-            (
-                "https://jow.fr/recettes/"
-                +
-                recipe.get(
-                    "slug",
-                    ""
-                )
-            ),
+                ingredient = c.get("ingredient", {})
 
-            "imageUrl":
-            build_static(
-                recipe.get(
-                    "editorialPictureUrl"
-                )
-                or
-                recipe.get(
-                    "imageUrl"
-                )
-            ),
-
-            "videoUrl":
-            build_static(
-                recipe.get(
-                    "videoUrl"
-                )
-            ),
-
-            "prepTime":
-            recipe.get(
-                "preparationTime",
-                0
-            ),
-
-            "cookTime":
-            recipe.get(
-                "cookingTime",
-                0
-            ),
-
-            "totalTime":
-            (
-                recipe.get(
-                    "preparationTime",
-                    0
-                )
-                +
-                recipe.get(
-                    "cookingTime",
-                    0
-                )
-            ),
-
-            "steps":
-            steps,
-
-            "ingredients": [
-
-                {
-                    "name":
-                    c.get(
-                        "ingredient",
-                        {}
-                    ).get(
-                        "name",
-                        ""
-                    ),
-
-                    "qty":
-                    str(
-                        c.get(
-                            "ingredient",
-                            {}
-                        ).get(
+                return {
+                    "name": ingredient.get("name", ""),
+                    "qty": str(
+                        ingredient.get(
                             "quantityPerCover",
                             ""
                         )
                     ),
-
                     "unit": "",
-
-                    "isOptional":
-                    c.get(
+                    "isOptional": c.get(
                         "isOptional",
                         False
                     )
                 }
 
-                for c in recipe.get(
-                    "constituents",
-                    []
-                )
-
-                if c.get(
-                    "ingredient",
-                    {}
-                ).get(
-                    "name"
-                )
-            ]
-        })
-
-    return result
-
-
-def fetch_recipe_detail(recipe_id):
-
-    try:
-
-        url = (
-            f"https://api.jow.fr/public/recipe/{recipe_id}"
-        )
-
-        req = urllib.request.Request(
-            url,
-            headers={
-                "Accept":
-                "application/json",
-
-                "User-Agent":
-                "Mozilla/5.0"
-            }
-        )
-
-        with urllib.request.urlopen(
-            req,
-            timeout=20
-        ) as r:
-
-            return json.loads(
-                r.read().decode(
-                    "utf-8"
-                )
+            image_url = (
+                recipe.get("editorialPictureUrl")
+                or recipe.get("imageUrl")
             )
 
-    except Exception:
-        return {}
+            video_url = recipe.get("videoUrl")
 
+            steps, step_fields = self._extract_steps(recipe)
 
-def extract_steps(data):
+            result.append({
 
-    candidates = [
+                "id": recipe.get("_id", ""),
+                "name": recipe.get("title", ""),
+                "description": recipe.get(
+                    "description",
+                    ""
+                ),
 
-        "steps",
-        "recipeSteps",
-        "instructions",
-        "method",
-        "directions",
-        "preparationSteps"
+                "imageUrl": (
+                    STATIC + image_url
+                    if image_url
+                    else None
+                ),
 
-    ]
+                "videoUrl": (
+                    STATIC + video_url
+                    if video_url
+                    else None
+                ),
 
-    result = []
+                "slug": recipe.get(
+                    "slug",
+                    ""
+                ),
 
-    for field in candidates:
+                "url": (
+                    "https://jow.fr/recettes/"
+                    + recipe.get("slug", "")
+                ),
 
-        value = data.get(field)
+                "prepTime": recipe.get(
+                    "preparationTime",
+                    0
+                ),
 
-        if isinstance(
-            value,
-            list
-        ):
+                "cookTime": recipe.get(
+                    "cookingTime",
+                    0
+                ),
 
-            for s in value:
+                "totalTime": (
+                    (recipe.get(
+                        "preparationTime"
+                    ) or 0)
+                    +
+                    (recipe.get(
+                        "cookingTime"
+                    ) or 0)
+                ),
 
-                if isinstance(
-                    s,
-                    str
-                ):
-                    result.append(
-                        s
+                "steps": steps,
+
+                "debugStepFields": step_fields,
+
+                "ingredients": [
+
+                    parse_ingr(c)
+
+                    for c in recipe.get(
+                        "constituents",
+                        []
                     )
 
-                elif isinstance(
-                    s,
-                    dict
-                ):
+                    if c.get(
+                        "ingredient",
+                        {}
+                    ).get("name")
+                ]
+            })
 
-                    text = (
-                        s.get(
-                            "label"
-                        )
-                        or
-                        s.get(
-                            "text"
-                        )
-                        or
-                        s.get(
-                            "description"
-                        )
-                        or
-                        s.get(
-                            "title"
-                        )
-                    )
+        return result
 
-                    if text:
-                        result.append(
-                            text
-                        )
+    def _json(self, data, code=200):
 
-            if result:
-                return result
+        body = json.dumps(
+            data,
+            ensure_ascii=False
+        ).encode("utf-8")
 
-    data_node = (
-        data.get(
-            "data",
-            {}
-        )
-    )
+        self.send_response(code)
 
-    if data_node:
-        return extract_steps(
-            data_node
+        self._cors()
+
+        self.send_header(
+            "Content-Type",
+            "application/json; charset=utf-8"
         )
 
-    return []
+        self.send_header(
+            "Content-Length",
+            str(len(body))
+        )
 
+        self.end_headers()
 
-def build_static(path):
+        self.wfile.write(body)
 
-    if not path:
-        return None
+    def _cors(self):
 
-    if path.startswith(
-        "http"
-    ):
-        return path
+        self.send_header(
+            "Access-Control-Allow-Origin",
+            "*"
+        )
 
-    return STATIC + path
+        self.send_header(
+            "Access-Control-Allow-Methods",
+            "GET, OPTIONS"
+        )
+
+        self.send_header(
+            "Access-Control-Allow-Headers",
+            "Content-Type"
+        )
+
+    def log_message(self, *args):
+        pass

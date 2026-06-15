@@ -174,9 +174,19 @@ class handler(BaseHTTPRequestHandler):
             if recipe_id:
 
                 try:
-                    details = self._get_recipe_details(
+                    response = self._get_recipe_details(
                         recipe_id
                     )
+
+                    details = (
+                        response.get("data")
+                        or response.get("recipe")
+                        or response
+                    )
+            print(
+                "DETAIL_KEYS:",
+                list(details.keys())[:30]
+            )
 
                 except Exception:
                     details = {}

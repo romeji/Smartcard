@@ -231,109 +231,251 @@ class handler(BaseHTTPRequestHandler):
                 recipe.get("videoUrl")
             )
 
-            result.append({
+nutrition = details.get(
+    "nutritionalValues",
+    {}
+)
 
-                "id": recipe.get(
-                    "_id",
-                    ""
-                ),
+eating_habits = details.get(
+    "eatingHabitsCompatibility",
+    {}
+)
 
-                "name": (
-                    recipe.get("title")
-                    or recipe.get("name")
-                    or ""
-                ),
+required_tools = [
 
-                "description": recipe.get(
-                    "description",
-                    ""
-                ),
+    tool.get("name")
 
-                "slug": recipe.get(
-                    "slug",
-                    ""
-                ),
+    for tool in details.get(
+        "requiredTools",
+        []
+    )
 
-                "url": (
-                    "https://jow.fr/recettes/"
-                    + recipe.get(
-                        "slug",
-                        ""
-                    )
-                ),
+    if tool.get("name")
+]
 
-                "imageUrl": (
-                    STATIC + image_url
-                    if image_url
-                    else None
-                ),
+result.append({
 
-                "videoUrl": (
-                    STATIC + video_url
-                    if video_url
-                    else None
-                ),
+    "id": recipe.get(
+        "_id",
+        ""
+    ),
 
-                "prepTime": (
-                    recipe.get(
-                        "preparationTime",
-                        0
-                    )
-                    or 0
-                ),
+    "name": (
+        recipe.get("title")
+        or recipe.get("name")
+        or ""
+    ),
 
-                "cookTime": (
-                    recipe.get(
-                        "cookingTime",
-                        0
-                    )
-                    or 0
-                ),
+    "description": recipe.get(
+        "description",
+        ""
+    ),
 
-                "totalTime": (
-                    (
-                        recipe.get(
-                            "preparationTime",
-                            0
-                        )
-                        or 0
-                    )
-                    +
-                    (
-                        recipe.get(
-                            "cookingTime",
-                            0
-                        )
-                        or 0
-                    )
-                ),
+    "slug": recipe.get(
+        "slug",
+        ""
+    ),
 
-                "steps": steps,
+    "url": (
+        "https://jow.fr/recettes/"
+        + recipe.get(
+            "slug",
+            ""
+        )
+    ),
 
-                "debugStepFields": (
-                    step_fields
-                ),
+    "imageUrl": (
+        STATIC + image_url
+        if image_url
+        else None
+    ),
 
-                "ingredients": [
+    "videoUrl": (
+        video_url
+        if (
+            video_url
+            and video_url.startswith("http")
+        )
+        else (
+            STATIC + video_url
+            if video_url
+            else None
+        )
+    ),
 
-                    parse_ingredient(c)
+    "prepTime": (
+        details.get(
+            "preparationTime"
+        )
+        or recipe.get(
+            "preparationTime",
+            0
+        )
+        or 0
+    ),
 
-                    for c in details.get(
-                        "constituents",
-                        recipe.get(
-                            "constituents",
-                            []
-                        )
-                    )
+    "cookTime": (
+        details.get(
+            "cookingTime"
+        )
+        or recipe.get(
+            "cookingTime",
+            0
+        )
+        or 0
+    ),
 
-                    if c.get(
-                        "ingredient",
-                        {}
-                    ).get("name")
-                ]
-            })
+    "totalTime": (
+        (
+            details.get(
+                "preparationTime"
+            )
+            or recipe.get(
+                "preparationTime",
+                0
+            )
+            or 0
+        )
+        +
+        (
+            details.get(
+                "cookingTime"
+            )
+            or recipe.get(
+                "cookingTime",
+                0
+            )
+            or 0
+        )
+    ),
 
-        return result
+    "pricePerPortion": details.get(
+        "pricePerPortion"
+    ),
+
+    "pricePerPortionEuro": round(
+        (
+            details.get(
+                "pricePerPortion"
+            )
+            or 0
+        ) / 100,
+        2
+    ),
+
+    "nutriScore": details.get(
+        "note_nutriscore"
+    ),
+
+    "greenScore": details.get(
+        "note_environment"
+    ),
+
+    "caloriesPerPortion": (
+        details.get("calories")
+        or nutrition.get("calories")
+    ),
+
+    "nutrition": {
+
+        "calories": (
+            details.get("calories")
+            or nutrition.get(
+                "calories"
+            )
+        ),
+
+        "fat": (
+            nutrition.get("fat")
+            or nutrition.get(
+                "lipids"
+            )
+        ),
+
+        "carbohydrates": (
+            nutrition.get(
+                "carbohydrates"
+            )
+        ),
+
+        "proteins": (
+            nutrition.get(
+                "proteins"
+            )
+        ),
+
+        "fibers": (
+            nutrition.get(
+                "fibers"
+            )
+        )
+    },
+
+    "eatingHabits": {
+
+        "vegetarian": (
+            eating_habits.get(
+                "vegetarian"
+            )
+        ),
+
+        "vegan": (
+            eating_habits.get(
+                "vegan"
+            )
+        ),
+
+        "glutenFree": (
+            eating_habits.get(
+                "glutenFree"
+            )
+        ),
+
+        "dairyFree": (
+            eating_habits.get(
+                "dairyFree"
+            )
+        ),
+
+        "pescatarian": (
+            eating_habits.get(
+                "pescatarian"
+            )
+        ),
+
+        "porkless": (
+            eating_habits.get(
+                "porkless"
+            )
+        )
+    },
+
+    "requiredTools": required_tools,
+
+    "steps": steps,
+
+    "debugStepFields": (
+        step_fields
+    ),
+
+    "ingredients": [
+
+        parse_ingredient(c)
+
+        for c in details.get(
+            "constituents",
+            recipe.get(
+                "constituents",
+                []
+            )
+        )
+
+        if c.get(
+            "ingredient",
+            {}
+        ).get("name")
+    ]
+})
 
     def _json(self, data, code=200):
 

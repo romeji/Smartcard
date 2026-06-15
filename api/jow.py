@@ -95,14 +95,25 @@ class handler(BaseHTTPRequestHandler):
         )
 
         try:
-            with urllib.request.urlopen(req_post, timeout=10) as resp:
-    raw = json.loads(resp.read().decode("utf-8"))
+    with urllib.request.urlopen(req_post, timeout=10) as resp:
+        raw = json.loads(resp.read().decode("utf-8"))
 
-# DEBUG : afficher la réponse exacte de Jow
-raise Exception(
-    json.dumps(raw, ensure_ascii=False)[:3000]
-)
-            except urllib.error.HTTPError as e:
+    # DEBUG TEMPORAIRE
+    raise Exception(
+        json.dumps(raw, ensure_ascii=False)[:3000]
+    )
+
+except urllib.error.HTTPError as e:
+    body = ""
+
+    try:
+        body = e.read().decode("utf-8")
+    except Exception:
+        pass
+
+    raise Exception(
+        f"Jow POST failed ({e.code}) : {body}"
+    )
             body = ""
 
             try:

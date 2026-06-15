@@ -5108,6 +5108,131 @@ function explorerSearchQuery(q) {
 // ─────────────────────────────────────────────────────
 // JOW.FR — recherche côté client (CORS navigateur)
 // ─────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════
+//  JOW LOCAL DATABASE  –  localStorage key: "jow_local_db"
+// ═══════════════════════════════════════════════════════════════════
+function _jowDB() {
+  try { return JSON.parse(localStorage.getItem('jow_local_db') || '{}'); }
+  catch(e) { return {}; }
+}
+function _jowDBSave(db) {
+  try { localStorage.setItem('jow_local_db', JSON.stringify(db)); } catch(e){}
+}
+function _jowSaveRecipe(recipe) {
+  const db = _jowDB();
+  db[recipe.id] = {
+    ...recipe,
+    _savedAt: Date.now()
+  };
+  _jowDBSave(db);
+}
+function _jowGetRecipe(id) {
+  return _jowDB()[id] || null;
+}
+function _jowAllRecipes() {
+  const db = _jowDB();
+  return Object.values(db).sort(function(a,b){ return (b._savedAt||0)-(a._savedAt||0); });
+}
+
+// ── helpers visuels ──────────────────────────────────────────────
+const _NS_COLORS = {A:'#038141',B:'#85BB2F',C:'#FECB02',D:'#EE8100',E:'#E63E11'};
+const _GS_COLORS = {'A+':'#1a7a1a',A:'#038141',B:'#85BB2F',C:'#FECB02',D:'#EE8100',E:'#E63E11',F:'#b22222'};
+
+function _jowPriceBadge(r) {
+  const level = r.priceLevel || 0;
+  const euro  = r.pricePerPortionEuro || r.price || 0;
+  if(!level && !euro) return '';
+  const signs = level===1?'€':level===2?'€€':level===3?'€€€': (euro<2?'€':euro<=4?'€€':'€€€');
+  const color = level===1||euro<2?'#27ae60':level===3||euro>4?'#e74c3c':'#e67e22';
+  const title = r.priceLabel || (euro ? euro.toFixed(2)+'€/pers.' : '');
+  return `<span title="${title}" style="font-size:.6rem;padding:2px 6px;border-radius:4px;background:${color}22;color:${color};font-weight:900;letter-spacing:.5px;">${signs}</span>`;
+}
+
+function _jowNSBadge(ns) {
+  if(!ns || !ns.score) return '';
+  const sc = String(ns.score).toUpperCase();
+  if(ns.imageUrl) {
+    return `<img src="${ns.imageUrl}" title="${ns.label||'Nutri-score '+sc}" style="height:18px;object-fit:contain;" onerror="this.style.display='none'">`;
+  }
+  const c = _NS_COLORS[sc]||'#999';
+  return `<span title="${ns.label||''}" style="font-size:.6rem;padding:2px 6px;border-radius:4px;background:${c};color:#fff;font-weight:900;">${sc}</span>`;
+}
+
+function _jowGSBadge(gs) {
+  if(!gs || !gs.score) return '';
+  const sc = String(gs.score).toUpperCase();
+  if(gs.imageUrl) {
+    return `<img src="${gs.imageUrl}" title="${gs.label||'Green-score '+sc}" style="height:18px;object-fit:contain;" onerror="this.style.display='none'">`;
+  }
+  const c = _GS_COLORS[sc]||'#27ae60';
+  return `<span title="${gs.label||''}" style="font-size:.6rem;padding:2px 6px;border-radius:4px;background:${c}22;color:${c};font-weight:900;">🌍${sc}</span>`;
+}
+
+function _jowHabitBadges(habits, small) {
+  const s = small ? '.55rem' : '.68rem';
+  const p = small ? '2px 5px' : '4px 10px';
+  const out = [];
+  if(habits.vegan)           out.push(`<span style="font-size:${s};padding:${p};border-radius:99px;background:rgba(46,204,113,.15);color:#27ae60;font-weight:700;">🌱 Vegan</span>`);
+  else if(habits.vegetarian) out.push(`<span style="font-size:${s};padding:${p};border-radius:99px;background:rgba(46,204,113,.12);color:#27ae60;font-weight:700;">🥦 Végé</span>`);
+  if(habits.glutenFree)      out.push(`<span style="font-size:${s};padding:${p};border-radius:99px;background:rgba(243,156,18,.12);color:#e67e22;font-weight:700;">🌾 Sans gluten</span>`);
+  if(habits.dairyFree)       out.push(`<span style="font-size:${s};padding:${p};border-radius:99px;background:rgba(52,152,219,.12);color:#2980b9;font-weight:700;">🥛 Sans lactose</span>`);
+  if(habits.pescatarian && !habits.vegetarian) out.push(`<span style="font-size:${s};padding:${p};border-radius:99px;background:rgba(41,128,185,.12);color:#2980b9;font-weight:700;">🐟 Pescétarien</span>`);
+  if(habits.porkless)        out.push(`<span style="font-size:${s};padding:${p};border-radius:99px;background:rgba(155,89,182,.12);color:#8e44ad;font-weight:700;">🚫 Sans porc</span>`);
+  return out;
+}
+
+// ── normalise un objet recette brut de l'API proxy vers notre format ──
+function _jowNormalize(r) {
+  const nutr   = r.nutrition || {};
+  const habits = r.eatingHabits || {};
+  const ns     = r.nutriScore  || {};
+  const gs     = r.greenScore  || {};
+  return {
+    id:             'jow_' + r.id,
+    name:           r.name   || '',
+    description:    r.description || '',
+    photo:          r.imageUrl || null,
+    videoUrl:       r.videoUrl || null,
+    time:           r.totalTime || 0,
+    prepTime:       r.prepTime  || 0,
+    cookTime:       r.cookTime  || 0,
+    portions:       r.portions  || 4,
+    kcal:           Math.round(nutr.calories      || 0),
+    prot:           Math.round(nutr.proteins      || 0),
+    carb:           Math.round(nutr.carbohydrates || 0),
+    fat:            Math.round(nutr.fat           || 0),
+    fibers:         Math.round(nutr.fibers        || 0),
+    pricePerPortionEuro: r.pricePerPortionEuro || 0,
+    priceLevel:     r.priceLevel || 0,
+    priceLabel:     r.priceLabel || '',
+    nutriScore:     ns,
+    greenScore:     gs,
+    scoreProvider:  r.scoreProvider || null,
+    allergens:      r.allergens || [],
+    co2grams:       r.co2grams  || null,
+    eatingHabits:   habits,
+    requiredTools:  r.requiredTools || [],
+    difficulty:     r.difficulty || null,
+    origin:         r.origin || null,
+    author:         r.author || null,
+    likes:          r.likes  || null,
+    rating:         r.rating || null,
+    composition:    r.composition || '',
+    tags:           r.tags   || [],
+    ingredients:    (r.ingredients || []).map(function(i) {
+      return { name: i.name||'', qty: i.qty||'', unit: i.unit||'', imageUrl: i.imageUrl||null, isOptional: i.isOptional||false, alternatives: i.alternatives||[] };
+    }),
+    instructions:   r.steps || [],
+    source:         'jow',
+    diet:           'omnivore',
+    url:            r.url || '',
+    _baseIngredients: null
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  SEARCH
+// ═══════════════════════════════════════════════════════════════════
 async function searchJow(query) {
   const zone = document.getElementById('jowResults');
   const dflt = document.getElementById('jowDefault');
@@ -5116,224 +5241,287 @@ async function searchJow(query) {
 
   zone.innerHTML = '<div style="text-align:center;padding:24px;">'
     + '<div class="ai-loading-spinner" style="margin:0 auto 10px;"></div>'
-    + '<div style="font-size:.8rem;color:var(--tx2);">Recherche sur Jow.fr\u2026</div></div>';
+    + '<div style="font-size:.8rem;color:var(--tx2);">Recherche sur Jow.fr…</div></div>';
 
   try {
-    // Appel via notre proxy Vercel /api/jow
     const params = new URLSearchParams({ q: query, limit: '12' });
-    const resp = await fetch('/api/jow?' + params);
-
+    const resp   = await fetch('/api/jow?' + params);
     if(!resp.ok) {
       const err = await resp.json().catch(function(){ return {}; });
       throw new Error(err.error || 'Erreur ' + resp.status);
     }
-
     const data = await resp.json();
-
-    // Transformer le format proxy vers _renderJowResults
-    const normalized = {
-      data: (data.recipes || []).map(function(r) {
-        return {
-          _id:                    r.id,
-          title:                  r.name,
-          description:            r.description,
-          imageUrl:               r.imageUrl,
-          videoUrl:               r.videoUrl,
-          slug:                   r.slug,
-          url:                    r.url,
-          coversCount:            r.portions,
-          preparationTime:        r.prepTime,
-          cookingTime:            r.cookTime,
-          totalTime:              r.totalTime,
-          pricePerPortionEuro:    r.pricePerPortionEuro,
-          nutriScore:             r.nutriScore,
-          greenScore:             r.greenScore,
-          nutrition:              r.nutrition || {},
-          eatingHabits:           r.eatingHabits || {},
-          requiredTools:          r.requiredTools || [],
-          steps:                  (r.steps||[]).map(function(s){ return {description: s}; }),
-          components: (r.ingredients||[]).map(function(i) {
-            return {
-              quantityPerCover: i.qty ? parseFloat(i.qty) : 0,
-              unit:             { name: i.unit || '' },
-              ingredient:       { name: i.name || '' },
-              isOptional:       i.isOptional || false
-            };
-          })
-        };
-      })
-    };
-
-    _renderJowResults(normalized, query);
+    _renderJowResults(data.recipes || [], query);
   } catch(err) {
     console.warn('Jow error:', err);
     zone.innerHTML = '<div style="text-align:center;padding:24px;color:var(--tx2);">'
-      + '<div style="font-size:1.5rem;margin-bottom:8px;">\u26a0\ufe0f</div>'
+      + '<div style="font-size:1.5rem;margin-bottom:8px;">⚠️</div>'
       + '<div style="font-size:.82rem;font-weight:700;margin-bottom:4px;">Jow.fr indisponible</div>'
       + '<div style="font-size:.72rem;color:var(--tx3);">' + (err.message||'') + '</div>'
       + '<div style="font-size:.72rem;margin-top:6px;">Essayez les onglets Claude IA ou MealDB</div></div>';
   }
 }
 
-function _renderJowResults(data, query) {
+// ═══════════════════════════════════════════════════════════════════
+//  RENDER GRID
+// ═══════════════════════════════════════════════════════════════════
+function _renderJowResults(rawList, query) {
   const zone = document.getElementById('jowResults');
   if(!zone) return;
-
-  const recipes = data.data || data.recipes || data || [];
-  if(!recipes.length) {
-    zone.innerHTML = '<div style="text-align:center;padding:24px;color:var(--tx3);">'
-      + '<div style="font-size:1.5rem;">🇫🇷</div>'
-      + '<div style="font-size:.82rem;margin-top:8px;">Aucune recette trouvée pour "'+query+'"</div></div>';
+  if(!rawList.length) {
+    zone.innerHTML = '<div style="text-align:center;padding:24px;color:var(--tx3);"><div style="font-size:1.5rem;">🇫🇷</div><div style="font-size:.82rem;margin-top:8px;">Aucune recette trouvée pour "'+query+'"</div></div>';
     return;
   }
 
-  zone.innerHTML = '<div class="spoon-grid">'
-    + recipes.map(function(r) {
-      const ingrs = (r.components||[]).map(function(c) {
-        return {
-          qty:        c.quantityPerCover ? String(Math.round(c.quantityPerCover * 10) / 10) : '',
-          unit:       (c.unit && c.unit.name) ? c.unit.name : '',
-          name:       (c.ingredient && c.ingredient.name) ? c.ingredient.name : '',
-          isOptional: c.isOptional || false
-        };
-      }).filter(function(i){ return i.name; });
-
-      const nutr = r.nutrition || {};
-      const habits = r.eatingHabits || {};
-
-      const recipe = {
-        id:           'jow_' + r._id,
-        name:         r.title || r.name || 'Recette Jow',
-        description:  r.description || '',
-        photo:        r.imageUrl || r.image || null,
-        videoUrl:     r.videoUrl || null,
-        time:         r.totalTime || (r.preparationTime||0) + (r.cookingTime||0),
-        prepTime:     r.preparationTime || 0,
-        cookTime:     r.cookingTime || 0,
-        portions:     r.coversCount || 4,
-        kcal:         Math.round(nutr.calories || 0),
-        prot:         Math.round(nutr.proteins || 0),
-        carb:         Math.round(nutr.carbohydrates || 0),
-        fat:          Math.round(nutr.fat || 0),
-        fibers:       Math.round(nutr.fibers || 0),
-        price:        r.pricePerPortionEuro || null,
-        nutriScore:   r.nutriScore || null,
-        greenScore:   r.greenScore || null,
-        eatingHabits: habits,
-        requiredTools: r.requiredTools || [],
-        ingredients:  ingrs,
-        instructions: (r.steps||[]).map(function(s){ return s.description||s; }),
-        source:       'jow',
-        diet:         'omnivore',
-        url:          r.url || (r.slug ? 'https://jow.fr/recettes/'+r.slug : null),
-        _baseIngredients: null
-      };
-
-      // Badges régimes alimentaires
-      const habitBadges = [];
-      if(habits.vegan)      habitBadges.push('<span style="font-size:.55rem;padding:2px 6px;border-radius:99px;background:rgba(46,204,113,.15);color:#27ae60;font-weight:700;">🌱 Vegan</span>');
-      else if(habits.vegetarian) habitBadges.push('<span style="font-size:.55rem;padding:2px 6px;border-radius:99px;background:rgba(46,204,113,.12);color:#27ae60;font-weight:700;">🥦 Végé</span>');
-      if(habits.glutenFree) habitBadges.push('<span style="font-size:.55rem;padding:2px 6px;border-radius:99px;background:rgba(243,156,18,.12);color:#e67e22;font-weight:700;">🌾 Sans gluten</span>');
-      if(habits.dairyFree)  habitBadges.push('<span style="font-size:.55rem;padding:2px 6px;border-radius:99px;background:rgba(52,152,219,.12);color:#2980b9;font-weight:700;">🥛 Sans lactose</span>');
-      if(habits.porkless)   habitBadges.push('<span style="font-size:.55rem;padding:2px 6px;border-radius:99px;background:rgba(155,89,182,.12);color:#8e44ad;font-weight:700;">🚫🐷 Sans porc</span>');
-
-      // NutriScore badge
-      const nsColors = {A:'#038141',B:'#85BB2F',C:'#FECB02',D:'#EE8100',E:'#E63E11'};
-      const nsStr = recipe.nutriScore
-        ? '<span style="font-size:.58rem;padding:2px 7px;border-radius:4px;background:'+(nsColors[recipe.nutriScore]||'#999')+';color:#fff;font-weight:900;letter-spacing:.5px;">'+recipe.nutriScore+'</span>'
-        : '';
-
-      // Green score
-      const gsStr = recipe.greenScore
-        ? '<span style="font-size:.55rem;color:#27ae60;font-weight:700;">🌍 '+recipe.greenScore+'</span>'
-        : '';
-
-      // Prix
-      const priceStr = recipe.price
-        ? '<span style="font-size:.58rem;color:var(--gn);font-weight:700;">💶 '+recipe.price.toFixed(2)+'€/pers.</span>'
-        : '';
-
-      const kcalStr = recipe.kcal ? '<span style="font-size:.58rem;color:var(--or);">🔥 '+recipe.kcal+' kcal</span>' : '';
-      const timeStr = recipe.time ? '<span style="font-size:.58rem;color:var(--tx3);">⏱ '+recipe.time+'min</span>' : '';
-      const portStr = '<span style="font-size:.58rem;color:var(--tx3);">👥 '+recipe.portions+' pers.</span>';
-
-      const metaTop = [kcalStr, timeStr, portStr, priceStr, nsStr, gsStr].filter(Boolean).join('');
-      const habitsHtml = habitBadges.length ? '<div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:5px;">'+habitBadges.join('')+'</div>' : '';
-
-      return '<div class="spoon-recipe-body" onclick="_openJowRecipe(\''+recipe.id+'\')" data-jow-id="'+recipe.id+'">'
-        + (recipe.photo
-          ? '<img src="'+recipe.photo+'" style="width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:var(--rs) var(--rs) 0 0;" loading="lazy" onerror="this.style.display=\'none\'">'
-          : '<div style="width:100%;aspect-ratio:4/3;background:linear-gradient(135deg,rgba(255,107,107,.15),rgba(255,142,83,.1));border-radius:var(--rs) var(--rs) 0 0;display:flex;align-items:center;justify-content:center;font-size:2rem;">🇫🇷</div>')
-        + '<div style="padding:10px 10px 8px;">'
-        + '<div style="font-weight:800;font-size:.82rem;margin-bottom:5px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">'+recipe.name+'</div>'
-        + '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">'+metaTop+'</div>'
-        + habitsHtml
-        + '</div></div>';
-    }).join('')
-    + '</div>';
-
-  // Stocker les recettes pour ouverture
   if(!window._jowCache) window._jowCache = {};
-  recipes.forEach(function(r) {
-    if(r._id) window._jowCache['jow_'+r._id] = r;
+
+  const cards = rawList.map(function(r) {
+    const recipe = _jowNormalize(r);
+    // Mise en cache mémoire + localStorage
+    window._jowCache[recipe.id] = recipe;
+    _jowSaveRecipe(recipe);
+
+    const habits  = recipe.eatingHabits || {};
+    const nsBadge = _jowNSBadge(recipe.nutriScore);
+    const gsBadge = _jowGSBadge(recipe.greenScore);
+    const prBadge = _jowPriceBadge(recipe);
+    const hBadges = _jowHabitBadges(habits, true);
+    const isBookmarked = (state.recipeBookmarks||[]).some(function(b){ return b.id===recipe.id; });
+
+    const kcalStr = recipe.kcal ? `<span style="font-size:.58rem;color:var(--or);">🔥 ${recipe.kcal} kcal</span>` : '';
+    const timeStr = recipe.time ? `<span style="font-size:.58rem;color:var(--tx3);">⏱ ${recipe.time}min</span>` : '';
+    const metaRow = [kcalStr, timeStr, prBadge, nsBadge, gsBadge].filter(Boolean).join('');
+    const habitsHtml = hBadges.length ? `<div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:4px;">${hBadges.join('')}</div>` : '';
+
+    return `<div class="spoon-recipe-body" style="position:relative;" onclick="_openJowRecipe('${recipe.id}')" data-jow-id="${recipe.id}">
+      <button onclick="event.stopPropagation();_jowToggleBookmark('${recipe.id}')" id="jbm_${recipe.id}"
+        style="position:absolute;top:6px;right:6px;z-index:2;background:rgba(0,0,0,.45);border:none;border-radius:50%;width:28px;height:28px;font-size:.9rem;cursor:pointer;color:#fff;display:flex;align-items:center;justify-content:center;"
+        title="${isBookmarked?'Retirer des favoris':'Ajouter aux favoris'}">${isBookmarked?'⭐':'☆'}</button>
+      ${recipe.photo
+        ? `<img src="${recipe.photo}" style="width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:var(--rs) var(--rs) 0 0;" loading="lazy" onerror="this.style.display='none'">`
+        : `<div style="width:100%;aspect-ratio:4/3;background:linear-gradient(135deg,rgba(255,107,107,.15),rgba(255,142,83,.1));border-radius:var(--rs) var(--rs) 0 0;display:flex;align-items:center;justify-content:center;font-size:2rem;">🇫🇷</div>`}
+      <div style="padding:10px 10px 8px;">
+        <div style="font-weight:800;font-size:.82rem;margin-bottom:5px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">${recipe.name}</div>
+        <div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center;">${metaRow}</div>
+        ${habitsHtml}
+      </div></div>`;
   });
+
+  zone.innerHTML = `<div class="spoon-grid">${cards.join('')}</div>`;
 }
 
+// ═══════════════════════════════════════════════════════════════════
+//  BOOKMARK
+// ═══════════════════════════════════════════════════════════════════
+function _jowToggleBookmark(id) {
+  const recipe = window._jowCache && window._jowCache[id];
+  if(!recipe) return;
+  if(!state.recipeBookmarks) state.recipeBookmarks = [];
+  const idx = state.recipeBookmarks.findIndex(function(b){ return b.id===id; });
+  if(idx >= 0) {
+    state.recipeBookmarks.splice(idx, 1);
+    showToast('☆','Retiré','Favori supprimé');
+  } else {
+    state.recipeBookmarks.push(recipe);
+    _jowSaveRecipe(recipe); // assure la persistance locale
+    showToast('⭐','Favori ajouté','Recette sauvegardée');
+  }
+  saveState();
+  // Mettre à jour le bouton dans la grille
+  const btn = document.getElementById('jbm_'+id);
+  if(btn) btn.textContent = idx>=0 ? '☆' : '⭐';
+  // Mettre à jour le bouton dans le modal si ouvert
+  const modalBm = document.getElementById('jowModalBm');
+  if(modalBm) modalBm.textContent = idx>=0 ? '☆' : '⭐';
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  OPEN MODAL
+// ═══════════════════════════════════════════════════════════════════
 function _openJowRecipe(id) {
-  const raw = window._jowCache && window._jowCache[id];
-  if(!raw) { showToast('⚠️','Erreur','Recette introuvable'); return; }
+  // Cherche d'abord en mémoire, sinon dans le localStorage
+  let recipe = window._jowCache && window._jowCache[id];
+  if(!recipe) recipe = _jowGetRecipe(id);
+  if(!recipe) { showToast('⚠️','Erreur','Recette introuvable'); return; }
 
-  const covers = raw.coversCount || 4;
-  const nutr   = raw.nutrition || {};
-  const habits = raw.eatingHabits || {};
-
-  const ingrs = (raw.components||[]).map(function(c) {
-    return {
-      qty:        c.quantityPerCover ? String(Math.round(c.quantityPerCover * 10) / 10) : '',
-      unit:       (c.unit && c.unit.name) ? c.unit.name : '',
-      name:       (c.ingredient && c.ingredient.name) ? c.ingredient.name : '',
-      isOptional: c.isOptional || false
-    };
-  }).filter(function(i){ return i.name; });
-
-  const recipe = {
-    id:           'jow_' + raw._id,
-    name:         raw.title || raw.name || 'Recette Jow',
-    description:  raw.description || '',
-    photo:        raw.imageUrl || raw.image || null,
-    videoUrl:     raw.videoUrl || null,
-    time:         raw.totalTime || (raw.preparationTime||0) + (raw.cookingTime||0),
-    prepTime:     raw.preparationTime || 0,
-    cookTime:     raw.cookingTime || 0,
-    portions:     covers,
-    kcal:         Math.round(nutr.calories || 0),
-    prot:         Math.round(nutr.proteins || 0),
-    carb:         Math.round(nutr.carbohydrates || 0),
-    fat:          Math.round(nutr.fat || 0),
-    fibers:       Math.round(nutr.fibers || 0),
-    price:        raw.pricePerPortionEuro || null,
-    nutriScore:   raw.nutriScore || null,
-    greenScore:   raw.greenScore || null,
-    eatingHabits: habits,
-    requiredTools: raw.requiredTools || [],
-    ingredients:  ingrs,
-    instructions: (raw.steps||[]).map(function(s){ return s.description||s; }),
-    source:       'jow',
-    diet:         'omnivore',
-    url:          raw.url || (raw.slug ? 'https://jow.fr/recettes/'+raw.slug : null),
-    _baseIngredients: null
-  };
-
-  recipe._baseIngredients = null;
   window._currentRecipe   = recipe;
   window._currentPortions = recipe.portions;
 
   const modal = document.getElementById('recipeDetailModal');
-  if(modal) {
-    const isBookmarked = (state.recipeBookmarks||[]).some(function(b){ return b.id===recipe.id; });
-    renderRecipeModal(recipe, recipe.portions, isBookmarked);
-    modal.parentElement.classList.add('on');
-  }
+  if(!modal) return;
+  const isBookmarked = (state.recipeBookmarks||[]).some(function(b){ return b.id===recipe.id; });
+
+  const ns     = recipe.nutriScore  || {};
+  const gs     = recipe.greenScore  || {};
+  const habits = recipe.eatingHabits || {};
+  const nutr   = recipe.nutrition   || {};
+  const portions = recipe.portions  || 4;
+  const nsColors = {A:'#038141',B:'#85BB2F',C:'#FECB02',D:'#EE8100',E:'#E63E11'};
+  const gsColors = {'A+':'#1a7a1a',A:'#038141',B:'#85BB2F',C:'#FECB02',D:'#EE8100',E:'#E63E11',F:'#b22222'};
+
+  // Badges régimes
+  const habitBadgesHtml = _jowHabitBadges(habits, false).join('');
+
+  // Bloc scores avec logos officiels
+  const nsHtml = ns.score ? (ns.svgUrl||ns.imageUrl
+    ? `<img src="${ns.svgUrl||ns.imageUrl}" alt="Nutri-score ${ns.score}" style="height:36px;object-fit:contain;" onerror="this.outerHTML='<span style=\'padding:5px 12px;border-radius:6px;background:${nsColors[ns.score]||\'#999\'};color:#fff;font-size:.85rem;font-weight:900;\'>${ns.score}</span>'">`
+    : `<span style="padding:5px 12px;border-radius:6px;background:${nsColors[ns.score]||'#999'};color:#fff;font-size:.85rem;font-weight:900;">${ns.score}</span>`)
+    : '';
+  const gsHtml = gs.score ? (gs.imageUrl
+    ? `<img src="${gs.imageUrl}" alt="Green-score ${gs.score}" style="height:36px;object-fit:contain;" onerror="this.outerHTML='<span style=\'padding:5px 12px;border-radius:6px;background:${gsColors[gs.score]||\'#27ae60\'};color:#fff;font-size:.85rem;font-weight:900;\'>🌍${gs.score}</span>'">`
+    : `<span style="padding:5px 12px;border-radius:6px;background:${gsColors[gs.score]||'#27ae60'};color:#fff;font-size:.85rem;font-weight:900;">🌍 ${gs.score}</span>`)
+    : '';
+
+  // Difficulté
+  const diffMap = {1:'⭐ Facile',2:'⭐⭐ Moyen',3:'⭐⭐⭐ Avancé'};
+  const diffStr  = recipe.difficulty ? diffMap[recipe.difficulty]||'' : '';
+
+  // Allergènes
+  const allergenHtml = (recipe.allergens||[]).length
+    ? `<div style="margin-bottom:12px;"><div style="font-size:.72rem;font-weight:800;color:var(--tx3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:5px;">⚠️ Allergènes</div>
+       <div style="display:flex;flex-wrap:wrap;gap:4px;">${(recipe.allergens||[]).map(a=>`<span style="padding:3px 8px;border-radius:99px;background:rgba(231,76,60,.12);color:#e74c3c;font-size:.68rem;font-weight:700;">${a}</span>`).join('')}</div></div>`
+    : '';
+
+  // CO2
+  const co2Html = recipe.co2grams
+    ? `<span style="font-size:.6rem;padding:2px 7px;border-radius:4px;background:rgba(39,174,96,.1);color:#27ae60;font-weight:700;">🌱 ${recipe.co2grams}g CO₂</span>`
+    : '';
+
+  // Prix
+  const priceSigns = recipe.priceLevel===1?'€':recipe.priceLevel===2?'€€':recipe.priceLevel===3?'€€€':
+    (recipe.pricePerPortionEuro<2&&recipe.pricePerPortionEuro>0?'€':recipe.pricePerPortionEuro<=4&&recipe.pricePerPortionEuro>0?'€€':recipe.pricePerPortionEuro>4?'€€€':'');
+  const priceColor = recipe.priceLevel===1||recipe.pricePerPortionEuro<2?'#27ae60':recipe.priceLevel===3||recipe.pricePerPortionEuro>4?'#e74c3c':'#e67e22';
+
+  // Outils
+  const toolsHtml = (recipe.requiredTools||[]).length
+    ? `<div style="margin-bottom:12px;"><div style="font-size:.72rem;font-weight:800;color:var(--tx3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px;">🍳 Ustensiles</div>
+       <div style="display:flex;flex-wrap:wrap;gap:6px;">${(recipe.requiredTools||[]).map(t=>{
+         const tName = typeof t==='string'?t:(t.name||'');
+         const tImg  = typeof t==='object'&&t.imageUrl?`<img src="${t.imageUrl}" style="width:20px;height:20px;object-fit:contain;" onerror="this.style.display='none'">`: '';
+         return `<span style="display:flex;align-items:center;gap:4px;padding:4px 10px;border-radius:99px;background:var(--bg2);font-size:.7rem;font-weight:600;">${tImg}${tName}</span>`;
+       }).join('')}</div></div>`
+    : '';
+
+  // Provider logos
+  const providerHtml = recipe.scoreProvider && recipe.scoreProvider.imageUrl
+    ? `<div style="text-align:right;margin-top:4px;"><span style="font-size:.55rem;color:var(--tx3);">${recipe.scoreProvider.label||'Scores par'} </span><img src="${recipe.scoreProvider.imageUrl}" style="height:12px;vertical-align:middle;opacity:.6;" onerror="this.style.display='none'"></div>`
+    : '';
+
+  // Vidéo
+  const videoHtml = recipe.videoUrl
+    ? `<div style="margin-bottom:14px;border-radius:var(--rs);overflow:hidden;background:#000;">
+         <video src="${recipe.videoUrl}" controls playsinline preload="metadata"
+           poster="${recipe.photo||''}"
+           style="width:100%;max-height:220px;display:block;"
+           onerror="this.parentElement.style.display='none'">
+         </video>
+         <div style="padding:6px 10px;background:rgba(0,0,0,.7);">
+           <span style="font-size:.68rem;color:#fff;font-weight:700;">📹 Vidéo de préparation</span>
+         </div>
+       </div>`
+    : '';
+
+  // Ingrédients (avec image)
+  const scaledIngr = (recipe.ingredients||[]).map(function(i) {
+    const qNum = parseFloat(i.qty) || 0;
+    const scaled = qNum ? Math.round(qNum * portions * 10) / 10 : 0;
+    return { ...i, scaledQty: scaled ? String(scaled) : (i.qty||'') };
+  });
+
+  const ingrHtml = scaledIngr.length
+    ? `<div style="font-weight:900;font-size:.85rem;margin-bottom:8px;">📋 Ingrédients <span style="font-weight:500;font-size:.75rem;color:var(--tx3);">(pour ${portions} pers.)</span></div>
+       <div id="ingrList" style="margin-bottom:14px;background:var(--bg2);border-radius:var(--rs);overflow:hidden;">
+         ${scaledIngr.map(i=>`<div style="display:flex;align-items:center;gap:8px;padding:9px 12px;border-bottom:1px solid var(--bg);font-size:.8rem;${i.isOptional?'opacity:.6;':''}">
+           ${i.imageUrl?`<img src="${i.imageUrl}" style="width:28px;height:28px;object-fit:contain;flex-shrink:0;border-radius:4px;" onerror="this.style.display='none'">`:'<div style="width:28px;"></div>'}
+           <span style="flex:1;font-weight:600;">${i.name}${i.isOptional?' <span style="font-size:.6rem;color:var(--tx3);">(opt.)</span>':''}</span>
+           <span style="color:var(--tx2);font-weight:700;white-space:nowrap;">${i.scaledQty} ${i.unit}</span>
+         </div>`).join('')}
+       </div>`
+    : '';
+
+  // Steps
+  const stepsHtml = (recipe.instructions||[]).length
+    ? `<div style="font-weight:900;font-size:.85rem;margin-bottom:10px;">👨‍🍳 Préparation</div>
+       <div style="margin-bottom:16px;">
+         ${(recipe.instructions||[]).map((s,i)=>`<div style="display:flex;gap:10px;margin-bottom:12px;font-size:.8rem;line-height:1.6;">
+           <div style="width:26px;height:26px;border-radius:50%;background:linear-gradient(135deg,var(--ac),#8b5cf6);color:#fff;display:flex;align-items:center;justify-content:center;font-size:.68rem;font-weight:900;flex-shrink:0;">${i+1}</div>
+           <div>${s}</div></div>`).join('')}
+       </div>`
+    : '';
+
+  modal.innerHTML = `
+    <div class="mhdl"></div>
+    <button onclick="closeRecipeDetail()" style="display:inline-flex;align-items:center;gap:6px;background:none;border:none;cursor:pointer;color:var(--tx2);font-size:.82rem;font-weight:700;padding:0 0 12px 0;">← Retour</button>
+
+    ${recipe.photo ? `<img src="${recipe.photo}" loading="lazy" style="width:calc(100% + 36px);height:200px;object-fit:cover;margin:-20px -18px 16px;border-radius:var(--r) var(--r) 0 0;">` : ''}
+
+    <div style="font-size:1.15rem;font-weight:900;margin-bottom:6px;line-height:1.3;">${recipe.name}</div>
+
+    ${recipe.origin||recipe.author||diffStr ? `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px;font-size:.72rem;color:var(--tx3);">
+      ${recipe.origin?`<span>🌍 ${recipe.origin}</span>`:''}
+      ${recipe.author?`<span>👨‍🍳 ${recipe.author}</span>`:''}
+      ${diffStr?`<span>${diffStr}</span>`:''}
+      ${recipe.likes?`<span>❤️ ${recipe.likes.toLocaleString()}</span>`:''}
+    </div>` : ''}
+
+    ${recipe.description ? `<div style="font-size:.78rem;color:var(--tx2);line-height:1.6;margin-bottom:12px;font-style:italic;">${recipe.description}</div>` : ''}
+
+    <!-- Vidéo -->
+    ${videoHtml}
+
+    <!-- Scores + prix -->
+    ${(nsHtml||gsHtml||priceSigns||co2Html) ? `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px;">
+      ${nsHtml?`<div style="display:flex;flex-direction:column;align-items:center;gap:3px;">${nsHtml}<span style="font-size:.55rem;color:var(--tx3);">Nutri-Score</span></div>`:''}
+      ${gsHtml?`<div style="display:flex;flex-direction:column;align-items:center;gap:3px;">${gsHtml}<span style="font-size:.55rem;color:var(--tx3);">Green-Score</span></div>`:''}
+      ${priceSigns?`<div style="padding:8px 14px;background:${priceColor}18;border-radius:var(--rs);text-align:center;">
+        <div style="font-size:1rem;font-weight:900;color:${priceColor};">${priceSigns}</div>
+        <div style="font-size:.58rem;color:var(--tx3);">${recipe.priceLabel||recipe.pricePerPortionEuro.toFixed(2)+'€/pers.'}</div>
+      </div>`:''}
+      ${co2Html}
+    </div>
+    ${providerHtml}` : ''}
+
+    <!-- Régimes alimentaires -->
+    ${habitBadgesHtml ? `<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:12px;">${habitBadgesHtml}</div>` : ''}
+
+    <!-- Allergènes -->
+    ${allergenHtml}
+
+    <!-- Temps -->
+    ${(recipe.prepTime||recipe.cookTime) ? `<div style="display:flex;gap:8px;margin-bottom:12px;">
+      ${recipe.prepTime?`<div style="flex:1;padding:8px 12px;background:var(--bg2);border-radius:var(--rs);text-align:center;"><div style="font-size:.62rem;color:var(--tx3);font-weight:700;margin-bottom:2px;">PRÉPARATION</div><div style="font-size:.85rem;font-weight:900;">⏱ ${recipe.prepTime} min</div></div>`:''}
+      ${recipe.cookTime?`<div style="flex:1;padding:8px 12px;background:var(--bg2);border-radius:var(--rs);text-align:center;"><div style="font-size:.62rem;color:var(--tx3);font-weight:700;margin-bottom:2px;">CUISSON</div><div style="font-size:.85rem;font-weight:900;">🔥 ${recipe.cookTime} min</div></div>`:''}
+    </div>` : ''}
+
+    <!-- Macros -->
+    ${recipe.kcal ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;">
+      ${recipe.kcal?`<span class="spoon-recipe-tag">🔥 ${recipe.kcal} kcal</span>`:''}
+      ${recipe.prot?`<span class="spoon-recipe-tag">💪 ${recipe.prot}g prot.</span>`:''}
+      ${recipe.carb?`<span class="spoon-recipe-tag">🍞 ${recipe.carb}g glucides</span>`:''}
+      ${recipe.fat ?`<span class="spoon-recipe-tag">🥑 ${recipe.fat}g lipides</span>`:''}
+      ${recipe.fibers?`<span class="spoon-recipe-tag">🌿 ${recipe.fibers}g fibres</span>`:''}
+    </div>` : ''}
+
+    <!-- Ustensiles -->
+    ${toolsHtml}
+
+    <!-- Ingrédients -->
+    ${ingrHtml}
+
+    <!-- Étapes -->
+    ${stepsHtml}
+
+    <!-- Actions -->
+    <div style="display:flex;gap:8px;position:sticky;bottom:0;background:var(--bg);padding:10px 0;">
+      <button class="btn acc" onclick="addSpoonRecipeToDay('${recipe.id}')" style="flex:1;padding:13px;border-radius:var(--rs);font-weight:800;">📅 Ajouter au menu</button>
+      <button id="jowModalBm" onclick="_jowToggleBookmark('${recipe.id}')"
+        style="padding:13px;border-radius:var(--rs);background:${isBookmarked?'rgba(246,211,101,.2)':'var(--bg2)'};border:none;font-size:1.1rem;cursor:pointer;"
+        title="${isBookmarked?'Retirer des favoris':'Ajouter aux favoris'}">${isBookmarked?'⭐':'☆'}</button>
+      ${recipe.url?`<a href="${recipe.url}" target="_blank" style="padding:13px;border-radius:var(--rs);background:var(--bg2);color:var(--tx2);font-size:.75rem;display:flex;align-items:center;text-decoration:none;">🔗</a>`:''}
+    </div>
+  `;
+
+  modal.parentElement.classList.add('on');
 }
 
 async function searchSpoonacular(query) {
@@ -7471,75 +7659,14 @@ function renderRecipeModal(recipe, portions, isBookmarked) {
   const scaledCarb = recipe.carb ? Math.round(recipe.carb * ratio) : 0;
   const scaledFat  = recipe.fat  ? Math.round(recipe.fat  * ratio) : 0;
 
-  // ── Données enrichies Jow ──────────────────────────────
-  const isJow = recipe.source === 'jow';
+  // fibres pour recettes non-Jow
   const scaledFibers = recipe.fibers ? Math.round(recipe.fibers * ratio) : 0;
-  const habits = recipe.eatingHabits || {};
-
-  // NutriScore colors
-  const nsColors = {A:'#038141',B:'#85BB2F',C:'#FECB02',D:'#EE8100',E:'#E63E11'};
-
-  // Badges régimes
-  const habitBadges = [];
-  if(habits.vegan)           habitBadges.push('🌱 Vegan');
-  else if(habits.vegetarian) habitBadges.push('🥦 Végétarien');
-  if(habits.glutenFree)      habitBadges.push('🌾 Sans gluten');
-  if(habits.dairyFree)       habitBadges.push('🥛 Sans lactose');
-  if(habits.pescatarian && !habits.vegetarian) habitBadges.push('🐟 Pescétarien');
-  if(habits.porkless)        habitBadges.push('🚫 Sans porc');
-
-  const jowExtraSection = isJow ? `
-    ${recipe.description ? `<div style="font-size:.78rem;color:var(--tx2);line-height:1.6;margin-bottom:12px;font-style:italic;">${recipe.description}</div>` : ''}
-
-    <!-- Prix + scores Jow -->
-    ${(recipe.price || recipe.nutriScore || recipe.greenScore) ? `
-    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px;">
-      ${recipe.price ? `<div style="display:flex;align-items:center;gap:5px;padding:7px 12px;background:rgba(46,204,113,.1);border-radius:var(--rs);">
-        <span style="font-size:.72rem;font-weight:900;color:#27ae60;">💶 ${recipe.price.toFixed(2)} €<span style="font-weight:500;">/pers.</span></span>
-      </div>` : ''}
-      ${recipe.nutriScore ? `<div style="display:flex;align-items:center;gap:5px;padding:7px 12px;background:rgba(0,0,0,.05);border-radius:var(--rs);">
-        <span style="font-size:.65rem;color:var(--tx3);font-weight:700;">Nutri-Score</span>
-        <span style="padding:3px 9px;border-radius:5px;background:${nsColors[recipe.nutriScore]||'#999'};color:#fff;font-size:.8rem;font-weight:900;">${recipe.nutriScore}</span>
-      </div>` : ''}
-      ${recipe.greenScore ? `<div style="display:flex;align-items:center;gap:5px;padding:7px 12px;background:rgba(39,174,96,.08);border-radius:var(--rs);">
-        <span style="font-size:.65rem;color:var(--tx3);font-weight:700;">Éco-Score</span>
-        <span style="padding:3px 9px;border-radius:5px;background:${nsColors[recipe.greenScore]||'#999'};color:#fff;font-size:.8rem;font-weight:900;">${recipe.greenScore}</span>
-      </div>` : ''}
-    </div>` : ''}
-
-    <!-- Régimes alimentaires -->
-    ${habitBadges.length ? `<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:12px;">
-      ${habitBadges.map(b=>`<span style="padding:4px 10px;border-radius:99px;background:var(--bg2);font-size:.68rem;font-weight:700;color:var(--tx2);">${b}</span>`).join('')}
-    </div>` : ''}
-
-    <!-- Temps détaillés -->
-    ${(recipe.prepTime || recipe.cookTime) ? `<div style="display:flex;gap:8px;margin-bottom:12px;">
-      ${recipe.prepTime ? `<div style="flex:1;padding:8px 12px;background:var(--bg2);border-radius:var(--rs);text-align:center;">
-        <div style="font-size:.62rem;color:var(--tx3);font-weight:700;margin-bottom:2px;">PRÉPARATION</div>
-        <div style="font-size:.85rem;font-weight:900;">⏱ ${recipe.prepTime} min</div>
-      </div>` : ''}
-      ${recipe.cookTime ? `<div style="flex:1;padding:8px 12px;background:var(--bg2);border-radius:var(--rs);text-align:center;">
-        <div style="font-size:.62rem;color:var(--tx3);font-weight:700;margin-bottom:2px;">CUISSON</div>
-        <div style="font-size:.85rem;font-weight:900;">🔥 ${recipe.cookTime} min</div>
-      </div>` : ''}
-    </div>` : ''}
-
-    <!-- Ustensiles -->
-    ${recipe.requiredTools && recipe.requiredTools.length ? `<div style="margin-bottom:12px;">
-      <div style="font-size:.72rem;font-weight:800;color:var(--tx3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px;">🍳 Ustensiles</div>
-      <div style="display:flex;flex-wrap:wrap;gap:5px;">
-        ${recipe.requiredTools.map(t=>`<span style="padding:4px 10px;border-radius:99px;background:var(--bg2);font-size:.7rem;font-weight:600;color:var(--tx);">${t}</span>`).join('')}
-      </div>
-    </div>` : ''}
-  ` : '';
 
   modal.innerHTML = `
     <div class="mhdl"></div>
     <button onclick="closeRecipeDetail()" style="display:inline-flex;align-items:center;gap:6px;background:none;border:none;cursor:pointer;color:var(--tx2);font-size:.82rem;font-weight:700;padding:0 0 12px 0;">← Retour</button>
     ${recipe.photo ? `<img src="${recipe.photo}" loading="lazy" style="width:calc(100% + 36px);height:200px;object-fit:cover;margin:-20px -18px 16px;border-radius:var(--r) var(--r) 0 0;">` : ''}
     <div style="font-size:1.15rem;font-weight:900;margin-bottom:10px;line-height:1.3;">${frName}</div>
-
-    ${jowExtraSection}
 
     <!-- Sélecteur de portions -->
     <div style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:var(--bg2);border-radius:var(--rs);margin-bottom:12px;">
@@ -7567,8 +7694,8 @@ function renderRecipeModal(recipe, portions, isBookmarked) {
       📋 Ingrédients <span style="font-weight:500;font-size:.75rem;color:var(--tx3);">(pour ${portions} personne${portions>1?"s":""})</span>
     </div>
     <div id="ingrList" style="margin-bottom:14px;background:var(--bg2);border-radius:var(--rs);overflow:hidden;">
-      ${scaledIngr.map(i => `<div style="display:flex;justify-content:space-between;padding:9px 14px;border-bottom:1px solid var(--bg);font-size:.8rem;${i.isOptional?'opacity:.65;':''}">
-        <span style="font-weight:600;">${i.name}${i.isOptional?' <span style="font-size:.6rem;color:var(--tx3);">(opt.)</span>':''}</span>
+      ${scaledIngr.map(i => `<div style="display:flex;justify-content:space-between;padding:9px 14px;border-bottom:1px solid var(--bg);font-size:.8rem;">
+        <span style="font-weight:600;">${i.name}</span>
         <span style="color:var(--tx2);font-weight:700;text-align:right;">${i.qty} ${i.unit}</span>
       </div>`).join('')}
     </div>` : ''}
@@ -7587,7 +7714,7 @@ function renderRecipeModal(recipe, portions, isBookmarked) {
     <div style="display:flex;gap:8px;position:sticky;bottom:0;background:var(--bg);padding:10px 0;">
       <button class="btn acc" onclick="addSpoonRecipeToDay('${recipe.id}')" style="flex:1;padding:13px;border-radius:var(--rs);font-weight:800;">📅 Ajouter au menu</button>
       <button onclick="toggleBookmark('${recipe.id}')" style="padding:13px;border-radius:var(--rs);background:${isBookmarked?"rgba(246,211,101,.2)":"var(--bg2)"};border:none;font-size:1.1rem;cursor:pointer;">${isBookmarked?"⭐":"☆"}</button>
-      ${recipe.url ? `<a href="${recipe.url}" target="_blank" style="padding:13px;border-radius:var(--rs);background:var(--bg2);color:var(--tx2);font-size:.75rem;display:flex;align-items:center;text-decoration:none;">🔗</a>` : (recipe.sourceUrl ? `<a href="${recipe.sourceUrl}" target="_blank" style="padding:13px;border-radius:var(--rs);background:var(--bg2);color:var(--tx2);font-size:.75rem;display:flex;align-items:center;text-decoration:none;">🔗</a>` : '')}
+      ${recipe.sourceUrl ? `<a href="${recipe.sourceUrl}" target="_blank" style="padding:13px;border-radius:var(--rs);background:var(--bg2);color:var(--tx2);font-size:.75rem;display:flex;align-items:center;text-decoration:none;">🔗</a>` : ''}
     </div>
   `;
 }

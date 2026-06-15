@@ -183,7 +183,12 @@ class handler(BaseHTTPRequestHandler):
                 or recipe.get("coversCount")
                 or 1
             )
-            print(recipe.keys())
+            print("FIELDS =", recipe.keys())
+            for key, value in recipe.items():
+    if isinstance(value, list) and len(value) > 0:
+        first = value[0]
+        if isinstance(first, dict) and "label" in first:
+            print("FOUND STEP FIELD =", key)
             result.append({
                 "id": recipe.get("_id", ""),
                 "name": recipe.get("title", ""),

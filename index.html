@@ -5361,6 +5361,39 @@ function _openJowRecipe(id) {
 
   // Badges régimes
   const habitBadgesHtml = _jowHabitBadges(habits, false).join('');
+const nsFallback = `
+<span
+style="
+padding:5px 12px;
+border-radius:6px;
+background:${nsColors?.[ns.score] || "#999"};
+color:#fff;
+font-size:.85rem;
+font-weight:900;
+"
+
+>
+
+${ns.score} </span>
+`;
+
+const nsHtml =
+ns?.score
+? (
+ns?.svgUrl || ns?.imageUrl
+? `
+<img
+src="${ns.svgUrl || ns.imageUrl}"
+alt="Nutri-score ${ns.score}"
+style="height:36px;object-fit:contain;"
+
+>
+
+`
+: nsFallback
+)
+: "";
+
 const gsFallback = `
 <span
 style="

@@ -180,7 +180,12 @@ class handler(BaseHTTPRequestHandler):
 
                 except Exception:
                     details = {}
-
+            print(
+                json.dumps(
+                    details,
+                    ensure_ascii=False
+                )[:3000]
+            )
             steps, step_fields = (
                 self._extract_steps(details)
             )

@@ -5185,10 +5185,10 @@ function _jowHabitBadges(habits, small) {
 function _jowNormalize(r) {
   const nutr   = r.nutrition || {};
   const habits = r.eatingHabits || {};
-  const ns     = r.nutriScore  || {};
+  const ns     = r.nutriScore || {};
   const gs     = r.greenScore  || {};
   return {
-    id:             'jow_' + r.id,
+    id:             'jow_' + r.i,
     name:           r.name   || '',
     description:    r.description || '',
     photo:          r.imageUrl || null,

@@ -202,8 +202,8 @@ def search_jow(query, limit=12):
                 )
             ),
 
-            "steps":
-            steps,
+            "steps": steps,
+            "debugDetail": detail,
 
             "ingredients": [
 
@@ -265,11 +265,10 @@ def fetch_recipe_detail(recipe_id):
         req = urllib.request.Request(
             url,
             headers={
-                "Accept":
-                "application/json",
-
-                "User-Agent":
-                "Mozilla/5.0"
+                "Accept": "application/json",
+                "User-Agent": "Mozilla/5.0",
+                "Origin": "https://jow.fr",
+                "Referer": "https://jow.fr/"
             }
         )
 
@@ -278,14 +277,19 @@ def fetch_recipe_detail(recipe_id):
             timeout=20
         ) as r:
 
-            return json.loads(
-                r.read().decode(
-                    "utf-8"
-                )
+            raw = json.loads(
+                r.read().decode("utf-8")
             )
 
-    except Exception:
-        return {}
+            return {
+                "__debug": raw
+            }
+
+    except Exception as e:
+
+        return {
+            "__error": str(e)
+        }
 
 
 def extract_steps(data):

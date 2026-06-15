@@ -97,8 +97,8 @@ class handler(BaseHTTPRequestHandler):
         try:
             with urllib.request.urlopen(req_post, timeout=10) as resp:
                 raw = json.loads(resp.read().decode("utf-8"))
-
-        except urllib.error.HTTPError as e:
+            raise Exception(json.dumps(raw)[:3000])
+            except urllib.error.HTTPError as e:
             body = ""
 
             try:

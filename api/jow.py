@@ -117,7 +117,15 @@ class handler(BaseHTTPRequestHandler):
             )
 
         data = raw.get("data", {})
-        recipes = data.get("content", [])
+        recipes = data.get("content", [])recipes = data.get("content", [])
+
+if recipes:
+    raise Exception(
+        json.dumps(
+            recipes[0],
+            ensure_ascii=False
+        )[:30000]
+    )
 
         STATIC = "https://static.jow.fr/"
 

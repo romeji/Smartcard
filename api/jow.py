@@ -1,7 +1,9 @@
 from flask import Flask, request, jsonify
 import urllib.request
 import urllib.parse
+import urllib.error
 import json
+import traceback
 
 
 app = Flask(__name__)
@@ -10,27 +12,27 @@ STATIC = "https://static.jow.fr/"
 
 
 @app.route("/", methods=["GET"])
-def index():
-
-    query = request.args.get(
-        "q",
-        ""
-    ).strip()
-
-    limit = int(
-        request.args.get(
-            "limit",
-            12
-        )
-    )
-
-    if not query:
-        return jsonify({
-            "error":
-            "Missing ?q="
-        }), 400
+def home():
 
     try:
+
+        query = (
+            request.args
+            .get("q", "")
+            .strip()
+        )
+
+        limit = int(
+            request.args
+            .get("limit", "12")
+        )
+
+        if not query:
+
+            return jsonify({
+                "error":
+                "Missing ?q="
+            }), 400
 
         recipes = search_jow(
             query,
@@ -38,43 +40,60 @@ def index():
         )
 
         return jsonify({
-            "query": query,
-            "recipes": recipes
+            "query":
+            query,
+
+            "recipes":
+            recipes
         })
 
-    except Exception as e:
+    except Exception:
 
         return jsonify({
-            "error": str(e)
+
+            "error":
+            traceback.format_exc()
+
         }), 500
 
 
 def search_jow(query, limit):
 
-    url = (
-        "https://api.jow.fr/public/recipe/quicksearch"
-    )
-
     params = urllib.parse.urlencode({
-        "query": query,
-        "limit": limit,
-        "start": 0,
-        "availabilityZoneId": "FR"
+
+        "query":
+        query,
+
+        "limit":
+        limit,
+
+        "start":
+        0,
+
+        "availabilityZoneId":
+        "FR"
     })
 
+    url = (
+        "https://api.jow.fr/public/recipe/quicksearch?"
+        + params
+    )
+
     req = urllib.request.Request(
-        f"{url}?{params}",
+
+        url,
+
         method="POST",
+
         data=b"{}",
+
         headers={
+
             "Accept":
             "application/json",
 
             "Content-Type":
             "application/json",
-
-            "x-jow-withmeta":
-            "1",
 
             "Origin":
             "https://jow.fr",
@@ -88,24 +107,19 @@ def search_jow(query, limit):
     )
 
     with urllib.request.urlopen(
-        req
+        req,
+        timeout=20
     ) as r:
 
         raw = json.loads(
             r.read()
-            .decode()
+            .decode("utf-8")
         )
 
     recipes = (
         raw
-        .get(
-            "data",
-            {}
-        )
-        .get(
-            "content",
-            []
-        )
+        .get("data", {})
+        .get("content", [])
     )
 
     result = []
@@ -115,9 +129,7 @@ def search_jow(query, limit):
         result.append({
 
             "id":
-            recipe.get(
-                "_id"
-            ),
+            recipe.get("_id"),
 
             "name":
             recipe.get(
@@ -134,20 +146,14 @@ def search_jow(query, limit):
                 "slug"
             ),
 
-            "url":
-            (
-                "https://jow.fr/recettes/"
-                +
-                recipe.get(
-                    "slug",
-                    ""
-                )
-            ),
-
             "imageUrl":
             build_static(
                 recipe.get(
                     "editorialPictureUrl"
+                )
+                or
+                recipe.get(
+                    "imageUrl"
                 )
             ),
 
@@ -158,53 +164,16 @@ def search_jow(query, limit):
                 )
             ),
 
-            "prepTime":
-            recipe.get(
-                "preparationTime",
-                0
-            ),
-
-            "cookTime":
-            recipe.get(
-                "cookingTime",
-                0
-            ),
-
-            "steps": [],
-
             "ingredients": [
-
-                {
-                    "name":
-                    c["ingredient"]["name"],
-
-                    "qty":
-                    str(
-                        c["ingredient"]
-                        .get(
-                            "quantityPerCover",
-                            ""
-                        )
-                    ),
-
-                    "unit": "",
-
-                    "isOptional":
-                    c.get(
-                        "isOptional",
-                        False
-                    )
-                }
-
-                for c in recipe.get(
+                x
+                for x
+                in recipe.get(
                     "constituents",
                     []
                 )
+            ],
 
-                if c.get(
-                    "ingredient"
-                )
-            ]
+            "steps": []
         })
 
     return result
@@ -220,8 +189,4 @@ def build_static(path):
     ):
         return path
 
-    return (
-        STATIC
-        +
-        path
-    )
+    return STATIC + path

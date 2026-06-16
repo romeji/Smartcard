@@ -9686,74 +9686,302 @@ function renderNutriWeekOld(calTarget) {
     </div>`;
   }).join('');
 }
-
 async function generateNutriAdvice() {
+
   const zone = document.getElementById('nutriAdviceZone');
-  const btn  = document.getElementById('nutriAdviceBtn');
-  if(!zone) return;
-  zone.innerHTML = '<div class="ai-loading"><div class="ai-loading-spinner"></div><div>Analyse IA en cours...</div></div>';
-  if(btn) btn.disabled = true;
+  const btn = document.getElementById('nutriAdviceBtn');
 
-  const p = state.profile || {};
-  const cals = calculateDailyCalories(p);
-  const macros = cals ? getMacroTargets(p, cals) : null;
-  const wm = state.weekMenu || {};
+  if (!zone) return;
 
-  // Build detailed week summary using actual Jow recipe data
-  const dayNames = ['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche'];
-  const weekSummary = [];
-  for(let i = 1; i <= 7; i++) {
-    const m = wm[i];
-    if(!m) continue;
-    const n = _calcDayNutri(m) || {};
-    const meals = [m.b, m.l, m.d, m.snack].filter(Boolean).join(', ');
-    if(meals) weekSummary.push(dayNames[i-1] + ': ' + meals + (n.kcal ? ' ('+Math.round(n.kcal)+' kcal, prot:'+Math.round(n.prot||0)+'g, gluc:'+Math.round(n.carb||0)+'g, lip:'+Math.round(n.fat||0)+'g)' : ''));
+  zone.innerHTML =
+    '<div class="ai-loading">'
+    + '<div class="ai-loading-spinner"></div>'
+    + '<div>Analyse IA en cours...</div>'
+    + '</div>';
+
+  if (btn) {
+    btn.disabled = true;
   }
 
-  const goalLabels = {equilibre:'alimentation équilibrée',perte:'perte de poids',prise:'prise de masse',maintien:'maintien du poids',perf:'performance sportive'};
+  const p = state.profile || {};
+
+  const cals = calculateDailyCalories(p);
+
+  const macros = cals
+    ? getMacroTargets(p, cals)
+    : null;
+
+  const wm = state.weekMenu || {};
+
+  const dayNames = [
+    'Lundi',
+    'Mardi',
+    'Mercredi',
+    'Jeudi',
+    'Vendredi',
+    'Samedi',
+    'Dimanche'
+  ];
+
+  const weekSummary = [];
+
+  for (let i = 1; i <= 7; i++) {
+
+    const m = wm[i];
+
+    if (!m) continue;
+
+    const n = _calcDayNutri(m) || {};
+
+    const meals = [
+      m.b,
+      m.l,
+      m.d,
+      m.snack
+    ]
+      .filter(Boolean)
+      .join(', ');
+
+    if (meals) {
+
+      weekSummary.push(
+
+        dayNames[i - 1]
+
+        + ': '
+
+        + meals
+
+        + (
+          n.kcal
+            ? (
+                ' ('
+                + Math.round(n.kcal)
+                + ' kcal'
+                + ', prot: '
+                + Math.round(n.prot || 0)
+                + 'g'
+                + ', gluc: '
+                + Math.round(n.carb || 0)
+                + 'g'
+                + ', lip: '
+                + Math.round(n.fat || 0)
+                + 'g)'
+              )
+            : ''
+        )
+      );
+    }
+  }
+
+  const goalLabels = {
+    equilibre: 'alimentation équilibrée',
+    perte: 'perte de poids',
+    prise: 'prise de masse',
+    maintien: 'maintien du poids',
+    perf: 'performance sportive'
+  };
+
   let profileDesc = '';
-  if(p.age) profileDesc += p.age + ' ans, ';
-  if(p.sex) profileDesc += (p.sex==='H'?'homme':'femme') + ', ';
-  if(p.poids) profileDesc += p.poids + 'kg, ';
-  if(p.taille) profileDesc += p.taille + 'cm, ';
-  profileDesc += 'objectif: ' + (goalLabels[p.goal||'equilibre']) + ', ';
-  if(cals) profileDesc += cals + ' kcal/j cible';
-  if(macros) profileDesc += ', prot cible: ' + macros.prot + 'g, gluc: ' + macros.carb + 'g, lip: ' + macros.fat + 'g';
-  if(p.goal === 'perte' && p.poidsObj) profileDesc += ', objectif poids: ' + p.poidsObj + 'kg';
-  if(p.goal === 'perte' && p.dureeObj) profileDesc += ' en ' + p.dureeObj + ' semaines';
 
-  const prompt = `Tu es nutritionniste expert. Analyse ce menu hebdomadaire et donne des conseils personnalisés.
+  if (p.age) {
+    profileDesc += p.age + ' ans, ';
+  }
 
-Profil: ${profileDesc || 'non renseigné'}
-Menu de la semaine (recettes Jow planifiées):
-${weekSummary.length ? weekSummary.join('
-') : 'Aucun repas planifié cette semaine.'}
+  if (p.sex) {
+    profileDesc += (
+      p.sex === 'H'
+        ? 'homme'
+        : 'femme'
+    ) + ', ';
+  }
 
-Analyse:
-1. Évalue l'équilibre nutritionnel global (calories, macros, variété)
+  if (p.poids) {
+    profileDesc += p.poids + ' kg, ';
+  }
+
+  if (p.taille) {
+    profileDesc += p.taille + ' cm, ';
+  }
+
+  profileDesc +=
+    'objectif : '
+    + (
+      goalLabels[
+        p.goal || 'equilibre'
+      ]
+    );
+
+  if (cals) {
+    profileDesc +=
+      ', '
+      + cals
+      + ' kcal/j cible';
+  }
+
+  if (macros) {
+
+    profileDesc +=
+      ', prot cible : '
+      + macros.prot
+      + 'g'
+
+      + ', gluc : '
+      + macros.carb
+      + 'g'
+
+      + ', lip : '
+      + macros.fat
+      + 'g';
+  }
+
+  if (
+    p.goal === 'perte'
+    && p.poidsObj
+  ) {
+
+    profileDesc +=
+      ', objectif poids : '
+      + p.poidsObj
+      + ' kg';
+  }
+
+  if (
+    p.goal === 'perte'
+    && p.dureeObj
+  ) {
+
+    profileDesc +=
+      ' en '
+      + p.dureeObj
+      + ' semaines';
+  }
+
+  const prompt = `Tu es nutritionniste expert.
+
+Analyse ce menu hebdomadaire et donne des conseils personnalisés.
+
+Profil :
+${profileDesc || 'non renseigné'}
+
+Menu de la semaine (recettes Jow planifiées) :
+${
+  weekSummary.length
+    ? weekSummary.join('\n')
+    : 'Aucun repas planifié cette semaine.'
+}
+
+Analyse :
+
+1. Évalue l'équilibre nutritionnel global
+(calories, macros, variété)
+
 2. Points positifs du menu
-3. Points à améliorer (concret et actionnable)
+
+3. Points à améliorer
+(concret et actionnable)
+
 4. Recommandations spécifiques selon l'objectif
-5. Si objectif perte de poids: calcule le déficit calorique moyen et estime la progression
 
-Réponds en français, de façon concise, bienveillante et motivante (max 250 mots). Utilise des emojis. Formate avec des sections claires.`;
+5. Si objectif perte de poids :
+calcule le déficit calorique moyen
+et estime la progression
 
-  fetch('/api/claude', {
-    method: 'POST',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({model:'claude-sonnet-4-6', max_tokens:600, messages:[{role:'user', content:prompt}]})
-  })
-  .then(r => r.ok ? r.json() : Promise.reject('API ' + r.status))
-  .then(data => {
-    const text = (data.content||[]).find(c=>c.type==='text')?.text || '';
-    zone.innerHTML = '<div class="nx-ai-card tip" style="white-space:pre-wrap;line-height:1.6;font-size:.8rem;">' + text.replace(/</g,'&lt;') + '</div>';
-  })
-  .catch(e => {
-    zone.innerHTML = '<div class="nx-ai-card warn"><div class="nx-ai-body">Analyse indisponible. Vérifiez votre connexion.</div></div>';
-  })
-  .finally(() => {
-    if(btn) btn.disabled = false;
-  });
+Réponds :
+
+- en français
+- concise
+- bienveillante
+- motivante
+- maximum 250 mots
+- utilise quelques emojis
+- sections claires`;
+
+  fetch(
+    '/api/claude',
+    {
+      method: 'POST',
+
+      headers: {
+        'Content-Type':
+          'application/json'
+      },
+
+      body: JSON.stringify({
+
+        model:
+          'claude-sonnet-4-6',
+
+        max_tokens:
+          600,
+
+        messages: [
+          {
+            role: 'user',
+            content: prompt
+          }
+        ]
+      })
+    }
+  )
+
+    .then(r =>
+
+      r.ok
+
+        ? r.json()
+
+        : Promise.reject(
+            'API ' + r.status
+          )
+    )
+
+    .then(data => {
+
+      const text = (
+
+        data.content || []
+
+      ).find(
+
+        c => c.type === 'text'
+
+      )?.text || '';
+
+      zone.innerHTML =
+
+        '<div class="nx-ai-card tip" style="white-space:pre-wrap;line-height:1.6;font-size:.8rem;">'
+
+        + text.replace(
+            /</g,
+            '&lt;'
+          )
+
+        + '</div>';
+    })
+
+    .catch(() => {
+
+      zone.innerHTML =
+
+        '<div class="nx-ai-card warn">'
+
+        + '<div class="nx-ai-body">'
+
+        + 'Analyse indisponible. Vérifiez votre connexion.'
+
+        + '</div>'
+
+        + '</div>';
+    })
+
+    .finally(() => {
+
+      if (btn) {
+
+        btn.disabled = false;
+      }
+    });
 }
 
 

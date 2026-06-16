@@ -4552,29 +4552,53 @@ function _jowNormalize(r) {
   const habits = r.eatingHabits || {};
   const ns     = r.nutriScore || {};
   const gs     = r.greenScore  || {};
+
+  // ── FIX IMAGE (PNG PRIORITY + fallback JPG) ──
+  function _pickBestImage(r) {
+    let img = r.pngUrl || r.imageUrl || null;
+    if (!img) return null;
+
+    img = String(img);
+
+    // force png si possible (même chemin)
+    if (img.includes('jow.fr')) {
+      // remplace extension si jpg/jpeg
+      img = img.replace(/\.(jpg|jpeg)$/i, '.png');
+    }
+
+    return img;
+  }
+
   return {
     id:             'jow_' + (r.id || r.i || ''),
-    name:           r.name   || '',
+    name:           r.name || '',
     description:    r.description || '',
-    photo:          r.pngUrl || r.imageUrl || null,
+
+    // ✅ FIX ICI
+    photo:          _pickBestImage(r),
+
     videoUrl:       r.videoUrl || null,
     time:           r.totalTime || 0,
     prepTime:       r.prepTime  || 0,
     cookTime:       r.cookTime  || 0,
     portions:       r.portions  || 4,
+
     kcal:           Math.round(nutr.calories      || 0),
     prot:           Math.round(nutr.proteins      || 0),
     carb:           Math.round(nutr.carbohydrates || 0),
     fat:            Math.round(nutr.fat           || 0),
     fibers:         Math.round(nutr.fibers        || 0),
+
     pricePerPortionEuro: r.pricePerPortionEuro || 0,
     priceLevel:     r.priceLevel || 0,
     priceLabel:     r.priceLabel || '',
+
     nutriScore:     ns,
     greenScore:     gs,
     scoreProvider:  r.scoreProvider || null,
     allergens:      r.allergens || [],
     co2grams:       r.co2grams  || null,
+
     eatingHabits:   habits,
     requiredTools:  r.requiredTools || [],
     difficulty:     r.difficulty || null,
@@ -4584,9 +4608,18 @@ function _jowNormalize(r) {
     rating:         r.rating || null,
     composition:    r.composition || '',
     tags:           r.tags   || [],
-    ingredients:    (r.ingredients || []).map(function(i) {
-      return { name: i.name||'', qty: i.qty||'', unit: i.unit||'', imageUrl: i.imageUrl||null, isOptional: i.isOptional||false, alternatives: i.alternatives||[] };
+
+    ingredients: (r.ingredients || []).map(function(i) {
+      return {
+        name: i.name||'',
+        qty: i.qty||'',
+        unit: i.unit||'',
+        imageUrl: i.imageUrl||null,
+        isOptional: i.isOptional||false,
+        alternatives: i.alternatives||[]
+      };
     }),
+
     instructions:   r.steps || [],
     source:         'jow',
     diet:           'omnivore',

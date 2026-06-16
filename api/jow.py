@@ -48,9 +48,14 @@ class handler(BaseHTTPRequestHandler):
             self._json({"error": "Missing query parameter ?q="}, 400)
             return
 
+        debug = params.get("debug", ["0"])[0] == "1"
         try:
-            recipes = self._search_jow(query, limit)
-            self._json({"query": query, "recipes": recipes})
+            if debug:
+                recipes, raw_fields = self._search_jow(query, limit, debug=True)
+                self._json({"query": query, "recipes": recipes, "_debug_raw_fields": raw_fields})
+            else:
+                recipes = self._search_jow(query, limit)
+                self._json({"query": query, "recipes": recipes})
         except Exception as e:
             self._json({
                 "error": str(e),
@@ -157,7 +162,7 @@ class handler(BaseHTTPRequestHandler):
 
         return []
 
-    def _search_jow(self, query, limit=12):
+    def _search_jow(self, query, limit=12, debug=False):
         search_url = "https://api.jow.fr/public/recipe/quicksearch"
         params = urllib.parse.urlencode({
             "query": query,
@@ -209,14 +214,54 @@ class handler(BaseHTTPRequestHandler):
             steps = self._extract_steps(details)
 
             # ── Images & vidéo ───────────────────────────────────────────
-            image_url = details.get("editorialPictureUrl") or recipe.get("editorialPictureUrl") or recipe.get("imageUrl")
-            square_url = details.get("squarePictureUrl") or recipe.get("squarePictureUrl")
+            # Try all known Jow image field names (search result vs detail have different fields)
+            def _first_img(*sources):
+                for s in sources:
+                    if s and isinstance(s, str) and len(s) > 4:
+                        return s
+                return None
+
+            image_url = _first_img(
+                details.get("editorialPictureUrl"),
+                recipe.get("editorialPictureUrl"),
+                details.get("imageUrl"),
+                recipe.get("imageUrl"),
+                details.get("pictureUrl"),
+                recipe.get("pictureUrl"),
+                details.get("editorialPicture"),
+                recipe.get("editorialPicture"),
+                details.get("image"),
+                recipe.get("image"),
+                details.get("thumbnail"),
+                recipe.get("thumbnail"),
+            )
+            square_url = _first_img(
+                details.get("squarePictureUrl"),
+                recipe.get("squarePictureUrl"),
+                details.get("squareImageUrl"),
+                recipe.get("squareImageUrl"),
+            )
+            # Also check pictures[] array if present
+            pictures = details.get("pictures") or recipe.get("pictures") or []
+            if not image_url and pictures:
+                for pic in pictures:
+                    if isinstance(pic, dict):
+                        pu = pic.get("url") or pic.get("src") or pic.get("imageUrl")
+                        if pu:
+                            image_url = pu
+                            break
             video_url = details.get("videoUrl") or recipe.get("videoUrl")
 
             def _make_full(u):
                 if not u:
                     return None
-                return u if u.startswith("http") else (STATIC + u)
+                if u.startswith("http://") or u.startswith("https://"):
+                    return u
+                if u.startswith("//"):
+                    return "https:" + u
+                if u.startswith("/"):
+                    return "https://static.jow.fr" + u
+                return STATIC + u
 
             image_full = _make_full(image_url)
             square_full = _make_full(square_url)
@@ -434,6 +479,18 @@ class handler(BaseHTTPRequestHandler):
                 "ingredients":   ingredients,
             })
 
+        if debug and result:
+            # Return first recipe's raw fields for debugging
+            first_r = recipes[0] if recipes else {}
+            first_d = {}
+            if first_r.get("_id"):
+                try:
+                    first_d = self._get_recipe_details(first_r["_id"])
+                except:
+                    pass
+            img_keys_recipe = {k: v for k, v in first_r.items() if any(x in k.lower() for x in ['image','picture','photo','thumb','media','url'])}
+            img_keys_detail = {k: v for k, v in first_d.items() if any(x in k.lower() for x in ['image','picture','photo','thumb','media','url'])}
+            return result, {"recipe_image_fields": img_keys_recipe, "detail_image_fields": img_keys_detail}
         return result
 
     def _json(self, data, code=200):

@@ -1576,7 +1576,6 @@ body.offline-mode .offline-banner{display:block;}
       <div class="menu-tabs" id="menuTabBar" style="margin-bottom:14px;">
         <div class="menu-tab on" id="mtab-week" onclick="switchMenuTab('week')">📅 Semaine</div>
         <div class="menu-tab" id="mtab-recipes" onclick="switchMenuTab('recipes')">👨‍🍳 Recettes</div>
-        <div class="menu-tab" id="mtab-favs" onclick="switchMenuTab('favs')">⭐ Favoris</div>
         <div class="menu-tab" id="mtab-search" onclick="switchMenuTab('search')">🔍 Explorer</div>
         <div class="menu-tab" id="mtab-nutri" onclick="switchMenuTab('nutri')">📊 Nutrition</div>
       </div>
@@ -1678,6 +1677,11 @@ body.offline-mode .offline-banner{display:block;}
 
       <!-- ═══ TAB: MES RECETTES ═══ -->
       <div id="menuPanelRecipes" style="display:none;">
+        <!-- Sous-onglets Favoris / Toutes -->
+        <div style="display:flex;gap:0;background:var(--bg2);border-radius:var(--rs);padding:3px;margin-bottom:12px;">
+          <button id="rectab-favs" onclick="switchRecipesTab('favs')" style="flex:1;padding:8px 4px;border-radius:var(--rs);border:none;font-size:.78rem;font-weight:800;cursor:pointer;background:var(--ac);color:#fff;">⭐ Favoris</button>
+          <button id="rectab-all"  onclick="switchRecipesTab('all')"  style="flex:1;padding:8px 4px;border-radius:var(--rs);border:none;font-size:.78rem;font-weight:700;cursor:pointer;background:transparent;color:var(--tx2);">📚 Toutes</button>
+        </div>
         <div style="display:flex;gap:8px;margin-bottom:10px;">
           <input class="inp" id="recipeSearch" placeholder="🔍 Rechercher une recette..." oninput="filterRecipesView(this.value)" style="flex:1;">
           <button class="btn acc sm" onclick="openCreateRecipeModal()" style="flex-shrink:0;padding:10px 12px;border-radius:var(--rs);">+ Créer</button>
@@ -2309,7 +2313,7 @@ async function createHousehold() {
       items: state.items, fridge: state.fridge, history: state.history, weekMenu: state.weekMenu, budget: state.budget,
       createdAt: Date.now()
     }, {merge: true});
-    // Créer un document de lookup code→houseId (évite le where() qui nécessite un index)
+    // Document de lookup code→houseId : permet joinHousehold() sans index Firestore
     await db.collection('houseCodes').doc(code).set({houseId, createdAt: Date.now()});
     state.houseId = houseId;
     state.houseCode = code;
@@ -2324,6 +2328,7 @@ async function createHousehold() {
 }
 
 async function joinHousehold() {
+  // Récupérer le code depuis tous les inputs possibles (plusieurs #joinCode dans la page)
   const _jcAll = Array.from(document.querySelectorAll('#joinCode, [id="joinCode"]'));
   const _jcEl  = _jcAll.find(el => (el.value||'').trim().length > 0) || _jcAll[0];
   const code   = (_jcEl ? _jcEl.value : '').toUpperCase().trim();
@@ -2332,26 +2337,26 @@ async function joinHousehold() {
   try {
     showToast('🔄', 'Recherche...', '');
 
-    // 1. Lookup direct par code (pas de where() — pas d'index requis)
+    // Lecture directe par code — aucun index Firestore requis
     let houseId = null;
     const codeDoc = await db.collection('houseCodes').doc(code).get();
     if(codeDoc.exists) {
       houseId = codeDoc.data().houseId;
     } else {
-      // Fallback : ancienne méthode where() pour les foyers créés avant la mise à jour
+      // Fallback pour foyers créés avant cette mise à jour (tentative where)
       try {
         const snap = await db.collection('households').where('code', '==', code).limit(1).get();
         if(!snap.empty) {
           houseId = snap.docs[0].id;
           // Migrer : créer le document houseCodes manquant
-          await db.collection('houseCodes').doc(code).set({houseId, createdAt: Date.now()});
+          await db.collection('houseCodes').doc(code).set({houseId, createdAt: Date.now()}).catch(()=>{});
         }
       } catch(e2) { /* index manquant — on ignore */ }
     }
 
     if(!houseId) { showToast('❌', 'Introuvable', 'Ce code ne correspond à aucun foyer.'); return; }
 
-    // 2. Ajouter l'utilisateur aux membres
+    // Ajouter l'utilisateur aux membres
     const houseDoc = await db.collection('households').doc(houseId).get();
     const data = houseDoc.exists ? houseDoc.data() : {};
     const userName = state.profile.name || currentUser.displayName || currentUser.email.split('@')[0];
@@ -2361,20 +2366,15 @@ async function joinHousehold() {
       await db.collection('households').doc(houseId).update({members});
     }
 
-    // 3. Stopper les listeners AVANT d'écrire (évite la race condition)
-    if(itemsUnsub) { itemsUnsub(); itemsUnsub = null; }
+    // Stopper les listeners avant d'écrire (évite race condition)
+    if(itemsUnsub)        { itemsUnsub(); itemsUnsub = null; }
     if(window._userUnsub) { window._userUnsub(); window._userUnsub = null; }
 
-    // 4. Mettre à jour l'état local immédiatement
     state.houseId   = houseId;
     state.houseCode = code;
     state.houseName = data.houseName || 'Foyer';
     saveState();
-
-    // 5. Persister dans Firestore users/{uid}
     await db.collection('users').doc(currentUser.uid).set({houseId, houseCode: code}, {merge: true});
-
-    // 6. Relancer les listeners
     subscribeToHousehold();
     updateFoyerUI();
     showToast('🎉', 'Foyer rejoint !', 'Bienvenue dans le foyer ' + code);
@@ -4130,7 +4130,6 @@ function switchMenuTab(tab) {
   if(tab==='week')    { try { renderWeek(); } catch(e){} }
   if(tab==='nutri')   { try { sc_nutri_render(); } catch(e){ console.error('nutri:',e); } }
   if(tab==='recipes') { try { renderRecipesGrid(); } catch(e){} }
-  if(tab==='favs')    { try { renderFavsGrid(); } catch(e){} }
   if(tab==='search') {
     const inp = document.getElementById('spoonSearchInp');
     if(inp) setTimeout(()=>inp.focus(), 100);
@@ -8273,11 +8272,12 @@ function openMealEdit(day, slot) {
   const modal = document.getElementById('mealEditModal');
   if(!modal) return;
 
-  // Pre-build recipe list HTML
-  const allRec = getAllRecipes().filter(r => !r.mealTypes || r.mealTypes.includes(slot));
-  const recListHtml = allRec.length
-    ? allRec.slice(0,30).map(r => buildRecipePickHtml(r, day, slot)).join('')
-    : '<div style="text-align:center;padding:20px;color:var(--tx3);font-size:.8rem;">Aucune recette — <button class=\"btn acc sm\" style=\"margin-top:8px;\" onclick=\"closeMealEdit();openCreateRecipeModal()\">+ Créer</button></div>';
+  // Panel favoris : afficher les recettes bookmarkées
+  const favRecs = state.recipeBookmarks || [];
+  const favListHtml = favRecs.length
+    ? favRecs.filter(r => !r.mealTypes || r.mealTypes.includes(slot))
+        .slice(0,50).map(r => buildRecipePickHtml(r, day, slot)).join('')
+    : '<div style="text-align:center;padding:24px;color:var(--tx3);font-size:.8rem;">Aucun favori — explorez <button class="btn acc sm" style="margin-top:6px;" onclick="closeMealEdit();switchMenuTab(\'search\')">🇫🇷 Jow.fr</button></div>';
 
   modal.innerHTML = `
     <div class="mhdl"></div>
@@ -8291,17 +8291,17 @@ function openMealEdit(day, slot) {
 
     <!-- Onglets -->
     <div style="display:flex;gap:0;background:var(--bg2);border-radius:var(--rs);padding:3px;margin-bottom:12px;">
-      <button id="ometab-r" onclick="omeSwitchTab('r')" style="flex:1;padding:8px 4px;border-radius:var(--rs);border:none;font-size:.76rem;font-weight:800;cursor:pointer;background:var(--ac);color:#fff;">📋 Mes recettes</button>
+      <button id="ometab-r" onclick="omeSwitchTab('r')" style="flex:1;padding:8px 4px;border-radius:var(--rs);border:none;font-size:.76rem;font-weight:800;cursor:pointer;background:var(--ac);color:#fff;">⭐ Favoris</button>
       <button id="ometab-s" onclick="omeSwitchTab('s')" style="flex:1;padding:8px 4px;border-radius:var(--rs);border:none;font-size:.76rem;font-weight:700;cursor:pointer;background:transparent;color:var(--tx2);">🇫🇷 Jow.fr</button>
     </div>
 
-    <!-- Panel: Mes recettes -->
+    <!-- Panel: Favoris -->
     <div id="omepanel-r">
-      <input class="inp" id="omeSearch" placeholder="🔍 Chercher : pâtes, poulet, salade..."
+      <input class="inp" id="omeSearch" placeholder="🔍 Chercher dans vos favoris..."
         oninput="omeFilter(this.value, ${day}, '${slot}')"
         style="margin-bottom:8px;width:100%;" autocomplete="off">
       <div id="omeRecipeList" style="max-height:280px;overflow-y:auto;display:flex;flex-direction:column;gap:5px;">
-        ${recListHtml}
+        ${favListHtml}
       </div>
     </div>
 
@@ -8398,13 +8398,13 @@ function omeSwitchTab(t) {
 function omeFilter(q, day, slot) {
   const el = document.getElementById('omeRecipeList');
   if(!el) return;
-  const all = getAllRecipes().filter(r => !r.mealTypes || r.mealTypes.includes(slot));
+  const all = (state.recipeBookmarks || []).filter(r => !r.mealTypes || r.mealTypes.includes(slot));
   const filtered = q ? all.filter(r => r.name.toLowerCase().includes(q.toLowerCase())) : all;
   if(!filtered.length) {
-    el.innerHTML = '<div style="text-align:center;padding:14px;color:var(--tx3);font-size:.8rem;">Aucune recette pour &laquo;'+q+'&raquo;</div>';
+    el.innerHTML = '<div style="text-align:center;padding:14px;color:var(--tx3);font-size:.8rem;">Aucun favori pour &laquo;'+q+'&raquo; — cherchez sur <button class="btn acc sm" style="margin-left:4px;" onclick="omeSwitchTab(\'s\')">🇫🇷 Jow.fr</button></div>';
     return;
   }
-  el.innerHTML = filtered.slice(0,30).map(r => buildRecipePickHtml(r, day, slot)).join('');
+  el.innerHTML = filtered.slice(0,50).map(r => buildRecipePickHtml(r, day, slot)).join('');
 }
 
 async function omeSearchJow(day, slot) {
@@ -9267,14 +9267,29 @@ function filterRecipesDiet(el, val) {
   renderRecipesGrid();
 }
 
+function switchRecipesTab(t) {
+  window._recipesSubTab = t;
+  ['favs','all'].forEach(id => {
+    const btn = document.getElementById('rectab-'+id);
+    if(btn) {
+      btn.style.background  = id===t ? 'var(--ac)' : 'transparent';
+      btn.style.color       = id===t ? '#fff'       : 'var(--tx2)';
+      btn.style.fontWeight  = id===t ? '800'         : '700';
+    }
+  });
+  renderRecipesGrid();
+}
+
 function renderRecipesGrid() {
+  if(!window._recipesSubTab) window._recipesSubTab = 'favs';
   const panel = document.getElementById('menuPanelRecipes');
   if(!panel) return;
 
-  const customRecipes = state.customRecipes || [];
-  const bookmarks     = state.recipeBookmarks || [];
-  const globalDB      = getGlobalRecipeDB ? getGlobalRecipeDB() : [];
-  const q             = (window._recipeSearch || '').toLowerCase();
+  const sub        = window._recipesSubTab;
+  const bookmarks  = state.recipeBookmarks || [];
+  const customRecs = state.customRecipes || [];
+  const globalDB   = getGlobalRecipeDB ? getGlobalRecipeDB() : [];
+  const q          = (window._recipeSearch || '').toLowerCase();
 
   function matchSearch(r) {
     if(!q) return true;
@@ -9282,86 +9297,87 @@ function renderRecipesGrid() {
       || (r.ingredients||[]).some(i => (typeof i==='string'?i:i.name||'').toLowerCase().includes(q));
   }
 
-  let html = '';
-
-  // ── Barre de recherche ──
-  html += `<div style="display:flex;gap:8px;margin-bottom:12px;">
-    <div style="flex:1;position:relative;">
-      <input class="inp" placeholder="🔍 Chercher une recette…" value="${q.replace(/"/g,'&quot;')}"
-        oninput="window._recipeSearch=this.value;renderRecipesGrid()"
-        style="width:100%;padding-left:36px;">
-      <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:.9rem;pointer-events:none;">🔍</span>
-    </div>
-    <button class="btn acc" style="padding:10px 14px;font-size:.82rem;flex-shrink:0;" onclick="openCreateRecipeModal()">✏️ Créer</button>
-  </div>`;
-
-  // ── Mes recettes perso ──
-  const myFiltered = customRecipes.filter(matchSearch);
-  if(myFiltered.length > 0) {
-    html += `<div style="font-size:.68rem;font-weight:800;color:var(--ac);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px;">✏️ Mes recettes (${myFiltered.length})</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:18px;">`;
-    html += myFiltered.map(r => {
-      const isBm = bookmarks.some(b=>b.id===r.id);
-      return `<div style="background:var(--bg);border-radius:var(--rs);box-shadow:var(--so);overflow:hidden;position:relative;">
-        <div onclick="openCustomRecipeDetail('${r.id}')" style="cursor:pointer;">
-          ${r.photo?`<img src="${r.photo}" style="width:100%;height:80px;object-fit:cover;" loading="lazy" onerror="_imgFallback(this,${JSON.stringify((r.photoCandidates||[]).slice(1))})">`
-                   :`<div style="height:64px;background:var(--bg2);display:flex;align-items:center;justify-content:center;font-size:1.8rem;">${r.emoji||'🍳'}</div>`}
-          <div style="padding:8px 8px 4px;">
-            <div style="font-size:.76rem;font-weight:800;line-height:1.3;">${r.name}</div>
-            <div style="font-size:.6rem;color:var(--tx2);margin-top:2px;">${r.time?r.time+'min · ':''}${r.kcal?r.kcal+'kcal':''}</div>
-          </div>
+  function recipeCard(r) {
+    const isBm     = bookmarks.some(b => b.id === r.id || b.name === r.name);
+    const isCustom = r.source === 'custom';
+    const isJow    = r.source === 'jow';
+    const srcLabel = isJow ? '🇫🇷 Jow' : isCustom ? '✏️ Perso' : r.source === 'ai' ? '🤖 IA' : '';
+    const safeId   = (r.id||r.name).replace(/'/g,"\\'");
+    const onclick  = isCustom ? `openCustomRecipeDetail('${r.id}')` : `openRecipeDetail('${safeId}')`;
+    const cands    = JSON.stringify((r.photoCandidates||[]).concat(r.imageUrl?[r.imageUrl]:[]).slice(0,4));
+    const ph       = r.photo && !r.photo.startsWith('data:');
+    return `<div style="background:var(--bg);border-radius:var(--rs);box-shadow:var(--so);overflow:hidden;position:relative;">
+      <div onclick="${onclick}" style="cursor:pointer;">
+        ${ph
+          ? `<img src="${r.photo}" style="width:100%;height:88px;object-fit:cover;" loading="lazy" onerror="_imgFallback(this,${cands})">`
+          : `<div style="height:70px;background:var(--bg2);display:flex;align-items:center;justify-content:center;font-size:2rem;">${r.emoji||'🍳'}</div>`}
+        <div style="padding:8px 8px 4px;">
+          <div style="font-size:.76rem;font-weight:800;line-height:1.3;">${r.name}</div>
+          <div style="font-size:.6rem;color:var(--tx2);margin-top:2px;">${srcLabel}${r.time?' · '+r.time+'min':''}${r.kcal?' · '+r.kcal+' kcal':''}</div>
         </div>
-        <div style="display:flex;gap:4px;padding:0 8px 8px;">
-          <button onclick="editCustomRecipe('${r.id}')" style="flex:1;font-size:.6rem;padding:4px;background:var(--bg2);border:none;border-radius:var(--rx);cursor:pointer;font-weight:700;color:var(--tx2);">✏️</button>
-          <button onclick="deleteCustomRecipe('${r.id}')" style="flex:1;font-size:.6rem;padding:4px;background:rgba(231,76,60,.1);border:none;border-radius:var(--rx);cursor:pointer;font-weight:700;color:var(--rd);">🗑</button>
-          <button onclick="toggleBookmark('${r.id}');renderRecipesGrid()" style="padding:4px 6px;background:none;border:none;cursor:pointer;font-size:.75rem;">${isBm?'⭐':'☆'}</button>
-        </div>
-      </div>`;
-    }).join('');
-    html += '</div>';
-  }
-
-  // ── Base partagée (Firestore) ──
-  const sharedFiltered = globalDB.filter(r =>
-    !customRecipes.some(c => c.id === r.id) && matchSearch(r)
-  );
-
-  if(sharedFiltered.length > 0) {
-    html += `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-      <div style="font-size:.68rem;font-weight:800;color:var(--tl);text-transform:uppercase;letter-spacing:.8px;">☁️ Base commune (${sharedFiltered.length})</div>
-      <div style="font-size:.6rem;color:var(--tx3);">Partagée entre tous les comptes</div>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:18px;">`;
-    html += sharedFiltered.map(r => {
-      const isBm = bookmarks.some(b=>b.id===r.id);
-      return `<div style="background:var(--bg);border-radius:var(--rs);box-shadow:var(--so);overflow:hidden;position:relative;cursor:pointer;">
-        <div onclick="openRecipeDetail('${(r.id||r.name).replace(/'/g,"\\'")}')">
-          ${r.photo&&!r.photo.startsWith('data:')?`<img src="${r.photo}" style="width:100%;height:80px;object-fit:cover;" onerror="this.style.display=&apos;none&apos;" loading="lazy">`
-                   :`<div style="height:64px;background:var(--bg2);display:flex;align-items:center;justify-content:center;font-size:1.8rem;">${r.emoji||'🍳'}</div>`}
-          <div style="padding:8px 8px 4px;">
-            <div style="font-size:.76rem;font-weight:800;line-height:1.3;">${r.name}</div>
-            <div style="font-size:.6rem;color:var(--tx2);margin-top:2px;">${r.source==='jow'?'🇫🇷 Jow':r.source==='ai'?'🤖 IA':r.source==='translated'?'🇫🇷 Traduite':''}${r.time?' · '+r.time+'min':''}${r.kcal?' · '+r.kcal+'kcal':''}</div>
-          </div>
-        </div>
-        <button onclick="event.stopPropagation();toggleBookmark('${(r.id||r.name).replace(/'/g,"\\'")}');renderRecipesGrid()" style="position:absolute;top:4px;right:4px;background:rgba(0,0,0,.35);border:none;border-radius:50%;width:24px;height:24px;cursor:pointer;font-size:.75rem;display:flex;align-items:center;justify-content:center;color:#fff;">${isBm?'⭐':'☆'}</button>
-      </div>`;
-    }).join('');
-    html += '</div>';
-  } else if(!customRecipes.length && !q) {
-    html += `<div style="text-align:center;padding:32px 16px;">
-      <div style="font-size:2.5rem;margin-bottom:10px;">☁️</div>
-      <div style="font-weight:900;font-size:.9rem;margin-bottom:6px;">Base commune vide</div>
-      <div style="font-size:.75rem;color:var(--tx2);line-height:1.6;">Explorez des recettes <strong>Jow.fr</strong> dans l'onglet Explorer — elles sont sauvegardées automatiquement et partagées entre tous les comptes.</div>
-      <button class="btn acc" onclick="switchMenuTab('search')" style="margin-top:12px;padding:11px 20px;border-radius:var(--rs);font-weight:800;">🇫🇷 Explorer Jow.fr</button>
+      </div>
+      <button onclick="event.stopPropagation();toggleBookmark('${safeId}');renderRecipesGrid()" style="position:absolute;top:5px;right:5px;background:rgba(0,0,0,.35);border:none;border-radius:50%;width:26px;height:26px;cursor:pointer;font-size:.8rem;display:flex;align-items:center;justify-content:center;color:#fff;">${isBm?'⭐':'☆'}</button>
+      ${isCustom ? `<div style="display:flex;gap:4px;padding:0 8px 8px;">
+        <button onclick="editCustomRecipe('${r.id}')" style="flex:1;font-size:.6rem;padding:4px;background:var(--bg2);border:none;border-radius:var(--rx);cursor:pointer;font-weight:700;color:var(--tx2);">✏️</button>
+        <button onclick="deleteCustomRecipe('${r.id}')" style="flex:1;font-size:.6rem;padding:4px;background:rgba(231,76,60,.1);border:none;border-radius:var(--rx);cursor:pointer;font-weight:700;color:var(--rd);">🗑</button>
+      </div>` : ''}
     </div>`;
   }
 
-  if(q && !myFiltered.length && !sharedFiltered.length) {
-    html += `<div style="text-align:center;padding:24px;color:var(--tx2);font-size:.82rem;">Aucune recette pour "<strong>${q}</strong>"</div>`;
+  // Barre de recherche
+  let html = `<div style="display:flex;gap:8px;margin-bottom:12px;">
+    <div style="flex:1;position:relative;">
+      <input class="inp" placeholder="🔍 Chercher…" value="${q.replace(/"/g,'&quot;')}"
+        oninput="window._recipeSearch=this.value;renderRecipesGrid()"
+        style="width:100%;padding-left:32px;">
+      <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:.85rem;pointer-events:none;">🔍</span>
+    </div>
+    <button class="btn acc" style="padding:10px 14px;font-size:.82rem;flex-shrink:0;" onclick="openCreateRecipeModal()">✏️</button>
+  </div>`;
+
+  if(sub === 'favs') {
+    const favs = bookmarks.filter(matchSearch);
+    if(!favs.length) {
+      html += `<div style="text-align:center;padding:40px 16px;">
+        <div style="font-size:3rem;margin-bottom:10px;">⭐</div>
+        <div style="font-weight:900;font-size:.9rem;margin-bottom:6px;">Aucun favori</div>
+        <div style="font-size:.75rem;color:var(--tx2);">Appuyez sur ☆ sur une recette Jow pour l'ajouter ici.</div>
+        <button class="btn acc" onclick="switchMenuTab('search')" style="margin-top:14px;padding:11px 20px;border-radius:var(--rs);font-weight:800;">🇫🇷 Explorer Jow.fr</button>
+      </div>`;
+    } else {
+      html += `<div style="font-size:.68rem;font-weight:800;color:var(--ac);text-transform:uppercase;letter-spacing:.8px;margin-bottom:10px;">⭐ Favoris (${favs.length})</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">`;
+      html += favs.map(r => recipeCard(r)).join('');
+      html += '</div>';
+    }
+  } else {
+    const myF = customRecs.filter(matchSearch);
+    if(myF.length) {
+      html += `<div style="font-size:.68rem;font-weight:800;color:var(--ac);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px;">✏️ Mes recettes (${myF.length})</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px;">`;
+      html += myF.map(r => recipeCard(r)).join('');
+      html += '</div>';
+    }
+    const sharedF = globalDB.filter(r => !customRecs.some(c=>c.id===r.id) && matchSearch(r));
+    if(sharedF.length) {
+      html += `<div style="font-size:.68rem;font-weight:800;color:var(--tl);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px;">☁️ Base commune (${sharedF.length})</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px;">`;
+      html += sharedF.map(r => recipeCard(r)).join('');
+      html += '</div>';
+    }
+    if(!myF.length && !sharedF.length) {
+      html += `<div style="text-align:center;padding:32px 16px;">
+        <div style="font-size:2.5rem;margin-bottom:10px;">☁️</div>
+        <div style="font-weight:900;font-size:.9rem;margin-bottom:6px;">Aucune recette</div>
+        <div style="font-size:.75rem;color:var(--tx2);">Explorez Jow.fr pour trouver des recettes.</div>
+        <button class="btn acc" onclick="switchMenuTab('search')" style="margin-top:12px;padding:11px 20px;border-radius:var(--rs);font-weight:800;">🇫🇷 Explorer Jow.fr</button>
+      </div>`;
+    }
   }
 
   panel.innerHTML = '<div style="padding:0;">' + html + '</div>';
 }
+
 
 function renderFavsGrid() {
   const panel = document.getElementById('menuPanelFavs');

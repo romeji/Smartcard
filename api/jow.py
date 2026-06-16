@@ -243,31 +243,40 @@ class handler(BaseHTTPRequestHandler):
     def _build_image_url(self, recipe, details):
 
         candidates = [
-            recipe.get("editorialPictureUrl"),
-            recipe.get("imageUrl"),
-            recipe.get("pictureUrl"),
 
-            details.get("editorialPictureUrl"),
-            details.get("imageUrl"),
-            details.get("pictureUrl"),
+            # 🔥 PRIORITÉ UI JOW (souvent PNG ou rendu web)
             details.get("imageWithBackgroundPatternUrl"),
+            details.get("pictureUrl"),
+
+        # fallback classiques
+            recipe.get("editorialPictureUrl"),
+            details.get("editorialPictureUrl"),
+            recipe.get("imageUrl"),
+            details.get("imageUrl"),
+            recipe.get("pictureUrl"),
         ]
 
-        for c in candidates:
-            url = self._normalize_media_url(c)
-            if not url:
+        for img in candidates:
+
+            if not img:
                 continue
 
-            # ── PRIORITÉ PNG ──
-            png_url = self._force_png(url)
-            jpg_url = self._force_jpg(url)
+            if isinstance(img, dict):
+                img = img.get("url") or img.get("src")
 
-            # IMPORTANT :
-            # on retourne PNG en priorité (UI), mais fallback safe
-            return {
-                "url": png_url,
-                "fallback": jpg_url
-            }
+            if not img:
+                continue
+
+            img = str(img).strip()
+
+            # déjà OK
+            if img.startswith("http"):
+                return img
+
+            if img.startswith("/"):
+                return STATIC + img[1:]
+
+            return STATIC + img
 
         return None
 

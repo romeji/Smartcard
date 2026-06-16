@@ -4547,27 +4547,22 @@ function _jowHabitBadges(habits, small) {
 }
 
 // ── normalise un objet recette brut de l'API proxy vers notre format ──
-function _jowNormalize(r) {
-  const nutr   = r.nutrition || {};
-  const habits = r.eatingHabits || {};
-  const ns     = r.nutriScore || {};
-  const gs     = r.greenScore  || {};
+function _pickBestImage(r) {
+  let img = r.pngUrl || r.imageUrl || null;
+  if (!img) return null;
 
-  // ── FIX IMAGE (PNG PRIORITY + fallback JPG) ──
-  function _pickBestImage(r) {
-    let img = r.pngUrl || r.imageUrl || null;
-    if (!img) return null;
+  img = String(img).trim();
 
-    img = String(img);
+  if (!img) return null;
 
-    // force png si possible (même chemin)
-    if (img.includes('jow.fr')) {
-      // remplace extension si jpg/jpeg
-      img = img.replace(/\.(jpg|jpeg)$/i, '.png');
-    }
+  if (img.startsWith('http')) return img;
 
-    return img;
+  if (img.startsWith('/')) {
+    return 'https://static.jow.fr' + img;
   }
+
+  return 'https://static.jow.fr/' + img;
+}
 
   return {
     id:             'jow_' + (r.id || r.i || ''),

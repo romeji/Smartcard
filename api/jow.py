@@ -213,6 +213,12 @@ class handler(BaseHTTPRequestHandler):
             video_url = details.get("videoUrl") or recipe.get("videoUrl")
 
             image_full = (STATIC + image_url) if image_url and not image_url.startswith("http") else image_url
+            # PNG version: replace extension or append ?format=png
+            if image_full and image_full.startswith("https://static.jow.fr/"):
+                # Try PNG variant (same path, extension swap)
+                png_url = image_full.rsplit('.', 1)[0] + '.png' if '.' in image_full.split('/')[-1] else image_full + '.png'
+            else:
+                png_url = image_full
             if video_url:
                 video_full = video_url if video_url.startswith("http") else (STATIC + video_url)
             else:
@@ -341,6 +347,7 @@ class handler(BaseHTTPRequestHandler):
 
                 # ── Médias ──
                 "imageUrl":  image_full,
+                "pngUrl":    png_url,
                 "videoUrl":  video_full,
 
                 # ── Temps ──

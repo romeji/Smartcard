@@ -242,34 +242,34 @@ class handler(BaseHTTPRequestHandler):
 
     def _build_image_url(self, recipe, details):
 
-    candidates = [
-        recipe.get("editorialPictureUrl"),
-        recipe.get("imageUrl"),
-        recipe.get("pictureUrl"),
+        candidates = [
+            recipe.get("editorialPictureUrl"),
+            recipe.get("imageUrl"),
+            recipe.get("pictureUrl"),
 
-        details.get("editorialPictureUrl"),
-        details.get("imageUrl"),
-        details.get("pictureUrl"),
-        details.get("imageWithBackgroundPatternUrl"),
-    ]
+            details.get("editorialPictureUrl"),
+            details.get("imageUrl"),
+            details.get("pictureUrl"),
+            details.get("imageWithBackgroundPatternUrl"),
+        ]
 
-    for c in candidates:
-        url = self._normalize_media_url(c)
-        if not url:
-            continue
+        for c in candidates:
+            url = self._normalize_media_url(c)
+            if not url:
+                continue
 
-        # ── PRIORITÉ PNG ──
-        png_url = self._force_png(url)
-        jpg_url = self._force_jpg(url)
+            # ── PRIORITÉ PNG ──
+            png_url = self._force_png(url)
+            jpg_url = self._force_jpg(url)
 
-        # IMPORTANT :
-        # on retourne PNG en priorité (UI), mais fallback safe
-        return {
-            "url": png_url,
-            "fallback": jpg_url
-        }
+            # IMPORTANT :
+            # on retourne PNG en priorité (UI), mais fallback safe
+            return {
+                "url": png_url,
+                "fallback": jpg_url
+            }
 
-    return None
+        return None
 
     # ─────────────────────────────────────────
     # INGREDIENTS

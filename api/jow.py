@@ -210,15 +210,53 @@ class handler(BaseHTTPRequestHandler):
 
             # ── Images & vidéo ───────────────────────────────────────────
             image_url = details.get("editorialPictureUrl") or recipe.get("editorialPictureUrl") or recipe.get("imageUrl")
+            square_url = details.get("squarePictureUrl") or recipe.get("squarePictureUrl")
             video_url = details.get("videoUrl") or recipe.get("videoUrl")
 
-            image_full = (STATIC + image_url) if image_url and not image_url.startswith("http") else image_url
-            # PNG version: replace extension or append ?format=png
-            if image_full and image_full.startswith("https://static.jow.fr/"):
-                # Try PNG variant (same path, extension swap)
-                png_url = image_full.rsplit('.', 1)[0] + '.png' if '.' in image_full.split('/')[-1] else image_full + '.png'
-            else:
-                png_url = image_full
+            def _make_full(u):
+                if not u:
+                    return None
+                return u if u.startswith("http") else (STATIC + u)
+
+            image_full = _make_full(image_url)
+            square_full = _make_full(square_url)
+
+            # Build PNG candidates:
+            # 1. Same path but .png extension (works when Jow stores both formats)
+            # 2. Pattern: static.jow.fr/recipe-media/{id}/editorial-fr.png
+            # 3. The squarePictureUrl (often already PNG)
+            png_candidates = []
+
+            # Candidate 1: swap extension to .png
+            if image_full:
+                base = image_full.rsplit('.', 1)[0] if '.' in image_full.split('/')[-1] else image_full
+                png_candidates.append(base + '.png')
+
+            # Candidate 2: Jow CDN pattern using recipe _id
+            recipe_id_raw = recipe.get("_id", "")
+            if recipe_id_raw:
+                png_candidates.append(f"https://static.jow.fr/recipe-media/{recipe_id_raw}/editorial-fr.png")
+                png_candidates.append(f"https://static.jow.fr/recipe-media/{recipe_id_raw}/editorial.png")
+
+            # Candidate 3: squarePictureUrl (often PNG)
+            if square_full:
+                png_candidates.append(square_full)
+
+            # Candidate 4: original URL as fallback
+            if image_full:
+                png_candidates.append(image_full)
+
+            # Remove duplicates while preserving order
+            seen = set()
+            png_candidates_dedup = []
+            for c in png_candidates:
+                if c and c not in seen:
+                    seen.add(c)
+                    png_candidates_dedup.append(c)
+
+            # Best PNG URL = first candidate (frontend will fallback through the list)
+            png_url = png_candidates_dedup[0] if png_candidates_dedup else image_full
+
             if video_url:
                 video_full = video_url if video_url.startswith("http") else (STATIC + video_url)
             else:
@@ -346,9 +384,11 @@ class handler(BaseHTTPRequestHandler):
                 "composition": details.get("composition") or "",
 
                 # ── Médias ──
-                "imageUrl":  image_full,
-                "pngUrl":    png_url,
-                "videoUrl":  video_full,
+                "imageUrl":       image_full,
+                "pngUrl":         png_url,
+                "pngCandidates":  png_candidates_dedup[:4],  # frontend tries each in order
+                "squareUrl":      square_full,
+                "videoUrl":       video_full,
 
                 # ── Temps ──
                 "prepTime":  details.get("preparationTime") or recipe.get("preparationTime") or 0,

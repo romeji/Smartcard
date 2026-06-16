@@ -1714,13 +1714,16 @@ body.offline-mode .offline-banner{display:block;}
 
         <!-- Quick tags -->
         <div id="explorerTags" style="display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;margin-bottom:14px;">
-          <button class="spoon-recipe-tag" onclick="explorerSearchQuery('pâtes')">🍝 Pâtes</button>
+          <button class="spoon-recipe-tag" onclick="explorerSearchQuery('pâtes carbonara')">🍝 Pâtes</button>
           <button class="spoon-recipe-tag" onclick="explorerSearchQuery('salade')">🥗 Salades</button>
-          <button class="spoon-recipe-tag" onclick="explorerSearchQuery('poulet')">🍗 Poulet</button>
-          <button class="spoon-recipe-tag" onclick="explorerSearchQuery('soupe')">🍲 Soupes</button>
-          <button class="spoon-recipe-tag" onclick="explorerSearchQuery('dessert')">🍮 Desserts</button>
-          <button class="spoon-recipe-tag" onclick="explorerSearchQuery('vegan')">🌱 Vegan</button>
-          <button class="spoon-recipe-tag" onclick="explorerSearchQuery('rapide')">⚡ Rapide</button>
+          <button class="spoon-recipe-tag" onclick="explorerSearchQuery('poulet rôti')">🍗 Poulet</button>
+          <button class="spoon-recipe-tag" onclick="explorerSearchQuery('soupe légumes')">🍲 Soupes</button>
+          <button class="spoon-recipe-tag" onclick="explorerSearchQuery('dessert chocolat')">🍮 Desserts</button>
+          <button class="spoon-recipe-tag" onclick="explorerSearchQuery('recette végétarienne')">🌱 Végétarien</button>
+          <button class="spoon-recipe-tag" onclick="explorerSearchQuery('pizza maison')">🍕 Pizza</button>
+          <button class="spoon-recipe-tag" onclick="explorerSearchQuery('saumon')">🐟 Poisson</button>
+          <button class="spoon-recipe-tag" onclick="explorerSearchQuery('riz')">🍚 Riz</button>
+          <button class="spoon-recipe-tag" onclick="explorerSearchQuery('oeufs')">🥚 Oeufs</button>
         </div>
 
         <!-- Panneau Jow (source unique) -->
@@ -4464,10 +4467,32 @@ function explorerSearch() {
   searchJow(q);
 }
 
+// Map of shortcut queries → better Jow search terms
+const _JOW_QUERY_MAP = {
+  'poulet':       'poulet rôti',
+  'poulet rôti':  'poulet rôti',
+  'pâtes':        'pâtes carbonara',
+  'salade':       'salade composée',
+  'soupe':        'soupe de légumes',
+  'dessert':      'gâteau chocolat',
+  'vegan':        'recette végétalienne',
+  'végétarien':   'recette végétarienne',
+  'recette végétarienne': 'recette végétarienne',
+  'rapide':       'omelette',
+  'pizza':        'pizza maison',
+  'pizza maison': 'pizza maison',
+  'saumon':       'saumon grillé',
+  'riz':          'riz sauté',
+  'boeuf':        'boeuf bourguignon',
+  'poisson':      'poisson citron',
+  'oeufs':        'oeufs cocotte',
+};
+
 function explorerSearchQuery(q) {
+  const mapped = _JOW_QUERY_MAP[q.toLowerCase()] || q;
   const inp = document.getElementById('spoonSearchInp');
-  if(inp) inp.value = q;
-  searchJow(q);
+  if(inp) inp.value = mapped;
+  searchJow(mapped);
 }
 
 // ─────────────────────────────────────────────────────
@@ -4547,16 +4572,57 @@ function _jowHabitBadges(habits, small) {
 }
 
 // ── normalise un objet recette brut de l'API proxy vers notre format ──
+// ── Jow image loader: tries each candidate URL until one loads ──
+function _jowImg(recipe, cssStyle, fallbackEmoji) {
+  fallbackEmoji = fallbackEmoji || '🇫🇷';
+  const candidates = (recipe && recipe.photoCandidates) || (recipe && recipe.photo ? [recipe.photo] : []);
+  if(!candidates.length) {
+    return '<div style="' + cssStyle + 'display:flex;align-items:center;justify-content:center;background:rgba(255,107,107,.08);font-size:2rem;">' + fallbackEmoji + '</div>';
+  }
+  // Build a chain of onerror fallbacks
+  const fallbackDiv = '<div style=\"' + cssStyle + 'display:flex;align-items:center;justify-content:center;background:rgba(255,107,107,.08);font-size:2rem;\">' + fallbackEmoji + '</div>';
+  let chainJs = 'this.parentElement.innerHTML=\'' + fallbackDiv + '\'';
+  // Build fallback chain from last to first
+  for(let i = candidates.length - 1; i >= 1; i--) {
+    const nextSrc = candidates[i];
+    const next = i === candidates.length - 1
+      ? 'this.src=\'' + nextSrc + '\';this.onerror=function(){' + chainJs + '}'
+      : 'this.src=\'' + nextSrc + '\';this.onerror=function(){' + chainJs + '}';
+    chainJs = next;
+  }
+  return '<img src="' + candidates[0] + '" style="' + cssStyle + '" loading="lazy" onerror="' + chainJs + '">';
+}
+
+// ── Robust image fallback: tries each candidate then hides ──
+function _imgFallback(img, candidates, fallbackHtml) {
+  if(!candidates || !candidates.length) {
+    if(fallbackHtml) img.outerHTML = fallbackHtml;
+    else img.style.display = 'none';
+    return;
+  }
+  const next = candidates[0];
+  const rest = candidates.slice(1);
+  img.onerror = function() { _imgFallback(this, rest, fallbackHtml); };
+  img.src = next;
+}
+
 function _jowNormalize(r) {
   const nutr   = r.nutrition || {};
   const habits = r.eatingHabits || {};
   const ns     = r.nutriScore || {};
   const gs     = r.greenScore  || {};
+  // Build photo with fallback chain: try pngCandidates[0] first, store all candidates
+  const photoCandidates = r.pngCandidates || [];
+  if(r.pngUrl && !photoCandidates.includes(r.pngUrl)) photoCandidates.unshift(r.pngUrl);
+  if(r.imageUrl && !photoCandidates.includes(r.imageUrl)) photoCandidates.push(r.imageUrl);
+  if(r.squareUrl && !photoCandidates.includes(r.squareUrl)) photoCandidates.push(r.squareUrl);
+  const primaryPhoto = photoCandidates[0] || null;
   return {
     id:             'jow_' + (r.id || r.i || ''),
     name:           r.name   || '',
     description:    r.description || '',
-    photo:          r.pngUrl || r.imageUrl || null,
+    photo:          primaryPhoto,
+    photoCandidates: photoCandidates,
     videoUrl:       r.videoUrl || null,
     time:           r.totalTime || 0,
     prepTime:       r.prepTime  || 0,
@@ -4610,9 +4676,13 @@ async function searchJow(query, retries) {
     + '<div style="font-size:.8rem;color:var(--tx2);">Recherche sur Jow.fr…</div></div>';
 
   try {
-    // Normalize query: trim, lowercase accents kept (Jow supports French)
-    const q = (query || '').trim();
+    // Normalize query: trim, map common ingredient-only terms to recipe queries
+    let q = (query || '').trim();
     if(!q) { zone.innerHTML = ''; if(dflt) dflt.style.display = ''; return; }
+    // Auto-map if query is a single common ingredient/tag that doesn't search well
+    if(window._JOW_QUERY_MAP && _JOW_QUERY_MAP[q.toLowerCase()]) {
+      q = _JOW_QUERY_MAP[q.toLowerCase()];
+    }
     const params = new URLSearchParams({ q, limit: '12' });
     const resp = await fetch('/api/jow?' + params);
     if(!resp.ok) {
@@ -4683,9 +4753,16 @@ function _renderJowResults(rawList, query) {
       <button onclick="event.stopPropagation();_jowToggleBookmark('${recipe.id}')" id="jbm_${recipe.id}"
         style="position:absolute;top:6px;right:6px;z-index:2;background:rgba(0,0,0,.45);border:none;border-radius:50%;width:28px;height:28px;font-size:.9rem;cursor:pointer;color:#fff;display:flex;align-items:center;justify-content:center;"
         title="${isBookmarked?'Retirer des favoris':'Ajouter aux favoris'}">${isBookmarked?'⭐':'☆'}</button>
-      ${recipe.photo
-        ? `<img src="${recipe.photo}" style="width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:var(--rs) var(--rs) 0 0;" loading="lazy" onerror="this.style.display=&apos;none&apos;">`
-        : `<div style="width:100%;aspect-ratio:4/3;background:linear-gradient(135deg,rgba(255,107,107,.15),rgba(255,142,83,.1));border-radius:var(--rs) var(--rs) 0 0;display:flex;align-items:center;justify-content:center;font-size:2rem;">🇫🇷</div>`}
+      ${(function(){
+        const cands = recipe.photoCandidates || (recipe.photo ? [recipe.photo] : []);
+        if(!cands.length) return '<div style="width:100%;aspect-ratio:4/3;background:linear-gradient(135deg,rgba(255,107,107,.15),rgba(255,142,83,.1));border-radius:var(--rs) var(--rs) 0 0;display:flex;align-items:center;justify-content:center;font-size:2rem;">🇫🇷</div>';
+        const fallback = '<div style=\"width:100%;aspect-ratio:4/3;background:linear-gradient(135deg,rgba(255,107,107,.15),rgba(255,142,83,.1));border-radius:var(--rs) var(--rs) 0 0;display:flex;align-items:center;justify-content:center;font-size:2rem;\">🇫🇷</div>';
+        // Try each candidate via onerror chain
+        const tryNext = (idx) => idx >= cands.length
+          ? 'this.parentElement.innerHTML=\'' + fallback + '\''
+          : 'this.src=\"' + cands[idx] + '\";this.onerror=function(){' + tryNext(idx+1) + '}';
+        return '<img src="' + cands[0] + '" style="width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:var(--rs) var(--rs) 0 0;" loading="lazy" onerror="' + tryNext(1) + '">';
+      })()}
       <div style="padding:10px 10px 8px;">
         <div style="font-weight:800;font-size:.82rem;margin-bottom:5px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">${recipe.name}</div>
         <div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center;">${metaRow}</div>
@@ -4896,7 +4973,12 @@ style="height:36px;object-fit:contain;"
     <div class="mhdl"></div>
     <button onclick="closeRecipeDetail()" style="display:inline-flex;align-items:center;gap:6px;background:none;border:none;cursor:pointer;color:var(--tx2);font-size:.82rem;font-weight:700;padding:0 0 12px 0;">← Retour</button>
 
-    ${recipe.photo ? `<img src="${recipe.photo}" loading="lazy" style="width:calc(100% + 36px);height:200px;object-fit:cover;margin:-20px -18px 16px;border-radius:var(--r) var(--r) 0 0;">` : ''}
+    ${(function(){
+      const cands = recipe.photoCandidates || (recipe.photo ? [recipe.photo] : []);
+      if(!cands.length) return '';
+      const tryNext = (idx) => idx >= cands.length ? 'this.style.display=\"none\"' : 'this.src=\"' + cands[idx] + '\";this.onerror=function(){' + tryNext(idx+1) + '}';
+      return '<img src="' + cands[0] + '" loading="lazy" style="width:calc(100% + 36px);height:200px;object-fit:cover;margin:-20px -18px 16px;border-radius:var(--r) var(--r) 0 0;" onerror="' + tryNext(1) + '">';
+    })()}
 
     <div style="font-size:1.15rem;font-weight:900;margin-bottom:6px;line-height:1.3;">${recipe.name}</div>
 
@@ -6653,7 +6735,7 @@ function renderSpoonResults(recipes) {
   grid.innerHTML = '<div class="spoon-grid">' + recipes.map(r => {
     const bm = isBookmarked(r.id);
     return `<div class="spoon-recipe" style="position:relative;">
-      ${r.photo ? `<img class="spoon-recipe-img" src="${r.photo}" alt="${r.name}" loading="lazy" onerror="this.style.display=&apos;none&apos;">` : '<div class="spoon-recipe-img skel"></div>'}
+      ${r.photo ? `<img class="spoon-recipe-img" src="${r.photo}" alt="${r.name}" loading="lazy" onerror="_imgFallback(this,${JSON.stringify((r.photoCandidates||[]).slice(1))})">` : '<div class="spoon-recipe-img skel"></div>'}
       <button class="spoon-bookmark-btn" onclick="event.stopPropagation();toggleBookmark('${r.id}')" title="${bm?"Retirer":"Ajouter aux favoris"}">
         ${bm ? '⭐' : '☆'}
       </button>
@@ -6746,7 +6828,12 @@ function renderRecipeModal(recipe, portions, isBookmarked) {
   modal.innerHTML = `
     <div class="mhdl"></div>
     <button onclick="closeRecipeDetail()" style="display:inline-flex;align-items:center;gap:6px;background:none;border:none;cursor:pointer;color:var(--tx2);font-size:.82rem;font-weight:700;padding:0 0 12px 0;">← Retour</button>
-    ${recipe.photo ? `<img src="${recipe.photo}" loading="lazy" style="width:calc(100% + 36px);height:200px;object-fit:cover;margin:-20px -18px 16px;border-radius:var(--r) var(--r) 0 0;">` : ''}
+    ${(function(){
+      const cands = recipe.photoCandidates || (recipe.photo ? [recipe.photo] : []);
+      if(!cands.length) return '';
+      const tryNext = (idx) => idx >= cands.length ? 'this.style.display=\"none\"' : 'this.src=\"' + cands[idx] + '\";this.onerror=function(){' + tryNext(idx+1) + '}';
+      return '<img src="' + cands[0] + '" loading="lazy" style="width:calc(100% + 36px);height:200px;object-fit:cover;margin:-20px -18px 16px;border-radius:var(--r) var(--r) 0 0;" onerror="' + tryNext(1) + '">';
+    })()}
     <div style="font-size:1.15rem;font-weight:900;margin-bottom:10px;line-height:1.3;">${frName}</div>
 
     <!-- Sélecteur de portions -->
@@ -8226,8 +8313,17 @@ function openMealEdit(day, slot) {
         <button class="btn acc sm" onclick="omeSearchJow(${day},'${slot}')" style="flex-shrink:0;padding:10px 14px;">🔍</button>
       </div>
       <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px;">
-        ${['Poulet','Boeuf','Saumon','Pâtes','Soupe','Légumes','Riz','Oeufs'].map(q=>
-          '<button class="spoon-recipe-tag" data-q="'+q+'" onclick="document.getElementById(\'omeJowSearch\').value=this.dataset.q;omeSearchJow('+day+',\''+slot+'\')" style="cursor:pointer;padding:5px 10px;">'+q+'</button>'
+        ${[
+          {label:'Poulet',q:'poulet rôti'},
+          {label:'Boeuf',q:'boeuf mijoté'},
+          {label:'Saumon',q:'saumon grillé'},
+          {label:'Pâtes',q:'pâtes carbonara'},
+          {label:'Soupe',q:'soupe légumes'},
+          {label:'Végétarien',q:'recette végétarienne'},
+          {label:'Riz',q:'riz sauté'},
+          {label:'Oeufs',q:'oeufs cocotte'}
+        ].map(item=>
+          '<button class="spoon-recipe-tag" onclick="document.getElementById(\'omeJowSearch\').value=\''+item.q+'\';omeSearchJow('+day+',\''+slot+'\');" style="cursor:pointer;padding:5px 10px;">'+item.label+'</button>'
         ).join('')}
       </div>
       <div id="omeJowResults" style="max-height:220px;overflow-y:auto;display:flex;flex-direction:column;gap:5px;"></div>
@@ -8681,7 +8777,7 @@ async function searchSpoonForMeal(day, slot) {
     if(recipes.length) state.spoonCache[q.toLowerCase()] = recipes;
     if(res) res.innerHTML = recipes.length
       ? recipes.map(r => `<div class="meal-pick-item" style="background:rgba(0,181,184,.07);" onclick="selectSpoonForMeal('${r.id}',${day},'${slot}')">
-          ${r.photo?`<img src="${r.photo}" style="width:36px;height:36px;object-fit:cover;border-radius:var(--rs);flex-shrink:0;">`:'<span class="meal-pick-em">🌐</span>'}
+          ${r.photo?`<img src="${r.photo}" style="width:36px;height:36px;object-fit:cover;border-radius:var(--rs);flex-shrink:0;" onerror="_imgFallback(this,${JSON.stringify((r.photoCandidates||[]).slice(1))})">`:'<span class="meal-pick-em">🌐</span>'}
           <div style="flex:1;min-width:0;"><div class="meal-pick-name">${r.name}</div><div style="font-size:.6rem;color:var(--tx3);">⏱ ${r.time||'?'}min${r.kcal?' · 🔥'+r.kcal+' kcal':''}</div></div>
         </div>`).join('')
       : '<div style="padding:8px;font-size:.75rem;color:var(--tx2);">Aucun résultat</div>';
@@ -9205,7 +9301,7 @@ function renderRecipesGrid() {
       const isBm = bookmarks.some(b=>b.id===r.id);
       return `<div style="background:var(--bg);border-radius:var(--rs);box-shadow:var(--so);overflow:hidden;position:relative;">
         <div onclick="openCustomRecipeDetail('${r.id}')" style="cursor:pointer;">
-          ${r.photo?`<img src="${r.photo}" style="width:100%;height:80px;object-fit:cover;" onerror="this.style.display=&apos;none&apos;" loading="lazy">`
+          ${r.photo?`<img src="${r.photo}" style="width:100%;height:80px;object-fit:cover;" loading="lazy" onerror="_imgFallback(this,${JSON.stringify((r.photoCandidates||[]).slice(1))})">`
                    :`<div style="height:64px;background:var(--bg2);display:flex;align-items:center;justify-content:center;font-size:1.8rem;">${r.emoji||'🍳'}</div>`}
           <div style="padding:8px 8px 4px;">
             <div style="font-size:.76rem;font-weight:800;line-height:1.3;">${r.name}</div>

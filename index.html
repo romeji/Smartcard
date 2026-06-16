@@ -2322,7 +2322,11 @@ async function createHousehold() {
 }
 
 async function joinHousehold() {
-  const code = (document.getElementById('joinCode').value || '').toUpperCase().trim();
+  // Il peut exister plusieurs #joinCode dans la page (modal + UI inline)
+  // On prend celui qui a une valeur non vide, sinon le premier visible
+  const _jcAll = Array.from(document.querySelectorAll('#joinCode, [id="joinCode"]'));
+  const _jcEl  = _jcAll.find(el => (el.value||'').trim().length > 0) || _jcAll[0];
+  const code   = (_jcEl ? _jcEl.value : '').toUpperCase().trim();
   if(code.length < 4) { showToast('⚠️', 'Code invalide', 'Entrez un code de 4-6 caractères.'); return; }
   if(!db || !currentUser) return;
   try {
@@ -4594,14 +4598,16 @@ function _jowNormalize(r) {
   const habits = r.eatingHabits || {};
   const ns     = r.nutriScore || {};
   const gs     = r.greenScore  || {};
-  // Ordre : PNG (fond transparent, comme sur jow.fr) > JPG éditorial > carré
-  // pngUrl = même chemin que imageUrl mais en .png — Jow héberge les deux sur son CDN
+  // Photo priority: use imageUrl (guaranteed to exist) as primary
+  // Try PNG candidates as fallbacks via onerror chain
   const photoCandidates = [];
-  if(r.pngUrl)    photoCandidates.push(r.pngUrl);    // PNG en tête (priorité absolue)
+  // PNG candidates first (preferred format)
   (r.pngCandidates || []).forEach(u => { if(u && !photoCandidates.includes(u)) photoCandidates.push(u); });
-  if(r.imageUrl  && !photoCandidates.includes(r.imageUrl))  photoCandidates.push(r.imageUrl);  // JPG fallback
+  if(r.pngUrl && !photoCandidates.includes(r.pngUrl)) photoCandidates.push(r.pngUrl);
+  // Original JPG as reliable fallback
+  if(r.imageUrl && !photoCandidates.includes(r.imageUrl)) photoCandidates.push(r.imageUrl);
   if(r.squareUrl && !photoCandidates.includes(r.squareUrl)) photoCandidates.push(r.squareUrl);
-  // PNG d'abord — si 404, le mécanisme onerror/_imgFallback essaie imageUrl (JPG)
+  // Primary = imageUrl (always works), PNG candidates tried via onerror
   const primaryPhoto = r.pngUrl || r.imageUrl || photoCandidates[0] || null;
   return {
     id:             'jow_' + (r.id || r.i || ''),

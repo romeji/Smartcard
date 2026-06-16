@@ -209,7 +209,55 @@ class handler(BaseHTTPRequestHandler):
             steps = self._extract_steps(details)
 
             # ── Images & vidéo ───────────────────────────────────────────
-            image_url = details.get("editorialPictureUrl") or recipe.get("editorialPictureUrl") or recipe.get("imageUrl")
+            def build_image_url(recipe, details):
+
+    STATIC = "https://static.jow.fr/"
+
+    candidates = [
+
+        recipe.get("editorialPictureUrl"),
+        recipe.get("imageUrl"),
+
+        details.get("editorialPictureUrl"),
+        details.get("imageUrl"),
+
+        details.get("imageWithBackgroundPatternUrl"),
+
+        details.get("pictureUrl"),
+
+        recipe.get("pictureUrl")
+    ]
+
+    for img in candidates:
+
+        if not img:
+            continue
+
+        if isinstance(img, dict):
+
+            img = (
+                img.get("url")
+                or img.get("src")
+            )
+
+        if not img:
+            continue
+
+        img = str(img).strip()
+
+        # URL déjà complète
+        if img.startswith("http://") or img.startswith("https://"):
+            return img
+
+        # chemin absolu
+        if img.startswith("/"):
+            return STATIC + img[1:]
+
+        return STATIC + img
+
+    return None
+            
+            image_url = build_image_url(recipe, details)
             video_url = details.get("videoUrl") or recipe.get("videoUrl")
 
             image_full = (STATIC + image_url) if image_url and not image_url.startswith("http") else image_url

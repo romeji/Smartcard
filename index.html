@@ -2210,20 +2210,6 @@ function subscribeToHousehold() {
     if(!doc.exists) return;
     const d = doc.data();
     let changed = false;
-
-    // Guard: si le snapshot dit houseId=null mais qu'on vient de rejoindre un foyer,
-    // ignorer ce snapshot obsolète (délai de propagation Firestore)
-    if(d.houseId !== undefined && d.houseId !== state.houseId) {
-      if(d.houseId) {
-        // Nouveau foyer détecté via snapshot — accepter
-        state.houseId   = d.houseId;
-        state.houseCode = d.houseCode || state.houseCode;
-        changed = true;
-      }
-      // Si d.houseId est null/undefined mais state.houseId est défini,
-      // NE PAS écraser — le snapshot est probablement en retard sur notre écriture
-    }
-
     if(d.items    !== undefined && JSON.stringify(d.items)    !== JSON.stringify(state.items))    { state.items    = d.items;    changed = true; }
     if(d.fridge   !== undefined && JSON.stringify(d.fridge)   !== JSON.stringify(state.fridge))   { state.fridge   = d.fridge;   changed = true; }
     if(d.history  !== undefined && JSON.stringify(d.history)  !== JSON.stringify(state.history))  { state.history  = d.history;  changed = true; }
@@ -2341,46 +2327,27 @@ async function joinHousehold() {
   if(!db || !currentUser) return;
   try {
     showToast('🔄', 'Recherche...', '');
-
-    // 1. Rechercher le foyer par code
     const snap = await db.collection('households').where('code', '==', code).limit(1).get();
     if(snap.empty) { showToast('❌', 'Introuvable', 'Ce code ne correspond à aucun foyer.'); return; }
-    const houseDoc = snap.docs[0];
-    const houseId = houseDoc.id;
-    const data = houseDoc.data();
+    const doc = snap.docs[0];
+    const houseId = doc.id;
+    const data = doc.data();
     const userName = state.profile.name || currentUser.displayName || currentUser.email.split('@')[0];
-
-    // 2. Ajouter l'utilisateur aux membres si pas déjà dedans
     const members = data.members || [];
     if(!members.some(m => m.uid === currentUser.uid)) {
       members.push({uid: currentUser.uid, name: userName, email: currentUser.email});
       await db.collection('households').doc(houseId).update({members});
     }
-
-    // 3. IMPORTANT : stopper les listeners existants AVANT d'écrire,
-    //    pour éviter que le snapshot users/{uid} (encore sans houseId)
-    //    n'écrase l'état juste après
-    if(itemsUnsub)  { itemsUnsub();  itemsUnsub  = null; }
-    if(_userUnsub)  { _userUnsub();  _userUnsub  = null; }
-
-    // 4. Mettre à jour l'état local immédiatement
-    state.houseId   = houseId;
+    state.houseId = houseId;
     state.houseCode = code;
     state.houseName = 'Foyer';
     saveState();
-
-    // 5. Persister dans Firestore users/{uid}
-    await db.collection('users').doc(currentUser.uid).set(
-      {houseId, houseCode: code},
-      {merge: true}
-    );
-
-    // 6. Re-lancer les listeners maintenant que l'état est stable
+    await db.collection('users').doc(currentUser.uid).set({houseId, houseCode: code}, {merge: true});
     subscribeToHousehold();
     updateFoyerUI();
     showToast('🎉', 'Foyer rejoint !', 'Bienvenue dans le foyer ' + code);
     closeFoyerModal();
-  } catch(e) { showToast('❌', 'Erreur', e.message || String(e)); }
+  } catch(e) { showToast('❌', 'Erreur', e.message); }
 }
 
 async function leaveHousehold() {
@@ -4627,20 +4594,15 @@ function _jowNormalize(r) {
   const habits = r.eatingHabits || {};
   const ns     = r.nutriScore || {};
   const gs     = r.greenScore  || {};
-  // Photo priority: use imageUrl (guaranteed to exist) as primary
-  // Try PNG candidates as fallbacks via onerror chain
-  // Ordre de priorité photos :
-  // 1. pngUrl  = PNG isolé à fond transparent (le plus beau, comme sur jow.fr)
-  // 2. pngCandidates[] = autres PNG CDN possibles
-  // 3. imageUrl = JPG éditorial (fallback fiable)
-  // 4. squareUrl = carré JPG
+  // Ordre : PNG (fond transparent, comme sur jow.fr) > JPG éditorial > carré
+  // pngUrl = même chemin que imageUrl mais en .png — Jow héberge les deux sur son CDN
   const photoCandidates = [];
-  if(r.pngUrl) photoCandidates.push(r.pngUrl);
+  if(r.pngUrl)    photoCandidates.push(r.pngUrl);    // PNG en tête (priorité absolue)
   (r.pngCandidates || []).forEach(u => { if(u && !photoCandidates.includes(u)) photoCandidates.push(u); });
-  if(r.imageUrl  && !photoCandidates.includes(r.imageUrl))  photoCandidates.push(r.imageUrl);
+  if(r.imageUrl  && !photoCandidates.includes(r.imageUrl))  photoCandidates.push(r.imageUrl);  // JPG fallback
   if(r.squareUrl && !photoCandidates.includes(r.squareUrl)) photoCandidates.push(r.squareUrl);
-  // PNG en priorité, JPG en fallback
-  const primaryPhoto = r.pngUrl || (r.pngCandidates && r.pngCandidates[0]) || r.imageUrl || r.squareUrl || null;
+  // PNG d'abord — si 404, le mécanisme onerror/_imgFallback essaie imageUrl (JPG)
+  const primaryPhoto = r.pngUrl || r.imageUrl || photoCandidates[0] || null;
   return {
     id:             'jow_' + (r.id || r.i || ''),
     name:           r.name   || '',

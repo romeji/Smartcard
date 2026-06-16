@@ -2218,6 +2218,20 @@ function subscribeToHousehold() {
     if(changed) { saveState(); renderAll(); }
   }, err => console.warn('User snapshot err:', err));
 
+  // Migration : si on est proprio du foyer, s'assurer que houseCodes existe
+  if(state.houseId && state.houseCode) {
+    const expectedOwnerId = state.houseId.replace('house_', '');
+    if(expectedOwnerId === currentUser.uid) {
+      db.collection('houseCodes').doc(state.houseCode).get().then(d => {
+        if(!d.exists) {
+          db.collection('houseCodes').doc(state.houseCode)
+            .set({houseId: state.houseId, createdAt: Date.now()})
+            .catch(()=>{});
+        }
+      }).catch(()=>{});
+    }
+  }
+
   // Also listen to household if member of one
   if(state.houseId) {
     itemsUnsub = db.collection('households').doc(state.houseId).onSnapshot(doc => {
@@ -2311,6 +2325,8 @@ async function createHousehold() {
       items: state.items, fridge: state.fridge, history: state.history, weekMenu: state.weekMenu, budget: state.budget,
       createdAt: Date.now()
     }, {merge: true});
+    // Lookup code→houseId pour que joinHousehold() fonctionne sans index Firestore
+    await db.collection('houseCodes').doc(code).set({houseId, createdAt: Date.now()}).catch(()=>{});
     state.houseId = houseId;
     state.houseCode = code;
     state.houseName = 'Foyer de ' + userName;
@@ -2324,6 +2340,7 @@ async function createHousehold() {
 }
 
 async function joinHousehold() {
+  // Chercher dans tous les inputs #joinCode (il peut y en avoir plusieurs dans la page)
   const _jcAll = Array.from(document.querySelectorAll('#joinCode, [id="joinCode"]'));
   const _jcEl  = _jcAll.find(el => (el.value||'').trim().length > 0) || _jcAll[0];
   const code   = (_jcEl ? _jcEl.value : '').toUpperCase().trim();
@@ -2332,28 +2349,48 @@ async function joinHousehold() {
   try {
     showToast('🔄', 'Recherche...', '');
 
-    // Lecture directe houseCodes — pas d'index requis
+    // ── Étape 1 : trouver le houseId via houseCodes (lecture directe, pas d'index) ──
     let houseId = null;
+    let houseData = {};
+
     const codeDoc = await db.collection('houseCodes').doc(code).get();
     if(codeDoc.exists) {
       houseId = codeDoc.data().houseId;
-    } else {
-      // Fallback where() pour anciens foyers sans houseCodes
+    }
+
+    // ── Si houseCodes n'existe pas encore : tentative avec l'ID deviné ──
+    // Le houseId = 'house_' + uid_du_propriétaire — on ne connaît pas l'uid,
+    // mais on peut essayer la query where() sans index si les règles le permettent
+    if(!houseId) {
       try {
         const snap = await db.collection('households').where('code', '==', code).limit(1).get();
         if(!snap.empty) {
           houseId = snap.docs[0].id;
-          await db.collection('houseCodes').doc(code).set({houseId, createdAt: Date.now()}).catch(()=>{});
+          houseData = snap.docs[0].data();
+          // Créer le document houseCodes manquant pour les prochaines fois
+          await db.collection('houseCodes').doc(code)
+            .set({houseId, createdAt: Date.now()})
+            .catch(()=>{});
         }
-      } catch(e2) {}
+      } catch(e2) {
+        console.warn('where() fallback failed:', e2.message);
+      }
     }
 
-    if(!houseId) { showToast('❌', 'Introuvable', 'Ce code ne correspond à aucun foyer.'); return; }
+    if(!houseId) {
+      showToast('❌', 'Introuvable', 'Ce code ne correspond à aucun foyer. Vérifiez le code affiché sur le profil du créateur.');
+      return;
+    }
 
-    const houseDoc = await db.collection('households').doc(houseId).get();
-    const data = houseDoc.exists ? houseDoc.data() : {};
-    const userName = state.profile.name || currentUser.displayName || currentUser.email.split('@')[0];
-    const members  = data.members || [];
+    // ── Étape 2 : lire les données du foyer ──
+    if(!houseData.ownerId) {
+      const houseDoc = await db.collection('households').doc(houseId).get();
+      houseData = houseDoc.exists ? houseDoc.data() : {};
+    }
+
+    // ── Étape 3 : ajouter l'utilisateur aux membres ──
+    const userName  = state.profile.name || currentUser.displayName || currentUser.email.split('@')[0];
+    const members   = houseData.members || [];
     const alreadyIn = members.some(m => typeof m === 'string' ? m === currentUser.uid : m.uid === currentUser.uid);
     if(!alreadyIn) {
       members.push({uid: currentUser.uid, name: userName, email: currentUser.email});
@@ -2363,20 +2400,26 @@ async function joinHousehold() {
       });
     }
 
-    // Stopper les listeners AVANT d'écrire (race condition)
+    // ── Étape 4 : stopper les listeners avant d'écrire (race condition) ──
     if(itemsUnsub)        { itemsUnsub(); itemsUnsub = null; }
     if(window._userUnsub) { window._userUnsub(); window._userUnsub = null; }
 
+    // ── Étape 5 : sauvegarder l'état ──
     state.houseId   = houseId;
     state.houseCode = code;
-    state.houseName = data.houseName || 'Foyer';
+    state.houseName = houseData.houseName || 'Foyer';
     saveState();
     await db.collection('users').doc(currentUser.uid).set({houseId, houseCode: code}, {merge: true});
+
+    // ── Étape 6 : relancer les listeners ──
     subscribeToHousehold();
     updateFoyerUI();
     showToast('🎉', 'Foyer rejoint !', 'Bienvenue dans le foyer ' + code);
     closeFoyerModal();
-  } catch(e) { showToast('❌', 'Erreur', e.message || String(e)); }
+  } catch(e) {
+    console.error('joinHousehold error:', e);
+    showToast('❌', 'Erreur', e.message || String(e));
+  }
 }
 
 async function leaveHousehold() {
@@ -2385,7 +2428,6 @@ async function leaveHousehold() {
       try {
         const doc = await db.collection('households').doc(state.houseId).get();
         if(doc.exists) {
-          // Retirer de members (objets) ET memberUids (strings)
           const members = (doc.data().members || []).filter(m =>
             typeof m === 'string' ? m !== currentUser.uid : m.uid !== currentUser.uid
           );
@@ -2394,22 +2436,16 @@ async function leaveHousehold() {
             memberUids: firebase.firestore.FieldValue.arrayRemove(currentUser.uid)
           });
         }
-        // Nettoyer le profil utilisateur
-        await db.collection('users').doc(currentUser.uid).set(
-          {houseId: null, houseCode: null},
-          {merge: true}
-        );
-      } catch(e) { console.warn('leaveHousehold error:', e); }
+        await db.collection('users').doc(currentUser.uid).set({houseId: null, houseCode: null}, {merge: true});
+      } catch(e) { console.warn('leaveHousehold:', e); }
     }
-    // Stopper les listeners avant de réinitialiser
     if(itemsUnsub)        { itemsUnsub(); itemsUnsub = null; }
     if(window._userUnsub) { window._userUnsub(); window._userUnsub = null; }
     state.houseId = null; state.houseCode = null; state.houseName = null;
-    state.items = []; // reset liste partagée locale
     saveState();
-    subscribeToHousehold(); // repart sans houseId — mode solo
+    subscribeToHousehold();
     updateFoyerUI();
-    showToast('✅', 'Foyer quitté', 'Vous pouvez en rejoindre ou créer un nouveau.');
+    showToast('✅', 'Foyer quitté', '');
     closeFoyerModal();
   });
 }
@@ -6413,9 +6449,8 @@ async function acceptFamilyInvite(inviteId, houseId, houseName) {
     // Join the household
     const docId = houseId;
     await db.collection('households').doc(docId).update({
-      members:    firebase.firestore.FieldValue.arrayUnion(currentUser.uid),
+      members: firebase.firestore.FieldValue.arrayUnion(currentUser.uid),
       memberEmails: firebase.firestore.FieldValue.arrayUnion(currentUser.email),
-      memberUids: firebase.firestore.FieldValue.arrayUnion(currentUser.uid),
     });
     // Update user's state
     state.houseId = houseId;

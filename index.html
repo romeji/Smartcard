@@ -2309,6 +2309,8 @@ async function createHousehold() {
       items: state.items, fridge: state.fridge, history: state.history, weekMenu: state.weekMenu, budget: state.budget,
       createdAt: Date.now()
     }, {merge: true});
+    // Créer un document de lookup code→houseId (évite le where() qui nécessite un index)
+    await db.collection('houseCodes').doc(code).set({houseId, createdAt: Date.now()});
     state.houseId = houseId;
     state.houseCode = code;
     state.houseName = 'Foyer de ' + userName;
@@ -2322,8 +2324,6 @@ async function createHousehold() {
 }
 
 async function joinHousehold() {
-  // Il peut exister plusieurs #joinCode dans la page (modal + UI inline)
-  // On prend celui qui a une valeur non vide, sinon le premier visible
   const _jcAll = Array.from(document.querySelectorAll('#joinCode, [id="joinCode"]'));
   const _jcEl  = _jcAll.find(el => (el.value||'').trim().length > 0) || _jcAll[0];
   const code   = (_jcEl ? _jcEl.value : '').toUpperCase().trim();
@@ -2331,27 +2331,55 @@ async function joinHousehold() {
   if(!db || !currentUser) return;
   try {
     showToast('🔄', 'Recherche...', '');
-    const snap = await db.collection('households').where('code', '==', code).limit(1).get();
-    if(snap.empty) { showToast('❌', 'Introuvable', 'Ce code ne correspond à aucun foyer.'); return; }
-    const doc = snap.docs[0];
-    const houseId = doc.id;
-    const data = doc.data();
+
+    // 1. Lookup direct par code (pas de where() — pas d'index requis)
+    let houseId = null;
+    const codeDoc = await db.collection('houseCodes').doc(code).get();
+    if(codeDoc.exists) {
+      houseId = codeDoc.data().houseId;
+    } else {
+      // Fallback : ancienne méthode where() pour les foyers créés avant la mise à jour
+      try {
+        const snap = await db.collection('households').where('code', '==', code).limit(1).get();
+        if(!snap.empty) {
+          houseId = snap.docs[0].id;
+          // Migrer : créer le document houseCodes manquant
+          await db.collection('houseCodes').doc(code).set({houseId, createdAt: Date.now()});
+        }
+      } catch(e2) { /* index manquant — on ignore */ }
+    }
+
+    if(!houseId) { showToast('❌', 'Introuvable', 'Ce code ne correspond à aucun foyer.'); return; }
+
+    // 2. Ajouter l'utilisateur aux membres
+    const houseDoc = await db.collection('households').doc(houseId).get();
+    const data = houseDoc.exists ? houseDoc.data() : {};
     const userName = state.profile.name || currentUser.displayName || currentUser.email.split('@')[0];
     const members = data.members || [];
     if(!members.some(m => m.uid === currentUser.uid)) {
       members.push({uid: currentUser.uid, name: userName, email: currentUser.email});
       await db.collection('households').doc(houseId).update({members});
     }
-    state.houseId = houseId;
+
+    // 3. Stopper les listeners AVANT d'écrire (évite la race condition)
+    if(itemsUnsub) { itemsUnsub(); itemsUnsub = null; }
+    if(window._userUnsub) { window._userUnsub(); window._userUnsub = null; }
+
+    // 4. Mettre à jour l'état local immédiatement
+    state.houseId   = houseId;
     state.houseCode = code;
-    state.houseName = 'Foyer';
+    state.houseName = data.houseName || 'Foyer';
     saveState();
+
+    // 5. Persister dans Firestore users/{uid}
     await db.collection('users').doc(currentUser.uid).set({houseId, houseCode: code}, {merge: true});
+
+    // 6. Relancer les listeners
     subscribeToHousehold();
     updateFoyerUI();
     showToast('🎉', 'Foyer rejoint !', 'Bienvenue dans le foyer ' + code);
     closeFoyerModal();
-  } catch(e) { showToast('❌', 'Erreur', e.message); }
+  } catch(e) { showToast('❌', 'Erreur', e.message || String(e)); }
 }
 
 async function leaveHousehold() {

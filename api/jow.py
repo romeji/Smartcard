@@ -214,11 +214,47 @@ class handler(BaseHTTPRequestHandler):
             steps = self._extract_steps(details)
 
             # ── Images & vidéo ───────────────────────────────────────────
+            # Try all known Jow image field names (search result vs detail have different fields)
             def _first_img(*sources):
                 for s in sources:
                     if s and isinstance(s, str) and len(s) > 4:
                         return s
                 return None
+
+            # Priorité : champs de recipe (quicksearch, toujours présents)
+            # puis champs de details (peut être vide si l'appel a échoué)
+            image_url = _first_img(
+                # Champs directs sur l'objet quicksearch — les plus fiables
+                recipe.get("imageUrl"),
+                recipe.get("editorialPictureUrl"),
+                recipe.get("pictureUrl"),
+                recipe.get("picture"),
+                recipe.get("image"),
+                recipe.get("thumbnail"),
+                # Champs dans details (fallback si quicksearch n'a pas l'image)
+                details.get("imageUrl"),
+                details.get("editorialPictureUrl"),
+                details.get("pictureUrl"),
+                details.get("editorialPicture"),
+                details.get("image"),
+                details.get("thumbnail"),
+            )
+            square_url = _first_img(
+                recipe.get("squarePictureUrl"),
+                recipe.get("squareImageUrl"),
+                details.get("squarePictureUrl"),
+                details.get("squareImageUrl"),
+            )
+            # Also check pictures[] array if present
+            pictures = details.get("pictures") or recipe.get("pictures") or []
+            if not image_url and pictures:
+                for pic in pictures:
+                    if isinstance(pic, dict):
+                        pu = pic.get("url") or pic.get("src") or pic.get("imageUrl")
+                        if pu:
+                            image_url = pu
+                            break
+            video_url = details.get("videoUrl") or recipe.get("videoUrl")
 
             def _make_full(u):
                 if not u:
@@ -231,88 +267,35 @@ class handler(BaseHTTPRequestHandler):
                     return "https://static.jow.fr" + u
                 return STATIC + u
 
-            # ── Image JPG principale (fond coloré) ──
-            # editorialPictureUrl = la belle photo JPG de la recette
-            image_url = _first_img(
-                details.get("editorialPictureUrl"),
-                recipe.get("editorialPictureUrl"),
-                details.get("imageUrl"),
-                recipe.get("imageUrl"),
-                details.get("pictureUrl"),
-                recipe.get("pictureUrl"),
-                details.get("editorialPicture"),
-                recipe.get("editorialPicture"),
-                details.get("image"),
-                recipe.get("image"),
-                details.get("thumbnail"),
-                recipe.get("thumbnail"),
-            )
-
-            # ── Image PNG (fond transparent, assiette isolée) ──
-            # isolatedPictureUrl / backgroundPictureUrl / pngUrl sont les vrais champs PNG Jow
-            png_real_url = _first_img(
-                details.get("isolatedPictureUrl"),
-                recipe.get("isolatedPictureUrl"),
-                details.get("pngUrl"),
-                recipe.get("pngUrl"),
-                details.get("backgroundPictureUrl"),
-                recipe.get("backgroundPictureUrl"),
-                details.get("isolatedImageUrl"),
-                recipe.get("isolatedImageUrl"),
-                details.get("transparentImageUrl"),
-                recipe.get("transparentImageUrl"),
-                details.get("plateImageUrl"),
-                recipe.get("plateImageUrl"),
-            )
-
-            # ── Image carrée ──
-            square_url = _first_img(
-                details.get("squarePictureUrl"),
-                recipe.get("squarePictureUrl"),
-                details.get("squareImageUrl"),
-                recipe.get("squareImageUrl"),
-            )
-
-            # Also check pictures[] array if present
-            pictures = details.get("pictures") or recipe.get("pictures") or []
-            if not image_url and pictures:
-                for pic in pictures:
-                    if isinstance(pic, dict):
-                        pu = pic.get("url") or pic.get("src") or pic.get("imageUrl")
-                        if pu:
-                            image_url = pu
-                            break
-
-            video_url = details.get("videoUrl") or recipe.get("videoUrl")
-
-            image_full  = _make_full(image_url)
+            image_full = _make_full(image_url)
             square_full = _make_full(square_url)
-            png_real_full = _make_full(png_real_url)
 
-            # ── PNG candidates (dans l'ordre de préférence) ──
-            # On NE swap PAS l'extension car Jow utilise des chemins CDN différents
+            # Build PNG candidates:
+            # 1. Same path but .png extension (works when Jow stores both formats)
+            # 2. Pattern: static.jow.fr/recipe-media/{id}/editorial-fr.png
+            # 3. The squarePictureUrl (often already PNG)
             png_candidates = []
+
+            # Candidate 1: swap extension to .png
+            if image_full:
+                base = image_full.rsplit('.', 1)[0] if '.' in image_full.split('/')[-1] else image_full
+                png_candidates.append(base + '.png')
+
+            # Candidate 2: Jow CDN pattern using recipe _id
             recipe_id_raw = recipe.get("_id", "")
-
-            # 1. Vrai champ PNG isolé (fond transparent) — meilleure qualité
-            if png_real_full:
-                png_candidates.append(png_real_full)
-
-            # 2. Patterns CDN Jow connus pour les PNG isolés
             if recipe_id_raw:
-                png_candidates.append(f"https://static.jow.fr/recipe-media/{recipe_id_raw}/isolated.png")
                 png_candidates.append(f"https://static.jow.fr/recipe-media/{recipe_id_raw}/editorial-fr.png")
                 png_candidates.append(f"https://static.jow.fr/recipe-media/{recipe_id_raw}/editorial.png")
 
-            # 3. Image carrée (souvent PNG chez Jow)
+            # Candidate 3: squarePictureUrl (often PNG)
             if square_full:
                 png_candidates.append(square_full)
 
-            # 4. JPG principal en dernier recours
+            # Candidate 4: original URL as fallback
             if image_full:
                 png_candidates.append(image_full)
 
-            # Dédoublonner en préservant l'ordre
+            # Remove duplicates while preserving order
             seen = set()
             png_candidates_dedup = []
             for c in png_candidates:
@@ -320,7 +303,7 @@ class handler(BaseHTTPRequestHandler):
                     seen.add(c)
                     png_candidates_dedup.append(c)
 
-            # png_url = meilleur candidat PNG
+            # Best PNG URL = first candidate (frontend will fallback through the list)
             png_url = png_candidates_dedup[0] if png_candidates_dedup else image_full
 
             if video_url:
@@ -509,21 +492,19 @@ class handler(BaseHTTPRequestHandler):
                     first_d = self._get_recipe_details(first_r["_id"])
                 except:
                     pass
-            img_keys_recipe = {k: v for k, v in first_r.items() if any(x in k.lower() for x in ['image','picture','photo','thumb','media','url','png','jpg','webp','svg','isolated','background','square','editorial'])}
-            img_keys_detail = {k: v for k, v in first_d.items() if any(x in k.lower() for x in ['image','picture','photo','thumb','media','url','png','jpg','webp','svg','isolated','background','square','editorial'])}
-            # Also show the resolved URLs for the first normalized result
-            first_normalized = result[0] if result else {}
-            resolved = {
-                "imageUrl":      first_normalized.get("imageUrl"),
-                "pngUrl":        first_normalized.get("pngUrl"),
-                "pngCandidates": first_normalized.get("pngCandidates"),
-                "squareUrl":     first_normalized.get("squareUrl"),
-            }
+            img_keys_recipe = {k: v for k, v in first_r.items() if any(x in k.lower() for x in ['image','picture','photo','thumb','media','url'])}
+            img_keys_detail = {k: v for k, v in first_d.items() if any(x in k.lower() for x in ['image','picture','photo','thumb','media','url'])}
+            # Retourner aussi TOUS les champs de la recette quicksearch pour debug complet
+            all_recipe_keys = list(first_r.keys())
+            all_detail_keys = list(first_d.keys())
+            resolved = result[0] if result else {}
             return result, {
                 "recipe_image_fields": img_keys_recipe,
                 "detail_image_fields": img_keys_detail,
-                "resolved_urls": resolved,
-                "_hint": "Pour trouver le vrai PNG: cherchez isolatedPictureUrl, pngUrl, backgroundPictureUrl dans les champs ci-dessus"
+                "all_recipe_keys": all_recipe_keys,
+                "all_detail_keys": all_detail_keys,
+                "resolved_imageUrl": resolved.get("imageUrl"),
+                "resolved_pngUrl": resolved.get("pngUrl"),
             }
         return result
 

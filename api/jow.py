@@ -260,7 +260,7 @@ class handler(BaseHTTPRequestHandler):
 
             if not img:
                 continue
-
+            # si objet
             if isinstance(img, dict):
                 img = img.get("url") or img.get("src")
 
@@ -269,10 +269,11 @@ class handler(BaseHTTPRequestHandler):
 
             img = str(img).strip()
 
-            # déjà OK
-            if img.startswith("http"):
+            # déjà OK complete
+            if img.startswith("http://") or img.startswith("https://"):
                 return img
 
+            # chemin relatif
             if img.startswith("/"):
                 return STATIC + img[1:]
 

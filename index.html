@@ -8880,67 +8880,96 @@ function addDayIngredients(day) {
 }
 
 function _showIngredientSelectionModal(dayName, missing, inFridge) {
-  // Remove existing modal if any
   document.getElementById('_ingSelModal')?.remove();
 
   const itemsHtml = missing.map(i =>
     '<label style="display:flex;align-items:center;gap:10px;padding:9px 12px;background:var(--bg);border-radius:var(--rs);margin-bottom:5px;cursor:pointer;">'
-    + '<input type="checkbox" id="ingchk_'+i.id+'" checked style="width:18px;height:18px;accent-color:var(--ac);flex-shrink:0;">'
+    + '<input type="checkbox" id="ingchk_' + i.id + '" checked style="width:18px;height:18px;accent-color:var(--ac);flex-shrink:0;">'
     + '<div style="flex:1;min-width:0;">'
-    + '<div style="font-weight:700;font-size:.84rem;">' + i.name + (i.qty ? ' <span style='color:var(--tx3);font-size:.72rem;'>'+i.qty+'</span>' : '') + '</div>'
-    + '<div style="font-size:.65rem;color:var(--tx3);">' + i.slotLabel + '</div>'
+    + '<div style="font-weight:700;font-size:.84rem;">'
+    + i.name
+    + (
+      i.qty
+        ? ' <span style="color:var(--tx3);font-size:.72rem;">'
+          + i.qty +
+          '</span>'
+        : ''
+    )
+    + '</div>'
+    + '<div style="font-size:.65rem;color:var(--tx3);">'
+    + i.slotLabel
+    + '</div>'
     + '</div>'
     + '</label>'
   ).join('');
 
   const fridgeHtml = inFridge.length
     ? '<div style="margin-top:10px;padding:8px 12px;background:rgba(46,204,113,.06);border-radius:var(--rs);border:1px solid rgba(46,204,113,.15);">'
-      + '<div style="font-size:.72rem;color:var(--gn);font-weight:800;margin-bottom:6px;">✅ Déjà dans mon frigo ('+inFridge.length+')</div>'
-      + inFridge.map(i => '<div style="font-size:.74rem;color:var(--tx2);padding:2px 0;">'+i.name+(i.qty?' · <span style='color:var(--tx3);'>'+i.qty+'</span>':'')+'</div>').join('')
+      + '<div style="font-size:.72rem;color:var(--gn);font-weight:800;margin-bottom:6px;">'
+      + '✅ Déjà dans mon frigo (' + inFridge.length + ')'
+      + '</div>'
+      + inFridge.map(i =>
+          '<div style="font-size:.74rem;color:var(--tx2);padding:2px 0;">'
+          + i.name
+          + (
+            i.qty
+              ? ' · <span style="color:var(--tx3);">'
+                + i.qty +
+                '</span>'
+              : ''
+          )
+          + '</div>'
+        ).join('')
       + '</div>'
     : '';
 
   const ov = document.createElement('div');
+
   ov.id = '_ingSelModal';
-  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;display:flex;align-items:flex-end;justify-content:center;';
-  ov.innerHTML = '<div style="background:var(--bg);border-radius:20px 20px 0 0;width:100%;max-width:560px;max-height:85dvh;display:flex;flex-direction:column;overflow:hidden;">'
+
+  ov.style.cssText =
+    'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;display:flex;align-items:flex-end;justify-content:center;';
+
+  ov.innerHTML =
+    '<div style="background:var(--bg);border-radius:20px 20px 0 0;width:100%;max-width:560px;max-height:85dvh;display:flex;flex-direction:column;overflow:hidden;">'
+
     + '<div style="padding:16px 18px 10px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--bg2);">'
     + '<div style="font-weight:900;font-size:.95rem;flex:1;">🛒 Ingrédients manquants</div>'
-    + '<div style="font-size:.75rem;color:var(--tx3);">'+dayName+'</div>'
+    + '<div style="font-size:.75rem;color:var(--tx3);">' + dayName + '</div>'
     + '<button onclick="document.getElementById(&quot;_ingSelModal&quot;).remove()" style="background:var(--bg2);border:none;border-radius:50%;width:28px;height:28px;cursor:pointer;font-size:1rem;display:flex;align-items:center;justify-content:center;">✕</button>'
     + '</div>'
+
     + '<div style="overflow-y:auto;flex:1;padding:12px 16px;">'
-    + (missing.length
-      ? '<div style="display:flex;gap:6px;margin-bottom:10px;">'
-        + '<button onclick="document.querySelectorAll(&quot;[id^=ingchk_]&quot;).forEach(c=>c.checked=true)" style="flex:1;padding:7px;border:none;border-radius:var(--rs);background:var(--bg2);cursor:pointer;font-size:.75rem;font-weight:700;">Tout cocher</button>'
-        + '<button onclick="document.querySelectorAll(&quot;[id^=ingchk_]&quot;).forEach(c=>c.checked=false)" style="flex:1;padding:7px;border:none;border-radius:var(--rs);background:var(--bg2);cursor:pointer;font-size:.75rem;font-weight:700;">Tout décocher</button>'
-        + '</div>'
-        + itemsHtml
-      : '<div style="text-align:center;padding:20px;color:var(--gn);font-size:.88rem;">🎉 Vous avez déjà tout dans votre frigo !</div>')
+
+    + (
+      missing.length
+        ? '<div style="display:flex;gap:6px;margin-bottom:10px;">'
+          + '<button onclick="document.querySelectorAll(&quot;[id^=ingchk_]&quot;).forEach(c=>c.checked=true)" style="flex:1;padding:7px;border:none;border-radius:var(--rs);background:var(--bg2);cursor:pointer;font-size:.75rem;font-weight:700;">Tout cocher</button>'
+          + '<button onclick="document.querySelectorAll(&quot;[id^=ingchk_]&quot;).forEach(c=>c.checked=false)" style="flex:1;padding:7px;border:none;border-radius:var(--rs);background:var(--bg2);cursor:pointer;font-size:.75rem;font-weight:700;">Tout décocher</button>'
+          + '</div>'
+          + itemsHtml
+        : '<div style="text-align:center;padding:20px;color:var(--gn);font-size:.88rem;">🎉 Vous avez déjà tout dans votre frigo !</div>'
+    )
+
     + fridgeHtml
+
     + '</div>'
+
     + '<div style="padding:12px 16px 20px;border-top:1px solid var(--bg2);">'
     + '<button onclick="_confirmAddIngredients()" style="width:100%;padding:13px;border:none;border-radius:var(--rs);background:var(--grad);color:#fff;font-weight:900;font-size:.9rem;cursor:pointer;">🛒 Ajouter à la liste de courses</button>'
     + '</div>'
+
     + '</div>';
-  ov.addEventListener('click', function(e){ if(e.target===ov) ov.remove(); });
+
+  ov.addEventListener('click', function (e) {
+    if (e.target === ov) {
+      ov.remove();
+    }
+  });
+
   document.body.appendChild(ov);
 
   window._ingSelMissing = missing;
-
-  /*
-    '<div style="margin-bottom:10px;">'
-    + '<div style="font-size:.78rem;color:var(--tx2);margin-bottom:10px;">Sélectionnez les ingrédients à ajouter à votre liste de courses :</div>'
-    + (missing.length
-      ? '<div style="display:flex;gap:6px;margin-bottom:10px;">'
-        + '<button onclick="document.querySelectorAll(&quot;[id^=ingchk_]&quot;).forEach(c=>c.checked=true)" style="flex:1;padding:6px;border:none;border-radius:var(--rs);background:var(--bg2);cursor:pointer;font-size:.75rem;">Tout sélect.</button>'
-        + '<button onclick="document.querySelectorAll(&quot;[id^=ingchk_]&quot;).forEach(c=>c.checked=false)" style="flex:1;padding:6px;border:none;border-radius:var(--rs);background:var(--bg2);cursor:pointer;font-size:.75rem;">Tout désélect.</button>'
-        + '</div>'
-        + itemsHtml
-      : '<div style="text-align:center;padding:14px;color:var(--gn);font-size:.84rem;">🎉 Vous avez déjà tout dans votre frigo !</div>')
-    + fridgeHtml
-    + '</div>',
-*/
 }
 
 function _confirmAddIngredients() {

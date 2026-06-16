@@ -229,6 +229,17 @@ class handler(BaseHTTPRequestHandler):
 
         return STATIC + url
 
+    def _force_png(self, url):
+    if not url:
+        return None
+    return url.rsplit(".", 1)[0] + ".png" if "." in url else url + ".png"
+
+
+    def _force_jpg(self, url):
+    if not url:
+        return None
+    return url.rsplit(".", 1)[0] + ".jpg" if "." in url else url + ".jpg"
+
     def _build_image_url(self, recipe, details):
 
     candidates = [

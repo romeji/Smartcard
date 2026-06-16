@@ -4651,45 +4651,101 @@ async function searchJow(query, retries) {
 // ═══════════════════════════════════════════════════════════════════
 function _renderJowResults(rawList, query) {
   const zone = document.getElementById('jowResults');
-  if(!zone) return;
-  if(!rawList.length) {
-    zone.innerHTML = '<div style="text-align:center;padding:24px;color:var(--tx3);"><div style="font-size:1.5rem;">🇫🇷</div><div style="font-size:.82rem;margin-top:8px;">Aucune recette trouvée pour "'+query+'"</div></div>';
+  if (!zone) return;
+
+  if (!rawList.length) {
+    zone.innerHTML = `
+      <div style="text-align:center;padding:24px;color:var(--tx3);">
+        <div style="font-size:1.5rem;">🇫🇷</div>
+        <div style="font-size:.82rem;margin-top:8px;">
+          Aucune recette trouvée pour "${query}"
+        </div>
+      </div>
+    `;
     return;
   }
 
-  if(!window._jowCache) window._jowCache = {};
+  if (!window._jowCache) window._jowCache = {};
 
-  const cards = rawList.map(function(r) {
+  const cards = rawList.map(function (r) {
     const recipe = _jowNormalize(r);
-    // Mise en cache mémoire + localStorage
+
     window._jowCache[recipe.id] = recipe;
     _jowSaveRecipe(recipe);
-    saveToGlobalDB([recipe]).catch(function(){}); // sauvegarde dans la base partagee Firestore
+    saveToGlobalDB([recipe]).catch(() => {});
 
-    const habits  = recipe.eatingHabits || {};
+    const habits = recipe.eatingHabits || {};
     const nsBadge = _jowNSBadge(recipe.nutriScore);
     const gsBadge = _jowGSBadge(recipe.greenScore);
     const prBadge = _jowPriceBadge(recipe);
     const hBadges = _jowHabitBadges(habits, true);
-    const isBookmarked = (state.recipeBookmarks||[]).some(function(b){ return b.id===recipe.id; });
 
-    const kcalStr = recipe.kcal ? `<span style="font-size:.58rem;color:var(--or);">🔥 ${recipe.kcal} kcal</span>` : '';
-    const timeStr = recipe.time ? `<span style="font-size:.58rem;color:var(--tx3);">⏱ ${recipe.time}min</span>` : '';
-    const metaRow = [kcalStr, timeStr, prBadge, nsBadge, gsBadge].filter(Boolean).join('');
-    const habitsHtml = hBadges.length ? `<div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:4px;">${hBadges.join('')}</div>` : '';
+    const isBookmarked =
+      (state.recipeBookmarks || []).some(
+        b => b.id === recipe.id
+      );
 
-    return `<div class="spoon-recipe-body" style="position:relative;" onclick="_openJowRecipe('${recipe.id}')" data-jow-id="${recipe.id}">
-      <button onclick="event.stopPropagation();_jowToggleBookmark('${recipe.id}')" id="jbm_${recipe.id}"
-        style="position:absolute;top:6px;right:6px;z-index:2;background:rgba(0,0,0,.45);border:none;border-radius:50%;width:28px;height:28px;font-size:.9rem;cursor:pointer;color:#fff;display:flex;align-items:center;justify-content:center;"
-        title="${isBookmarked?'Retirer des favoris':'Ajouter aux favoris'}">${isBookmarked?'⭐':'☆'}</button>
-      ${recipe.photo
-        ? `<img src="${recipe.photo}" style="width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:var(--rs) var(--rs) 0 0;" loading="lazy" onerror="this.style.display='none'">`
-        : `<div style="width:100%;aspect-ratio:4/3;background:linear-gradient(135deg,rgba(255,107,107,.15),rgba(255,142,83,.1));border-radius:var(--rs) var(--rs) 0 0;display:flex;align-items:center;justify-content:center;font-size:2rem;">🇫🇷</div>`}
-      <div style="padding:10px 10px 8px;">
-        <div style="font-weight:800;font-size:.82rem;margin-bottom:5px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">${recipe.name}</div>
-        <div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center;">${metaRow}</div>
-        ${habitsHtml}
-      </div></div>`;
+    const kcalStr = recipe.kcal
+      ? `<span style="font-size:.58rem;color:var(--or);">🔥 ${recipe.kcal} kcal</span>`
+      : '';
+
+    const timeStr = recipe.time
+      ? `<span style="font-size:.58rem;color:var(--tx3);">⏱ ${recipe.time}min</span>`
+      : '';
+
+    const metaRow = [
+      kcalStr,
+      timeStr,
+      prBadge,
+      nsBadge,
+      gsBadge
+    ].filter(Boolean).join('');
+
+    const habitsHtml = hBadges.length
+      ? `<div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:4px;">${hBadges.join('')}</div>`
+      : '';
+
+    return `
+      <div
+        class="spoon-recipe-body"
+        style="position:relative;"
+        onclick='_openJowRecipe(${JSON.stringify(recipe.id)})'
+        data-jow-id="${recipe.id}"
+      >
+
+        <button
+          onclick='event.stopPropagation();_jowToggleBookmark(${JSON.stringify(recipe.id)})'
+          id="jbm_${recipe.id}"
+          style="position:absolute;top:6px;right:6px;z-index:2;background:rgba(0,0,0,.45);border:none;border-radius:50%;width:28px;height:28px;font-size:.9rem;cursor:pointer;color:#fff;display:flex;align-items:center;justify-content:center;"
+          title="${isBookmarked ? 'Retirer des favoris' : 'Ajouter aux favoris'}"
+        >
+          ${isBookmarked ? '⭐' : '☆'}
+        </button>
+
+        ${
+          recipe.photo
+            ? `<img
+                src="${recipe.photo}"
+                style="width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:var(--rs) var(--rs) 0 0;"
+                loading="lazy"
+                onerror="this.style.display='none'"
+              >`
+            : `<div style="width:100%;aspect-ratio:4/3;background:linear-gradient(135deg,rgba(255,107,107,.15),rgba(255,142,83,.1));border-radius:var(--rs) var(--rs) 0 0;display:flex;align-items:center;justify-content:center;font-size:2rem;">🇫🇷</div>`
+        }
+
+        <div style="padding:10px 10px 8px;">
+          <div style="font-weight:800;font-size:.82rem;margin-bottom:5px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">
+            ${recipe.name}
+          </div>
+
+          <div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center;">
+            ${metaRow}
+          </div>
+
+          ${habitsHtml}
+        </div>
+      </div>
+    `;
   });
 
   zone.innerHTML = `<div class="spoon-grid">${cards.join('')}</div>`;

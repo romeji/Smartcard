@@ -1575,8 +1575,7 @@ body.offline-mode .offline-banner{display:block;}
       <!-- SOUS-ONGLETS -->
       <div class="menu-tabs" id="menuTabBar" style="margin-bottom:14px;">
         <div class="menu-tab on" id="mtab-week" onclick="switchMenuTab('week')">📅 Semaine</div>
-        <div class="menu-tab" id="mtab-recipes" onclick="switchMenuTab('recipes')">👨‍🍳 Recettes</div>
-        <div class="menu-tab" id="mtab-favs" onclick="switchMenuTab('favs')">⭐ Favoris</div>
+        <div class="menu-tab" id="mtab-recipes" onclick="switchMenuTab('recipes')">📖 Mes Recettes</div>
         <div class="menu-tab" id="mtab-search" onclick="switchMenuTab('search')">🔍 Explorer</div>
         <div class="menu-tab" id="mtab-nutri" onclick="switchMenuTab('nutri')">📊 Nutrition</div>
       </div>
@@ -1678,24 +1677,24 @@ body.offline-mode .offline-banner{display:block;}
 
       <!-- ═══ TAB: MES RECETTES ═══ -->
       <div id="menuPanelRecipes" style="display:none;">
-        <div style="display:flex;gap:8px;margin-bottom:10px;">
-          <input class="inp" id="recipeSearch" placeholder="🔍 Rechercher une recette..." oninput="filterRecipesView(this.value)" style="flex:1;">
-          <button class="btn acc sm" onclick="openCreateRecipeModal()" style="flex-shrink:0;padding:10px 12px;border-radius:var(--rs);">+ Créer</button>
+        <div class="diet-chips" id="myRecipesTabs" style="margin-bottom:14px;">
+          <div class="diet-chip on" data-v="favs" onclick="switchMyRecipesTab('favs')">⭐ Favoris</div>
+          <div class="diet-chip" data-v="all" onclick="switchMyRecipesTab('all')">📚 Toutes les recettes</div>
         </div>
-        <div class="diet-chips" id="recipeDietFilter" style="margin-bottom:12px;">
-          <div class="diet-chip on" data-v="all" onclick="filterRecipesDiet(this,'all')">Tous</div>
-          <div class="diet-chip" data-v="omnivore" onclick="filterRecipesDiet(this,'omnivore')">🍖 Omni</div>
-          <div class="diet-chip" data-v="veg" onclick="filterRecipesDiet(this,'veg')">🥬 Végé</div>
-          <div class="diet-chip" data-v="vegan" onclick="filterRecipesDiet(this,'vegan')">🌱 Vegan</div>
-          <div class="diet-chip" data-v="pesc" onclick="filterRecipesDiet(this,'pesc')">🐟 Pesc</div>
-          <div class="diet-chip" data-v="custom" onclick="filterRecipesDiet(this,'custom')">⭐ Mes recettes</div>
-        </div>
-        <div id="recipesGrid"></div>
-      </div>
 
-      <!-- ═══ TAB: FAVORIS ═══ -->
-      <div id="menuPanelFavs" style="display:none;">
-        <div id="favsGrid"></div>
+        <!-- Sous-onglet: Favoris -->
+        <div id="myRecipesFavsView">
+          <div id="favsGrid"></div>
+        </div>
+
+        <!-- Sous-onglet: Toutes les recettes -->
+        <div id="myRecipesAllView" style="display:none;">
+          <div style="display:flex;gap:8px;margin-bottom:12px;">
+            <input class="inp" id="recipeSearch" placeholder="🔍 Rechercher une recette..." oninput="filterRecipesView(this.value)" style="flex:1;">
+            <button class="btn acc sm" onclick="openCreateRecipeModal()" style="flex-shrink:0;padding:10px 12px;border-radius:var(--rs);">+ Créer</button>
+          </div>
+          <div id="recipesGridAll"></div>
+        </div>
       </div>
 
       <!-- ═══ TAB: EXPLORER (Jow.fr) ═══ -->
@@ -3836,6 +3835,7 @@ function addMissingToList(i) {
 
 // ── État module ─────────────────────────────────────────────
 let _menuTab = 'week';
+let _myRecipesSubTab = 'favs';
 let _recipeDietFilter = 'all';
 let _recipeSearch = '';
 let _crIngredients = []; // recipe creation ingredients
@@ -4159,6 +4159,7 @@ function initMenuModule() {
   updateMenuProfileCard();
   renderWeek();
   renderSeason();
+  renderFavsGrid();
   renderRecipesGrid();
   renderNutriTab();
 }
@@ -4166,7 +4167,7 @@ function initMenuModule() {
 // ── Sous-onglets ────────────────────────────────────────────
 function switchMenuTab(tab) {
   _menuTab = tab;
-  ['week','recipes','favs','search','nutri'].forEach(t => {
+  ['week','recipes','search','nutri'].forEach(t => {
     const btn = document.getElementById('mtab-'+t);
     const panelId = 'menuPanel' + t.charAt(0).toUpperCase() + t.slice(1);
     const panel = document.getElementById(panelId);
@@ -4175,12 +4176,23 @@ function switchMenuTab(tab) {
   });
   if(tab==='week')    { try { renderWeek(); } catch(e){} }
   if(tab==='nutri')   { try { sc_nutri_render(); } catch(e){ console.error('nutri:',e); } }
-  if(tab==='recipes') { try { renderRecipesGrid(); } catch(e){} }
-  if(tab==='favs')    { try { renderFavsGrid(); } catch(e){} }
+  if(tab==='recipes') { try { switchMyRecipesTab(_myRecipesSubTab || 'favs'); } catch(e){} }
   if(tab==='search') {
     const inp = document.getElementById('spoonSearchInp');
     if(inp) setTimeout(()=>inp.focus(), 100);
   }
+}
+
+// ── Sous-onglets de "Mes Recettes": Favoris / Toutes les recettes ──
+function switchMyRecipesTab(view) {
+  _myRecipesSubTab = view;
+  document.querySelectorAll('#myRecipesTabs .diet-chip').forEach(c => c.classList.toggle('on', c.dataset.v === view));
+  const favsView = document.getElementById('myRecipesFavsView');
+  const allView  = document.getElementById('myRecipesAllView');
+  if(favsView) favsView.style.display = view === 'favs' ? 'block' : 'none';
+  if(allView)  allView.style.display  = view === 'all'  ? 'block' : 'none';
+  if(view === 'favs') { try { renderFavsGrid(); } catch(e){} }
+  else { try { renderRecipesGrid(); } catch(e){} }
 }
 
 // ── Profil nutritionnel ─────────────────────────────────────
@@ -4374,10 +4386,10 @@ async function generateAIMenuFull() {
       const quality = cals ? (Math.abs(totalKcal - cals) <= cals * 0.15 ? 'good' : Math.abs(totalKcal - cals) <= cals * 0.25 ? 'ok' : 'warn') : 'ok';
       dayMenus.push({
         day: days[i],
-        breakfast: b ? {name: b.name, emoji: '🍳', kcal: b.kcal, jowId: b.id, photo: b.photo} : null,
-        lunch:     l ? {name: l.name, emoji: '🍽️', kcal: l.kcal, jowId: l.id, photo: l.photo} : null,
-        dinner:    d ? {name: d.name, emoji: '🌙', kcal: d.kcal, jowId: d.id, photo: d.photo} : null,
-        snack:  snack ? {name: snack.name, emoji: '🍎', kcal: snack.kcal, jowId: snack.id, photo: snack.photo} : null,
+        breakfast: b ? {name: b.name, emoji: '🍳', kcal: b.kcal, jowId: b.id, photo: b.photo, ingredients: b.ingredients || []} : null,
+        lunch:     l ? {name: l.name, emoji: '🍽️', kcal: l.kcal, jowId: l.id, photo: l.photo, ingredients: l.ingredients || []} : null,
+        dinner:    d ? {name: d.name, emoji: '🌙', kcal: d.kcal, jowId: d.id, photo: d.photo, ingredients: d.ingredients || []} : null,
+        snack:  snack ? {name: snack.name, emoji: '🍎', kcal: snack.kcal, jowId: snack.id, photo: snack.photo, ingredients: snack.ingredients || []} : null,
         total_kcal: totalKcal,
         prot: (b?.prot||0)+(l?.prot||0)+(d?.prot||0)+(snack?.prot||0),
         carb: (b?.carb||0)+(l?.carb||0)+(d?.carb||0)+(snack?.carb||0),
@@ -6695,8 +6707,7 @@ async function syncGlobalRecipesFromFirestore() {
     if(added > 0) {
       localStorage.setItem('sc_global_recipes', JSON.stringify(existing.slice(0, 300)));
       console.log('[Firestore] +' + added + ' recettes partagées (dont Jow)');
-      if(window._menuTab === 'recipes') { try { renderRecipesGrid(); } catch(e){} }
-      if(window._menuTab === 'favs')    { try { renderFavsGrid(); } catch(e){} }
+      if(_menuTab === 'recipes') { try { (_myRecipesSubTab === 'favs' ? renderFavsGrid : renderRecipesGrid)(); } catch(e){} }
     }
   }
 
@@ -7314,6 +7325,7 @@ function applyAIMenuResult(data) {
         recipeId: m.jowId || null,
         photo: m.photo || null,
         source: m.jowId ? 'jow' : 'ai',
+        ingredients: (m.ingredients || []).slice(0, 12),
       };
     };
     if(!state.weekMenu[dn]) state.weekMenu[dn] = {};
@@ -8936,11 +8948,11 @@ async function regenDayAI(day) {
     if(!state.weekMenu[day]) state.weekMenu[day] = {};
     if(newL) {
       state.weekMenu[day].l = newL.name;
-      state.weekMenu[day].lData = {name:newL.name, recipeId:newL.id, photo:newL.photo, kcal:newL.kcal, prot:newL.prot, carb:newL.carb, fat:newL.fat, source:'jow'};
+      state.weekMenu[day].lData = {name:newL.name, recipeId:newL.id, photo:newL.photo, kcal:newL.kcal, prot:newL.prot, carb:newL.carb, fat:newL.fat, source:'jow', ingredients:(newL.ingredients||[]).slice(0,12)};
     }
     if(newD) {
       state.weekMenu[day].d = newD.name;
-      state.weekMenu[day].dData = {name:newD.name, recipeId:newD.id, photo:newD.photo, kcal:newD.kcal, prot:newD.prot, carb:newD.carb, fat:newD.fat, source:'jow'};
+      state.weekMenu[day].dData = {name:newD.name, recipeId:newD.id, photo:newD.photo, kcal:newD.kcal, prot:newD.prot, carb:newD.carb, fat:newD.fat, source:'jow', ingredients:(newD.ingredients||[]).slice(0,12)};
     }
     _refreshDayNutri(day);
     saveWeekMenu();
@@ -9124,7 +9136,8 @@ function _confirmAddIngredients() {
     const chk = document.getElementById('ingchk_' + i.id);
     if(chk && chk.checked) {
       const label = i.name + (i.qty ? ' (' + i.qty + ')' : '');
-      addToShoppingList ? addToShoppingList(label) : _addToCartFallback(label);
+      if(typeof addToShoppingList === 'function') addToShoppingList(label);
+      else _addToCartFallback(label);
       added++;
     }
   });
@@ -9134,11 +9147,14 @@ function _confirmAddIngredients() {
 }
 
 function _addToCartFallback(label) {
-  if(!state.shoppingList) state.shoppingList = [];
-  if(!state.shoppingList.find(i => (i.name||i) === label)) {
-    state.shoppingList.push({ name: label, checked: false, id: Date.now() + Math.random() });
-    saveState();
+  // Ajoute directement dans state.items (la vraie liste de courses utilisée par l'onglet Liste)
+  if(!state.items) state.items = [];
+  const exists = state.items.find(it => (it.name||'').toLowerCase() === label.toLowerCase());
+  if(!exists) {
+    state.items.unshift({id:'i'+Date.now()+Math.random().toString(36).slice(2,7), name:label, emoji:'🛒', cat:'🍝 Épicerie', price:0, qty:'', checked:false, addedAt:Date.now()});
   }
+  if(typeof saveItems === 'function') saveItems(); else saveState();
+  if(typeof renderList === 'function') renderList();
 }
 
 
@@ -9314,8 +9330,8 @@ function filterRecipesDiet(el, val) {
 }
 
 function renderRecipesGrid() {
-  const panel = document.getElementById('menuPanelRecipes');
-  if(!panel) return;
+  const grid = document.getElementById('recipesGridAll');
+  if(!grid) return;
 
   const customRecipes = state.customRecipes || [];
   const bookmarks     = state.recipeBookmarks || [];
@@ -9329,17 +9345,6 @@ function renderRecipesGrid() {
   }
 
   let html = '';
-
-  // ── Barre de recherche ──
-  html += `<div style="display:flex;gap:8px;margin-bottom:12px;">
-    <div style="flex:1;position:relative;">
-      <input class="inp" placeholder="🔍 Chercher une recette…" value="${q.replace(/"/g,'&quot;')}"
-        oninput="window._recipeSearch=this.value;renderRecipesGrid()"
-        style="width:100%;padding-left:36px;">
-      <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:.9rem;pointer-events:none;">🔍</span>
-    </div>
-    <button class="btn acc" style="padding:10px 14px;font-size:.82rem;flex-shrink:0;" onclick="openCreateRecipeModal()">✏️ Créer</button>
-  </div>`;
 
   // ── Mes recettes perso ──
   const myFiltered = customRecipes.filter(matchSearch);
@@ -9406,11 +9411,11 @@ function renderRecipesGrid() {
     html += `<div style="text-align:center;padding:24px;color:var(--tx2);font-size:.82rem;">Aucune recette pour "<strong>${q}</strong>"</div>`;
   }
 
-  panel.innerHTML = '<div style="padding:0;">' + html + '</div>';
+  grid.innerHTML = html;
 }
 
 function renderFavsGrid() {
-  const panel = document.getElementById('menuPanelFavs');
+  const panel = document.getElementById('favsGrid');
   if(!panel) return;
   const bookmarks = state.recipeBookmarks || [];
   if(!bookmarks.length) {
@@ -10449,30 +10454,6 @@ try {
 // Portions: handled by native changePortions() function
 
 // Portions normalization handled in renderRecipeModal and _showMealDBDetail
-
-// Fusion Favoris
-(function(){
-  function apply(){
-    var t=document.getElementById('mtab-favs');if(t)t.style.display='none';
-    var df=document.getElementById('recipeDietFilter');
-    if(df&&!df.querySelector('[data-v="favs"]')){
-      var c=document.createElement('div');c.className='diet-chip';c.dataset.v='favs';c.textContent='⭐ Favoris';
-      c.onclick=function(){df.querySelectorAll('.diet-chip').forEach(function(x){x.classList.remove('on');});c.classList.add('on');window._recipeDietFilter='favs';showFavs();};
-      df.appendChild(c);
-    }
-    if(!window.renderFavsGrid)window.renderFavsGrid=function(){switchMenuTab('recipes');setTimeout(function(){var c=document.querySelector('#recipeDietFilter [data-v="favs"]');if(c)c.click();},150);};
-    var orig=window.renderRecipesGrid;
-    if(orig&&!window._favsOk){window._favsOk=true;window.renderRecipesGrid=function(){if(window._recipeDietFilter==='favs'){showFavs();return;}orig.apply(this,arguments);};}
-  }
-  function showFavs(){
-    var g=document.getElementById('recipesGrid');if(!g)return;
-    var bms=state.recipeBookmarks||[];
-    if(!bms.length){g.innerHTML='<div style="text-align:center;padding:32px;color:var(--tx3);"><div style="font-size:2rem;">⭐</div><div style="font-weight:700;margin-top:8px;">Aucun favori</div><div style="font-size:.75rem;margin-top:4px;">Ajoutez des étoiles dans l\'explorateur</div></div>';return;}
-    g.innerHTML=bms.map(function(r){return '<div onclick="openRecipeDetail&&openRecipeDetail(\''+r.id+'\')" style="background:var(--bg);border-radius:var(--rs);box-shadow:var(--so);display:flex;align-items:center;gap:10px;padding:12px;margin-bottom:8px;cursor:pointer;">'+(r.photo?'<img src="'+r.photo+'" style="width:50px;height:50px;border-radius:var(--rs);object-fit:cover;flex-shrink:0;">':'')+'<div style="flex:1;min-width:0;"><div style="font-weight:800;font-size:.88rem;">'+r.name+'</div><div style="font-size:.62rem;color:var(--tx3);">'+(r.kcal?'🔥 '+r.kcal+' kcal ':'')+' '+(r.time?'⏱ '+r.time+'min':'')+'</div></div><span>⭐</span></div>';}).join('');
-  }
-  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',function(){setTimeout(apply,800);});
-  else setTimeout(apply,800);
-})();
 
 // Stats barre menu
 (function(){

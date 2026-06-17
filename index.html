@@ -3488,15 +3488,31 @@ async function loadRecipes() {
 
   const recBadge = document.getElementById('fridgeRecipeBadge');
   const fridgeNames = state.fridge.map(f => f.name.toLowerCase());
-  
+  const cacheKey = fridgeNames.slice().sort().join('|');
+
+  // Le frigo n'a pas changé depuis le dernier chargement : on réaffiche
+  // simplement le résultat déjà calculé, sans relancer la recherche Jow.
+  if(_mdbFridgeCacheKey === cacheKey && _mdbFridgeCache !== null) {
+    if(recBadge) recBadge.textContent = _mdbFridgeCache.length + ' recette' + (_mdbFridgeCache.length !== 1 ? 's' : '') + ' possibles';
+    if(!_mdbFridgeCache.length) { grid.innerHTML=''; if(empty) empty.style.display='block'; return; }
+    if(empty) empty.style.display='none';
+    _renderFridgeRecipes(grid, _mdbFridgeCache);
+    return;
+  }
+
   // 1. Recettes locales (base commune + custom) correspondant au frigo
   const localMatches = getRecipesMatchingFridge(fridgeNames).slice(0, 15);
   if(recBadge) recBadge.textContent = localMatches.length + ' recette' + (localMatches.length !== 1 ? 's' : '') + ' possibles';
 
   if(state.fridge.length < 2) {
-    if(!localMatches.length) { grid.innerHTML=''; if(empty) empty.style.display='block'; return; }
+    if(!localMatches.length) {
+      grid.innerHTML=''; if(empty) empty.style.display='block';
+      _mdbFridgeCache = []; _mdbFridgeCacheKey = cacheKey;
+      return;
+    }
     if(empty) empty.style.display='none';
     _renderFridgeRecipes(grid, localMatches);
+    _mdbFridgeCache = localMatches; _mdbFridgeCacheKey = cacheKey;
     return;
   }
 
@@ -3530,9 +3546,11 @@ async function loadRecipes() {
     const combined = [...localMatches, ...jowRecipes.filter(j => !localMatches.some(l => l.id === j.id))];
     if(recBadge) recBadge.textContent = combined.length + ' recette' + (combined.length !== 1 ? 's' : '') + ' possibles';
     _renderFridgeRecipes(grid, combined);
+    _mdbFridgeCache = combined; _mdbFridgeCacheKey = cacheKey;
   } catch(e) {
     // Fallback: recettes locales seulement
     _renderFridgeRecipes(grid, localMatches);
+    _mdbFridgeCache = localMatches; _mdbFridgeCacheKey = cacheKey;
   }
 }
 
@@ -3665,8 +3683,7 @@ ${qty}${nm}
 src="${r.photo}" data-cands="${(r.photoCandidates||[]).slice(1).join('|')}"
 loading="lazy"
 style="width:100%;height:100%;object-fit:cover;"
-onerror="this.parentElement.remove()"
-onerror="_imgFallback(this,(this.dataset.cands||'').split('|').filter(Boolean))"
+onerror="_imgFallback(this,(this.dataset.cands||'').split('|').filter(Boolean))">
 </div>
 `
 
@@ -7295,7 +7312,7 @@ function renderDayDetail() {
               })()}
             </div>
             <div style="display:flex;align-items:center;gap:4px;padding:0 8px;flex-shrink:0;">
-              ${sc.key==='snack' ? `<span onclick="event.stopPropagation();deleteSnackFromDay(${selectedDay})" style="font-size:.75rem;color:var(--rd);cursor:pointer;" title="Supprimer">🗑️</span>` : '<span style="font-size:.65rem;color:var(--tx3);">✏️</span>'}
+              ${sc.key==='snack' ? `<span onclick="event.stopPropagation();deleteSnackFromDay(${selectedDay})" style="font-size:.95rem;color:var(--rd);cursor:pointer;padding:12px;margin:-12px;display:flex;align-items:center;justify-content:center;" title="Supprimer">🗑️</span>` : '<span style="font-size:.65rem;color:var(--tx3);">✏️</span>'}
             </div>
           </div>
         </div>`;
@@ -7426,6 +7443,8 @@ function applyDemoMenu(diet) {
 function deleteSnackFromDay(day) {
   if(!state.weekMenu[day]) return;
   delete state.weekMenu[day].snack;
+  delete state.weekMenu[day].snackData;
+  _refreshDayNutri(day);
   saveWeekMenu();
   renderWeek();
   renderDayDetail();
@@ -8331,11 +8350,11 @@ function openMealEdit(day, slot) {
   const modal = document.getElementById('mealEditModal');
   if(!modal) return;
 
-  // Pre-build recipe list HTML
-  const allRec = getAllRecipes().filter(r => !r.mealTypes || r.mealTypes.includes(slot));
+  // Pre-build recipe list HTML — on propose les favoris (⭐), pas tout le catalogue
+  const allRec = (state.recipeBookmarks||[]).filter(r => !r.mealTypes || r.mealTypes.includes(slot));
   const recListHtml = allRec.length
     ? allRec.slice(0,30).map(r => buildRecipePickHtml(r, day, slot)).join('')
-    : '<div style="text-align:center;padding:20px;color:var(--tx3);font-size:.8rem;">Aucune recette — <button class=\"btn acc sm\" style=\"margin-top:8px;\" onclick=\"closeMealEdit();openCreateRecipeModal()\">+ Créer</button></div>';
+    : '<div style="text-align:center;padding:20px;color:var(--tx3);font-size:.8rem;">Aucun favori pour le moment.<br>Étoilez des recettes dans <strong>Menu &gt; Mes Recettes</strong>, ou cherchez sur Jow.fr ci-dessous.<button class=\"btn acc sm\" style=\"margin-top:10px;display:block;margin-left:auto;margin-right:auto;\" onclick=\"omeSwitchTab(&apos;s&apos;)\">🇫🇷 Chercher sur Jow.fr</button></div>';
 
   modal.innerHTML = `
     <div class="mhdl"></div>
@@ -8349,13 +8368,13 @@ function openMealEdit(day, slot) {
 
     <!-- Onglets -->
     <div style="display:flex;gap:0;background:var(--bg2);border-radius:var(--rs);padding:3px;margin-bottom:12px;">
-      <button id="ometab-r" onclick="omeSwitchTab('r')" style="flex:1;padding:8px 4px;border-radius:var(--rs);border:none;font-size:.76rem;font-weight:800;cursor:pointer;background:var(--ac);color:#fff;">📋 Mes recettes</button>
+      <button id="ometab-r" onclick="omeSwitchTab('r')" style="flex:1;padding:8px 4px;border-radius:var(--rs);border:none;font-size:.76rem;font-weight:800;cursor:pointer;background:var(--ac);color:#fff;">⭐ Favoris</button>
       <button id="ometab-s" onclick="omeSwitchTab('s')" style="flex:1;padding:8px 4px;border-radius:var(--rs);border:none;font-size:.76rem;font-weight:700;cursor:pointer;background:transparent;color:var(--tx2);">🇫🇷 Jow.fr</button>
     </div>
 
     <!-- Panel: Mes recettes -->
     <div id="omepanel-r">
-      <input class="inp" id="omeSearch" placeholder="🔍 Chercher : pâtes, poulet, salade..."
+      <input class="inp" id="omeSearch" placeholder="🔍 Chercher dans mes favoris..."
         oninput="omeFilter(this.value, ${day}, '${slot}')"
         style="margin-bottom:8px;width:100%;" autocomplete="off">
       <div id="omeRecipeList" style="max-height:280px;overflow-y:auto;display:flex;flex-direction:column;gap:5px;">
@@ -8456,10 +8475,10 @@ function omeSwitchTab(t) {
 function omeFilter(q, day, slot) {
   const el = document.getElementById('omeRecipeList');
   if(!el) return;
-  const all = getAllRecipes().filter(r => !r.mealTypes || r.mealTypes.includes(slot));
+  const all = (state.recipeBookmarks||[]).filter(r => !r.mealTypes || r.mealTypes.includes(slot));
   const filtered = q ? all.filter(r => r.name.toLowerCase().includes(q.toLowerCase())) : all;
   if(!filtered.length) {
-    el.innerHTML = '<div style="text-align:center;padding:14px;color:var(--tx3);font-size:.8rem;">Aucune recette pour &laquo;'+q+'&raquo;</div>';
+    el.innerHTML = '<div style="text-align:center;padding:14px;color:var(--tx3);font-size:.8rem;">Aucun favori pour &laquo;'+q+'&raquo;</div>';
     return;
   }
   el.innerHTML = filtered.slice(0,30).map(r => buildRecipePickHtml(r, day, slot)).join('');

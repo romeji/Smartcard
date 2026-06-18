@@ -1638,12 +1638,35 @@ body.offline-mode .offline-banner{display:block;}
               </select>
             </div>
             <div class="menu-opt-row">
+              <span class="menu-opt-label">🍳 Difficulté</span>
+              <select class="inp" id="menuDifficulty" style="flex:1;padding:8px 12px;font-size:.8rem;">
+                <option value="">Toutes</option>
+                <option value="easy">😊 Facile</option>
+                <option value="medium">🙂 Moyen</option>
+                <option value="hard">🧐 Expert</option>
+              </select>
+            </div>
+            <div class="menu-opt-row">
               <span class="menu-opt-label">💰 Budget/sem</span>
               <input class="inp" id="menuBudget" placeholder="ex: 80€" style="flex:1;padding:8px 12px;font-size:.8rem;">
             </div>
             <div class="menu-opt-row">
               <span class="menu-opt-label">🚫 Exclusions</span>
               <input class="inp" id="menuAllergies" placeholder="ex: noix, lactose..." style="flex:1;padding:8px 12px;font-size:.8rem;">
+            </div>
+            <div class="menu-opt-row" style="align-items:flex-start;">
+              <span class="menu-opt-label" style="padding-top:6px;">⚠️ Allergènes</span>
+              <div style="flex:1;">
+                <div class="diet-chips" id="allergenChips" style="margin-bottom:4px;">
+                  <div class="diet-chip" data-v="gluten" onclick="toggleAllergenChip(this)">🌾 Gluten</div>
+                  <div class="diet-chip" data-v="lactose" onclick="toggleAllergenChip(this)">🥛 Lactose</div>
+                  <div class="diet-chip" data-v="nuts" onclick="toggleAllergenChip(this)">🥜 Fruits à coque</div>
+                  <div class="diet-chip" data-v="egg" onclick="toggleAllergenChip(this)">🥚 Œuf</div>
+                  <div class="diet-chip" data-v="shellfish" onclick="toggleAllergenChip(this)">🦐 Crustacés</div>
+                  <div class="diet-chip" data-v="soy" onclick="toggleAllergenChip(this)">🫘 Soja</div>
+                </div>
+                <div style="font-size:.62rem;color:var(--tx3);line-height:1.4;">Filtre basé sur les données Jow + les ingrédients ; vérifiez toujours la recette en cas d'allergie sévère.</div>
+              </div>
             </div>
             <div class="menu-opt-row">
               <span class="menu-opt-label">👥 Personnes</span>
@@ -2103,6 +2126,7 @@ let state = {
   history: [],
   weekMenu: {},
   selectedDiet: ['omnivore'],
+  selectedAllergens: [],
   filterCat: 'all',
   editingItemId: null,
   sortAZ: false,
@@ -2157,13 +2181,27 @@ async function syncToFirestore(key, value) {
   if(!db || !currentUser) return;
   try {
     const docId = state.houseId || currentUser.uid;
-    await db.collection('households').doc(docId).set({[key]: value, updatedAt: Date.now()}, {merge: true});
+    await _writeFieldReplacing(db.collection('households').doc(docId), key, value);
     // Always mirror personal data to users/{uid} so it survives logout/login without a household
     const personalKeys = ['weekMenu', 'history', 'fridge', 'items', 'budget'];
     if(personalKeys.includes(key)) {
-      await db.collection('users').doc(currentUser.uid).set({[key]: value, updatedAt: Date.now()}, {merge: true});
+      await _writeFieldReplacing(db.collection('users').doc(currentUser.uid), key, value);
     }
   } catch(e) { console.warn('Sync error:', e); }
+}
+
+// Écrit un champ en le REMPLAÇANT entièrement (pas de fusion récursive).
+// set(...,{merge:true}) fusionnerait les objets imbriqués (ex: weekMenu.3.snack)
+// avec l'ancienne valeur côté serveur, ce qui empêche toute suppression
+// (jour vidé, collation supprimée, etc.) de persister. update() remplace le
+// champ entièrement ; on retombe sur set(merge:true) seulement si le document
+// n'existe pas encore (toute première sauvegarde).
+async function _writeFieldReplacing(ref, key, value) {
+  try {
+    await ref.update({ [key]: value, updatedAt: Date.now() });
+  } catch(e) {
+    await ref.set({ [key]: value, updatedAt: Date.now() }, { merge: true });
+  }
 }
 
 async function loadFromFirestore() {
@@ -2236,13 +2274,13 @@ function subscribeToHousehold() {
     itemsUnsub = db.collection('households').doc(state.houseId).onSnapshot(doc => {
       if(!doc.exists) return;
       const d = doc.data();
-      if(d.items    !== undefined) state.items    = d.items;
-      if(d.fridge   !== undefined) state.fridge   = d.fridge;
-      if(d.history  !== undefined) state.history  = d.history;
-      if(d.weekMenu !== undefined) state.weekMenu = d.weekMenu;
-      if(d.budget   !== undefined) state.budget   = d.budget;
-      saveState();
-      renderAll();
+      let changed = false;
+      if(d.items    !== undefined && JSON.stringify(d.items)    !== JSON.stringify(state.items))    { state.items    = d.items;    changed = true; }
+      if(d.fridge   !== undefined && JSON.stringify(d.fridge)   !== JSON.stringify(state.fridge))   { state.fridge   = d.fridge;   changed = true; }
+      if(d.history  !== undefined && JSON.stringify(d.history)  !== JSON.stringify(state.history))  { state.history  = d.history;  changed = true; }
+      if(d.weekMenu !== undefined && JSON.stringify(d.weekMenu) !== JSON.stringify(state.weekMenu)) { state.weekMenu = d.weekMenu; changed = true; }
+      if(d.budget   !== undefined && d.budget !== state.budget) { state.budget = d.budget; changed = true; }
+      if(changed) { saveState(); renderAll(); }
     }, err => console.warn('Household snapshot err:', err));
   }
 }
@@ -4358,6 +4396,86 @@ function toggleMenuOpts() {
   document.getElementById('menuOptsPanel').classList.toggle('open',_menuOptsOpen);
 }
 
+// Mots-clés par allergène (FR/EN), utilisés en complément du champ allergens
+// renvoyé par Jow — au cas où il serait absent ou incomplet pour une recette.
+const ALLERGEN_KEYWORDS = {
+  gluten:    ['gluten', 'blé', 'ble', 'wheat', 'farine de blé', 'farine de ble', 'orge', 'seigle', 'pâtes', 'pates', 'pain'],
+  lactose:   ['lactose', 'lait', 'milk', 'dairy', 'fromage', 'crème', 'creme', 'beurre', 'yaourt'],
+  nuts:      ['fruits à coque', 'fruits a coque', 'noix', 'nuts', 'amande', 'noisette', 'cajou', 'pistache', 'arachide', 'cacahuète', 'cacahuete', 'peanut'],
+  egg:       ['œuf', 'oeuf', 'egg'],
+  shellfish: ['crustacé', 'crustace', 'shellfish', 'crevette', 'crabe', 'homard', 'gambas', 'langoustine'],
+  soy:       ['soja', 'soy', 'soya', 'tofu', 'edamame'],
+};
+
+// Best-effort : croise le champ "allergens" de Jow (si présent) avec les noms
+// d'ingrédients/le nom de la recette. Ce n'est PAS une garantie médicale —
+// toujours vérifier la recette en cas d'allergie sévère.
+function _recipeHasAllergen(r, allergenKey) {
+  const keywords = ALLERGEN_KEYWORDS[allergenKey] || [allergenKey];
+  const declared = (r.allergens||[]).map(a => String(a).toLowerCase());
+  if(declared.some(a => keywords.some(k => a.includes(k)))) return true;
+  const hay = ((r.name||'') + ' ' + (r.ingredients||[]).map(i=>i.name||'').join(' ')).toLowerCase();
+  return keywords.some(k => hay.includes(k));
+}
+
+// Normalise le champ "difficulty" renvoyé par Jow (format exact non garanti :
+// chaîne FR/EN ou échelle numérique) vers 'easy' | 'medium' | 'hard' | null.
+// Une valeur inconnue renvoie null plutôt que d'exclure la recette à tort.
+function _normalizeDifficulty(raw) {
+  if(raw == null || raw === '') return null;
+  const s = String(raw).toLowerCase().trim();
+  if(['1','easy','facile','simple','débutant','debutant','beginner'].includes(s)) return 'easy';
+  if(['2','medium','moyen','intermédiaire','intermediaire','intermediate'].includes(s)) return 'medium';
+  if(['3','hard','difficile','expert','complexe','avancé','avance','advanced'].includes(s)) return 'hard';
+  return null;
+}
+
+// Lit les réglages du panneau "Options" de planification de semaine
+function _readMenuFilterSettings() {
+  return {
+    maxTime: parseInt(document.getElementById('menuMaxTime')?.value || '0') || 0,
+    cuisine: document.getElementById('menuCuisine')?.value || '',
+    weekBudget: parseFloat((document.getElementById('menuBudget')?.value || '').replace(',', '.').replace('€', '')) || 0,
+    difficulty: document.getElementById('menuDifficulty')?.value || '',
+    excludeTerms: (document.getElementById('menuAllergies')?.value || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean),
+    selectedAllergens: state.selectedAllergens || [],
+  };
+}
+
+// Applique tous les filtres "Options" (allergènes, temps max, difficulté, exclusions, budget)
+// à un lot de recettes Jow. emptyTracker (optionnel) reçoit mealLabel si le filtre
+// allergènes — seul filtre STRICT, jamais de retour en arrière — vide la liste.
+function _applyMenuFilters(recipes, settings, mealLabel, emptyTracker) {
+  let out = recipes;
+
+  // ⚠️ Allergènes : filtre STRICT par sécurité alimentaire (best-effort, pas une garantie médicale).
+  if(settings.selectedAllergens.length) {
+    out = out.filter(r => !settings.selectedAllergens.some(a => _recipeHasAllergen(r, a)));
+    if(!out.length) { if(emptyTracker) emptyTracker.push(mealLabel); return out; }
+  }
+
+  // Filtres "souples" : ignorés s'ils videraient complètement la liste
+  if(settings.maxTime > 0) {
+    const within = out.filter(r => !r.time || r.time <= settings.maxTime);
+    if(within.length) out = within;
+  }
+  if(settings.difficulty) {
+    const within = out.filter(r => { const d = _normalizeDifficulty(r.difficulty); return d === null || d === settings.difficulty; });
+    if(within.length) out = within;
+  }
+  if(settings.excludeTerms.length) {
+    const within = out.filter(r => {
+      const hay = (r.name + ' ' + (r.ingredients||[]).map(i=>i.name).join(' ')).toLowerCase();
+      return !settings.excludeTerms.some(term => hay.includes(term));
+    });
+    if(within.length) out = within;
+  }
+  if(settings.weekBudget > 0) {
+    out = [...out].sort((a,b) => (a.pricePerPortionEuro||0) - (b.pricePerPortionEuro||0));
+  }
+  return out;
+}
+
 // ── Génération IA complète ─────────────────────────────────
 async function generateAIMenuFull() {
   const btn = document.getElementById('menuGenBtn');
@@ -4368,31 +4486,34 @@ async function generateAIMenuFull() {
   const p = state.profile || {};
   const diet = state.selectedDiet[0] || p.diet || 'omnivore';
   const allergies = document.getElementById('menuAllergies')?.value || '';
-  const personnes = document.getElementById('menuPersonnes')?.value || '2';
+  const personnes = parseInt(document.getElementById('menuPersonnes')?.value || '2') || 2;
   const cals = calculateDailyCalories(p);
-  const maxTime = parseInt(document.getElementById('menuMaxTime')?.value || '0') || 0;
+  const settings = _readMenuFilterSettings();
 
-  // Map diet to Jow-compatible habits filter
-  const jowDietMap = {
-    veg: 'vegetarian', vegan: 'vegan', pesc: 'pescatarian',
-    gluten: 'glutenFree', halal: 'porkless'
-  };
-
-  // Build meal type queries based on profile & goal
+  // Build meal type queries based on profile & goal — on ajoute le type de cuisine choisi
   const mealQueries = _getMealQueriesForProfile(p, diet, allergies);
+  const cuisineSuffix = settings.cuisine ? ' ' + settings.cuisine : '';
+
+  const emptyDueToAllergen = []; // suivi des créneaux vidés par le filtre allergènes (pour avertir l'utilisateur)
 
   try {
     // Fetch recipes for each meal type in parallel
-    const [breakfastRecs, lunchRecs, dinnerRecs, snackRecs] = await Promise.all([
-      _fetchJowRecipesForType('petit dejeuner', 14, diet),
-      _fetchJowRecipesForType(mealQueries.lunch, 20, diet),
-      _fetchJowRecipesForType(mealQueries.dinner, 20, diet),
-      _fetchJowRecipesForType('collation', 10, diet),
+    const [breakfastRecsRaw, lunchRecsRaw, dinnerRecsRaw, snackRecsRaw] = await Promise.all([
+      _fetchJowRecipesForType('petit dejeuner' + cuisineSuffix, 14, diet),
+      _fetchJowRecipesForType(mealQueries.lunch + cuisineSuffix, 20, diet),
+      _fetchJowRecipesForType(mealQueries.dinner + cuisineSuffix, 20, diet),
+      _fetchJowRecipesForType('collation' + cuisineSuffix, 10, diet),
     ]);
+
+    const breakfastRecs = _applyMenuFilters(breakfastRecsRaw, settings, 'petit-déjeuner', emptyDueToAllergen);
+    const lunchRecs      = _applyMenuFilters(lunchRecsRaw, settings, 'déjeuner', emptyDueToAllergen);
+    const dinnerRecs     = _applyMenuFilters(dinnerRecsRaw, settings, 'dîner', emptyDueToAllergen);
+    const snackRecs      = _applyMenuFilters(snackRecsRaw, settings, 'collation', emptyDueToAllergen);
 
     // Build 7-day menu by selecting from fetched recipes
     const days = ['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche'];
     const dayMenus = [];
+    let weekCost = 0;
 
     for(let i = 0; i < 7; i++) {
       const b = breakfastRecs[i % breakfastRecs.length] || null;
@@ -4401,6 +4522,7 @@ async function generateAIMenuFull() {
       const snack = snackRecs[i % snackRecs.length] || null;
       const totalKcal = (b?.kcal||0) + (l?.kcal||0) + (d?.kcal||0) + (snack?.kcal||0);
       const quality = cals ? (Math.abs(totalKcal - cals) <= cals * 0.15 ? 'good' : Math.abs(totalKcal - cals) <= cals * 0.25 ? 'ok' : 'warn') : 'ok';
+      weekCost += ((b?.pricePerPortionEuro||0)+(l?.pricePerPortionEuro||0)+(d?.pricePerPortionEuro||0)+(snack?.pricePerPortionEuro||0)) * personnes;
       dayMenus.push({
         day: days[i],
         breakfast: b ? {name: b.name, emoji: '🍳', kcal: b.kcal, jowId: b.id, photo: b.photo, ingredients: b.ingredients || []} : null,
@@ -4417,7 +4539,14 @@ async function generateAIMenuFull() {
     }
 
     applyAIMenuResult({ days: dayMenus, summary: 'Menu Jow personnalisé · ' + (cals||'?') + ' kcal/jour' });
-    showToast('✅', 'Menu généré', '7 jours de recettes Jow sélectionnées');
+    let toastMsg = '7 jours de recettes Jow sélectionnées';
+    if(settings.weekBudget > 0 && weekCost > 0) {
+      toastMsg += ' · ~' + Math.round(weekCost) + '€' + (weekCost > settings.weekBudget ? ' (budget dépassé)' : ' / ' + settings.weekBudget + '€');
+    }
+    showToast('✅', 'Menu généré', toastMsg);
+    if(emptyDueToAllergen.length) {
+      showToast('⚠️', 'Allergènes', 'Aucune recette sans ' + settings.selectedAllergens.join('/') + ' trouvée pour : ' + emptyDueToAllergen.join(', ') + '. Complétez ces créneaux manuellement.');
+    }
   } catch(e) {
     showToast('⚠️', 'Erreur', 'Impossible de charger les recettes Jow: ' + e.message);
   } finally {
@@ -8951,13 +9080,18 @@ async function regenDayAI(day) {
   const p = state.profile || {};
   const diet = state.selectedDiet[0] || p.diet || 'omnivore';
   const query = _getMealQueriesForProfile(p, diet, '');
+  const settings = _readMenuFilterSettings();
+  const cuisineSuffix = settings.cuisine ? ' ' + settings.cuisine : '';
+  const emptyDueToAllergen = [];
 
   try {
     showToast('⏳', 'Jow', 'Recherche de nouvelles recettes…');
-    const [lunchRecs, dinnerRecs] = await Promise.all([
-      _fetchJowRecipesForType(query.lunch, 8, diet),
-      _fetchJowRecipesForType(query.dinner, 8, diet),
+    const [lunchRecsRaw, dinnerRecsRaw] = await Promise.all([
+      _fetchJowRecipesForType(query.lunch + cuisineSuffix, 8, diet),
+      _fetchJowRecipesForType(query.dinner + cuisineSuffix, 8, diet),
     ]);
+    const lunchRecs  = _applyMenuFilters(lunchRecsRaw, settings, 'déjeuner', emptyDueToAllergen);
+    const dinnerRecs = _applyMenuFilters(dinnerRecsRaw, settings, 'dîner', emptyDueToAllergen);
     const wm = state.weekMenu[day] || {};
     // Pick different recipes than currently selected
     const curL = (wm.lData?.recipeId || '');
@@ -8977,7 +9111,11 @@ async function regenDayAI(day) {
     saveWeekMenu();
     renderWeek && renderWeek();
     renderDayDetail && renderDayDetail();
-    showToast('✅', 'Menu mis à jour', 'Nouvelles recettes Jow sélectionnées');
+    if(emptyDueToAllergen.length) {
+      showToast('⚠️', 'Allergènes', 'Aucune recette sans ' + settings.selectedAllergens.join('/') + ' trouvée pour : ' + emptyDueToAllergen.join(', ') + '.');
+    } else {
+      showToast('✅', 'Menu mis à jour', 'Nouvelles recettes Jow sélectionnées');
+    }
   } catch(e) {
     showToast('⚠️', 'Erreur', e.message);
   } finally {
@@ -9221,6 +9359,15 @@ function toggleMenuDiet(el) {
   const val=el.dataset.v;
   if(el.classList.contains('on')) { if(!state.selectedDiet.includes(val)) state.selectedDiet.push(val); }
   else { state.selectedDiet=state.selectedDiet.filter(d=>d!==val); }
+  saveState();
+}
+
+function toggleAllergenChip(el) {
+  el.classList.toggle('on');
+  const val = el.dataset.v;
+  if(!state.selectedAllergens) state.selectedAllergens = [];
+  if(el.classList.contains('on')) { if(!state.selectedAllergens.includes(val)) state.selectedAllergens.push(val); }
+  else { state.selectedAllergens = state.selectedAllergens.filter(a=>a!==val); }
   saveState();
 }
 

@@ -4599,14 +4599,15 @@ function _dietPrefixFor(diet) {
 
 function _getMealQueriesForProfile(p, diet, allergies) {
   const goal = p.goal || 'equilibre';
-  const dietPrefix = _dietPrefixFor(diet);
+  const dp = _dietPrefixFor(diet);
 
+  // Requêtes simples et directes — Jow comprend mieux les termes courts
   const goalQueries = {
-    perte:    { lunch: dietPrefix + ' salade légère poulet légumes', dinner: dietPrefix + ' soupe légumes poisson vapeur' },
-    prise:    { lunch: dietPrefix + ' pâtes riz protéines viande', dinner: dietPrefix + ' poulet riz légumineuses' },
-    perf:     { lunch: dietPrefix + ' quinoa saumon riz protéines', dinner: dietPrefix + ' pâtes viande récupération' },
-    maintien: { lunch: dietPrefix + ' poulet légumes équilibré', dinner: dietPrefix + ' poisson légumes équilibré' },
-    equilibre:{ lunch: dietPrefix + ' plat équilibré midi', dinner: dietPrefix + ' recette soir' },
+    perte:    { lunch: (dp ? dp+' ' : '')+'salade légumes',    dinner: (dp ? dp+' ' : '')+'soupe poisson' },
+    prise:    { lunch: (dp ? dp+' ' : '')+'pâtes riz viande',  dinner: (dp ? dp+' ' : '')+'poulet riz' },
+    perf:     { lunch: (dp ? dp+' ' : '')+'quinoa saumon',     dinner: (dp ? dp+' ' : '')+'pâtes viande' },
+    maintien: { lunch: (dp ? dp+' ' : '')+'poulet légumes',    dinner: (dp ? dp+' ' : '')+'poisson légumes' },
+    equilibre:{ lunch: (dp ? dp+' ' : '')+'plat midi',         dinner: (dp ? dp+' ' : '')+'plat soir' },
   };
   return goalQueries[goal] || goalQueries.equilibre;
 }
@@ -4633,11 +4634,22 @@ async function _fetchJowRecipesForType(query, limit, diet) {
 // laisser le créneau vide.
 async function _fetchJowWithFallback(query, fallbackQuery, limit, diet) {
   let recs = await _fetchJowRecipesForType(query, limit, diet);
-  if(recs.length < 4 && fallbackQuery && fallbackQuery.trim() !== query.trim()) {
+
+  // 1er repli : si la requête principale renvoie trop peu de résultats
+  if(recs.length < 5 && fallbackQuery && fallbackQuery.trim() !== query.trim()) {
     const more = await _fetchJowRecipesForType(fallbackQuery, limit, diet);
     const seen = new Set(recs.map(r => r.id));
     recs = recs.concat(more.filter(r => !seen.has(r.id)));
   }
+
+  // 2ème repli ultra-générique : garantit un pool minimal pour éviter les
+  // répétitions même si Jow ne reconnaît pas les requêtes précédentes
+  if(recs.length < 5) {
+    const generic = await _fetchJowRecipesForType('recette', limit, diet);
+    const seen = new Set(recs.map(r => r.id));
+    recs = recs.concat(generic.filter(r => !seen.has(r.id)));
+  }
+
   return recs;
 }
 
@@ -7482,8 +7494,21 @@ function renderDayDetail() {
       return `
         <div class="meal-slot" onclick="openMealEdit(${selectedDay},'${sc.key}')" style="border-left:3px solid var(--ac);padding:0;overflow:hidden;">
           <div style="display:flex;align-items:stretch;width:100%;">
-            ${(()=>{ const md=menu[sc.key+'Data']; return md?.photo?`<img src="${md.photo}" style="width:56px;height:56px;object-fit:cover;flex-shrink:0;" onerror="this.style.display=&apos;none&apos;">`:
-              `<div style="width:56px;height:56px;background:linear-gradient(${sc.grad});display:flex;align-items:center;justify-content:center;font-size:1.2rem;flex-shrink:0;">${sc.icon}</div>`;})()}
+            ${(()=>{
+              const md = menu[sc.key+'Data'];
+              // N'affiche la photo que si bData correspond vraiment au repas affiché
+              // (évite qu'une ancienne photo Jow reste collée à "Tisane" ou autre saisie libre)
+              const mdName = (md?.name || '').replace(/^[\u{1F000}-\u{1FFFF}\u2600-\u27BF]\s*/u, '').trim();
+              const slotName = (val || '').replace(/^[\u{1F000}-\u{1FFFF}\u2600-\u27BF]\s*/u, '').trim();
+              const photoOk = md?.photo && mdName && slotName && (
+                slotName === mdName ||
+                slotName.endsWith(mdName) ||
+                slotName.includes(mdName.split(' ').slice(0,3).join(' '))
+              );
+              return photoOk
+                ? `<img src="${md.photo}" style="width:56px;height:56px;object-fit:cover;flex-shrink:0;" onerror="this.style.display=&apos;none&apos;">`
+                : `<div style="width:56px;height:56px;background:linear-gradient(${sc.grad});display:flex;align-items:center;justify-content:center;font-size:1.2rem;flex-shrink:0;">${sc.icon}</div>`;
+            })()}
             <div style="flex:1;min-width:0;padding:8px 10px;">
               <div class="meal-slot-type" style="font-size:.6rem;">${sc.label}</div>
               <div class="meal-slot-name" style="font-size:.78rem;">${val}</div>

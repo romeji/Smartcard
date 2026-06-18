@@ -4476,6 +4476,20 @@ function _applyMenuFilters(recipes, settings, mealLabel, emptyTracker) {
   return out;
 }
 
+// Sélectionne `count` recettes dans `pool` sans répéter un plat tant qu'il en
+// reste un autre disponible (mélange le "sac" complet à chaque épuisement,
+// au lieu d'un simple cycle modulo qui répète le même plat tous les N jours).
+function _pickSequence(pool, count) {
+  if(!pool || !pool.length) return new Array(count).fill(null);
+  const out = [];
+  let bag = [];
+  while(out.length < count) {
+    if(!bag.length) bag = [...pool].sort(() => Math.random() - 0.5);
+    out.push(bag.pop());
+  }
+  return out;
+}
+
 // ── Génération IA complète ─────────────────────────────────
 async function generateAIMenuFull() {
   const btn = document.getElementById('menuGenBtn');
@@ -4490,19 +4504,37 @@ async function generateAIMenuFull() {
   const cals = calculateDailyCalories(p);
   const settings = _readMenuFilterSettings();
 
-  // Build meal type queries based on profile & goal — on ajoute le type de cuisine choisi
+  // Build meal type queries based on profile & goal.
+  // La cuisine choisie ne s'applique qu'au déjeuner/dîner — jamais au petit-déj
+  // ni à la collation, qui doivent rester intacts.
   const mealQueries = _getMealQueriesForProfile(p, diet, allergies);
-  const cuisineSuffix = settings.cuisine ? ' ' + settings.cuisine : '';
+  let lunchQuery  = mealQueries.lunch;
+  let dinnerQuery = mealQueries.dinner;
+  if(settings.cuisine) {
+    // Requête simplifiée et menée par la cuisine choisie plutôt que d'empiler
+    // cuisine + régime + phrase d'objectif (trop de contraintes à la fois =
+    // trop peu de résultats Jow => les mêmes plats reviennent en boucle).
+    const dietPrefix = _dietPrefixFor(diet);
+    lunchQuery  = settings.cuisine + (dietPrefix ? ' ' + dietPrefix : '') + ' déjeuner';
+    dinnerQuery = settings.cuisine + (dietPrefix ? ' ' + dietPrefix : '') + ' dîner';
+  }
+
+  // Jour de départ : on ne touche jamais aux jours déjà passés.
+  // getDay() = 0 (dim) .. 6 (sam) ; on convertit en 1 (lun) .. 7 (dim).
+  const todayDayNum = new Date().getDay() || 7;
+  const days = ['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche'];
+  const remainingDays = days.slice(todayDayNum - 1); // ex: mardi -> Mardi..Dimanche
 
   const emptyDueToAllergen = []; // suivi des créneaux vidés par le filtre allergènes (pour avertir l'utilisateur)
 
   try {
-    // Fetch recipes for each meal type in parallel
+    // Fetch recipes for each meal type in parallel (plus de résultats demandés
+    // pour avoir un choix suffisant et limiter les répétitions sur la semaine)
     const [breakfastRecsRaw, lunchRecsRaw, dinnerRecsRaw, snackRecsRaw] = await Promise.all([
-      _fetchJowRecipesForType('petit dejeuner' + cuisineSuffix, 14, diet),
-      _fetchJowRecipesForType(mealQueries.lunch + cuisineSuffix, 20, diet),
-      _fetchJowRecipesForType(mealQueries.dinner + cuisineSuffix, 20, diet),
-      _fetchJowRecipesForType('collation' + cuisineSuffix, 10, diet),
+      _fetchJowRecipesForType('petit dejeuner', 16, diet),
+      _fetchJowRecipesForType(lunchQuery, 28, diet),
+      _fetchJowRecipesForType(dinnerQuery, 28, diet),
+      _fetchJowRecipesForType('collation', 12, diet),
     ]);
 
     const breakfastRecs = _applyMenuFilters(breakfastRecsRaw, settings, 'petit-déjeuner', emptyDueToAllergen);
@@ -4510,21 +4542,26 @@ async function generateAIMenuFull() {
     const dinnerRecs     = _applyMenuFilters(dinnerRecsRaw, settings, 'dîner', emptyDueToAllergen);
     const snackRecs      = _applyMenuFilters(snackRecsRaw, settings, 'collation', emptyDueToAllergen);
 
-    // Build 7-day menu by selecting from fetched recipes
-    const days = ['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche'];
+    // Sélection sans répétition (tant que le stock de recettes le permet)
+    const n = remainingDays.length;
+    const breakfastSeq = _pickSequence(breakfastRecs, n);
+    const lunchSeq      = _pickSequence(lunchRecs, n);
+    const dinnerSeq     = _pickSequence(dinnerRecs, n);
+    const snackSeq      = _pickSequence(snackRecs, n);
+
     const dayMenus = [];
     let weekCost = 0;
 
-    for(let i = 0; i < 7; i++) {
-      const b = breakfastRecs[i % breakfastRecs.length] || null;
-      const l = lunchRecs[i % lunchRecs.length] || null;
-      const d = dinnerRecs[(i + 3) % dinnerRecs.length] || null;
-      const snack = snackRecs[i % snackRecs.length] || null;
+    for(let i = 0; i < n; i++) {
+      const b = breakfastSeq[i];
+      const l = lunchSeq[i];
+      const d = dinnerSeq[i];
+      const snack = snackSeq[i];
       const totalKcal = (b?.kcal||0) + (l?.kcal||0) + (d?.kcal||0) + (snack?.kcal||0);
       const quality = cals ? (Math.abs(totalKcal - cals) <= cals * 0.15 ? 'good' : Math.abs(totalKcal - cals) <= cals * 0.25 ? 'ok' : 'warn') : 'ok';
       weekCost += ((b?.pricePerPortionEuro||0)+(l?.pricePerPortionEuro||0)+(d?.pricePerPortionEuro||0)+(snack?.pricePerPortionEuro||0)) * personnes;
       dayMenus.push({
-        day: days[i],
+        day: remainingDays[i],
         breakfast: b ? {name: b.name, emoji: '🍳', kcal: b.kcal, jowId: b.id, photo: b.photo, ingredients: b.ingredients || []} : null,
         lunch:     l ? {name: l.name, emoji: '🍽️', kcal: l.kcal, jowId: l.id, photo: l.photo, ingredients: l.ingredients || []} : null,
         dinner:    d ? {name: d.name, emoji: '🌙', kcal: d.kcal, jowId: d.id, photo: d.photo, ingredients: d.ingredients || []} : null,
@@ -4538,8 +4575,8 @@ async function generateAIMenuFull() {
       });
     }
 
-    applyAIMenuResult({ days: dayMenus, summary: 'Menu Jow personnalisé · ' + (cals||'?') + ' kcal/jour' });
-    let toastMsg = '7 jours de recettes Jow sélectionnées';
+    applyAIMenuResult({ days: dayMenus, startDay: todayDayNum, summary: 'Menu Jow personnalisé · ' + (cals||'?') + ' kcal/jour' });
+    let toastMsg = n + ' jour' + (n>1?'s':'') + ' de recettes Jow sélectionnées' + (todayDayNum > 1 ? ' (à partir de ce jour)' : '');
     if(settings.weekBudget > 0 && weekCost > 0) {
       toastMsg += ' · ~' + Math.round(weekCost) + '€' + (weekCost > settings.weekBudget ? ' (budget dépassé)' : ' / ' + settings.weekBudget + '€');
     }
@@ -4555,10 +4592,14 @@ async function generateAIMenuFull() {
   }
 }
 
+function _dietPrefixFor(diet) {
+  const dietMap = {veg:'végétarien', vegan:'vegan', pesc:'poisson', gluten:'sans gluten', keto:'keto', halal:'halal', omnivore:''};
+  return dietMap[diet] || '';
+}
+
 function _getMealQueriesForProfile(p, diet, allergies) {
   const goal = p.goal || 'equilibre';
-  const dietMap = {veg:'végétarien', vegan:'vegan', pesc:'poisson', gluten:'sans gluten', keto:'keto', halal:'halal', omnivore:''};
-  const dietPrefix = dietMap[diet] || '';
+  const dietPrefix = _dietPrefixFor(diet);
 
   const goalQueries = {
     perte:    { lunch: dietPrefix + ' salade légère poulet légumes', dinner: dietPrefix + ' soupe légumes poisson vapeur' },
@@ -7461,8 +7502,9 @@ function renderDayDetail() {
 
 function applyAIMenuResult(data) {
   if(!data.days) return;
+  const startDay = data.startDay || 1;
   data.days.forEach((d,i) => {
-    const dn = i + 1;
+    const dn = startDay + i;
     const fmt = m => {
       if(!m) return null;
       return {
@@ -9081,14 +9123,20 @@ async function regenDayAI(day) {
   const diet = state.selectedDiet[0] || p.diet || 'omnivore';
   const query = _getMealQueriesForProfile(p, diet, '');
   const settings = _readMenuFilterSettings();
-  const cuisineSuffix = settings.cuisine ? ' ' + settings.cuisine : '';
+  let lunchQuery  = query.lunch;
+  let dinnerQuery = query.dinner;
+  if(settings.cuisine) {
+    const dietPrefix = _dietPrefixFor(diet);
+    lunchQuery  = settings.cuisine + (dietPrefix ? ' ' + dietPrefix : '') + ' déjeuner';
+    dinnerQuery = settings.cuisine + (dietPrefix ? ' ' + dietPrefix : '') + ' dîner';
+  }
   const emptyDueToAllergen = [];
 
   try {
     showToast('⏳', 'Jow', 'Recherche de nouvelles recettes…');
     const [lunchRecsRaw, dinnerRecsRaw] = await Promise.all([
-      _fetchJowRecipesForType(query.lunch + cuisineSuffix, 8, diet),
-      _fetchJowRecipesForType(query.dinner + cuisineSuffix, 8, diet),
+      _fetchJowRecipesForType(lunchQuery, 12, diet),
+      _fetchJowRecipesForType(dinnerQuery, 12, diet),
     ]);
     const lunchRecs  = _applyMenuFilters(lunchRecsRaw, settings, 'déjeuner', emptyDueToAllergen);
     const dinnerRecs = _applyMenuFilters(dinnerRecsRaw, settings, 'dîner', emptyDueToAllergen);

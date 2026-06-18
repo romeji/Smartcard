@@ -536,8 +536,8 @@ svg{display:block;flex-shrink:0;}
 /* ══ RECETTES ══ */
 .rc-grid{display:flex;flex-direction:column;gap:10px;margin-bottom:14px;}
 .rc{background:var(--bg);border-radius:var(--r);box-shadow:var(--so);overflow:hidden;cursor:pointer;transition:all .15s;}
-.rc-img-wrap{width:100%;height:180px;overflow:hidden;background:var(--bg2);border-radius:var(--r) var(--r) 0 0;}
-.rc-img-wrap img{width:100%;height:100%;object-fit:cover;object-position:center;display:block;}
+.rc-img-wrap{width:100%;height:150px;overflow:hidden;background:var(--bg2);}
+.rc-img-wrap img{width:100%;height:100%;object-fit:cover;}
 .rc-bd{padding:12px 14px;}
 .rc-nm{font-weight:900;font-size:.92rem;margin-bottom:5px;line-height:1.3;}
 .rc-mt{font-size:.7rem;color:var(--tx2);display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px;}
@@ -927,7 +927,7 @@ svg{display:block;flex-shrink:0;}
 /* Spoonacular recipe card */
 .spoon-recipe{background:var(--bg);border-radius:var(--r);box-shadow:var(--so);overflow:hidden;cursor:pointer;transition:transform .15s,box-shadow .15s;}
 .spoon-recipe:active{transform:scale(.97);}
-.spoon-recipe-img{width:100%;height:160px;object-fit:cover;object-position:center;display:block;background:var(--bg2);}
+.spoon-recipe-img{width:100%;height:130px;object-fit:cover;background:var(--bg2);}
 .spoon-recipe-body{padding:10px 12px;}
 .spoon-recipe-name{font-weight:800;font-size:.83rem;margin-bottom:4px;line-height:1.3;}
 .spoon-recipe-meta{font-size:.65rem;color:var(--tx2);display:flex;flex-wrap:wrap;gap:6px;}
@@ -1522,6 +1522,24 @@ body.offline-mode .offline-banner{display:block;}
           <div class="empty-su">Ajoutez des aliments manuellement ou terminez une course.</div>
         </div>
 
+        <!-- IA RECETTES DEPUIS FRIGO — PREMIUM -->
+        <div id="fridgeAISection" style="display:none;margin-bottom:14px;margin-top:14px;">
+          <div id="fridgeAIWrapper" style="background:linear-gradient(135deg,rgba(108,92,231,.12),rgba(0,181,184,.08));border:1.5px solid rgba(108,92,231,.2);border-radius:var(--r);padding:14px 16px;position:relative;overflow:hidden;">
+
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+              <div style="display:flex;align-items:center;gap:8px;">
+                <div style="width:32px;height:32px;background:var(--grad);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:.9rem;flex-shrink:0;">🤖</div>
+                <div>
+                  <div style="font-weight:900;font-size:.85rem;">Recettes Jow avec mon frigo</div>
+                  <div style="font-size:.68rem;color:var(--tx2);" id="fridgeAIStatus">Cliquez pour générer des idées</div>
+                </div>
+              </div>
+              <button class="btn acc sm" id="fridgeAIBtn" onclick="generateFridgeAIRecipes()" style="flex-shrink:0;padding:9px 14px;font-size:.78rem;">✨ Générer</button>
+            </div>
+            <div id="fridgeAIResults" style="display:none;"></div>
+          </div>
+        </div>
+
         <!-- RECETTES CLASSIQUES POSSIBLES -->
         <div id="recipesSection">
           <div class="sechd" style="margin-top:4px;margin-bottom:12px;">
@@ -1532,7 +1550,7 @@ body.offline-mode .offline-banner{display:block;}
           <div class="empty" id="emptyRecipes" style="display:none;">
             <div class="empty-ic">👨‍🍳</div>
             <div class="empty-ti">Pas assez d'ingrédients</div>
-            <div class="empty-su">Ajoutez au moins 2 aliments dans votre frigo pour découvrir des recettes possibles.</div>
+            <div class="empty-su">Ajoutez au moins 2 aliments dans votre frigo — des recettes Jow.fr seront proposées automatiquement.</div>
           </div>
         </div>
       </div>
@@ -1546,7 +1564,7 @@ body.offline-mode .offline-banner{display:block;}
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
         <div>
           <div class="lg-title" style="margin-bottom:2px;">Mon Menu 📅</div>
-          <div class="lg-sub">Recettes · Planification Semaine · Nutrition</div>
+          <div class="lg-sub">Jow.fr · Recettes Françaises · Planification Semaine</div>
         </div>
         
       </div>
@@ -1630,7 +1648,7 @@ body.offline-mode .offline-banner{display:block;}
             </div>
             <div class="menu-opt-row">
               <span class="menu-opt-label">💰 Budget/sem</span>
-              <input class="inp" id="menuBudget" placeholder="~40€ (3€/repas)" style="flex:1;padding:8px 12px;font-size:.8rem;">
+              <input class="inp" id="menuBudget" placeholder="ex: 80€" style="flex:1;padding:8px 12px;font-size:.8rem;">
             </div>
             <div class="menu-opt-row">
               <span class="menu-opt-label">🚫 Exclusions</span>
@@ -1650,6 +1668,17 @@ body.offline-mode .offline-banner{display:block;}
                 <div style="font-size:.62rem;color:var(--tx3);line-height:1.4;">Filtre basé sur les données Jow + les ingrédients ; vérifiez toujours la recette en cas d'allergie sévère.</div>
               </div>
             </div>
+            <div class="menu-opt-row">
+              <span class="menu-opt-label">👥 Personnes</span>
+              <select class="inp" id="menuPersonnes" style="flex:1;padding:8px 12px;font-size:.8rem;">
+                <option value="1">1</option>
+                <option value="2" selected>2</option>
+                <option value="3">3</option>
+                <option value="4">4</option>
+                <option value="6">6</option>
+              </select>
+            </div>
+          </div>
           <div style="display:flex;gap:8px;margin-top:10px;">
             <button class="btn acc" id="menuGenBtn" onclick="generateAIMenuFull()" style="flex:1;padding:12px;border-radius:var(--rs);font-weight:800;">
               <span id="menuGenBtnTxt">✨ Générer le menu de la semaine</span>
@@ -3225,18 +3254,11 @@ function _doSwitchTab(tab) {
   if(view) {
     view.classList.add('on');
     const vb = view.querySelector('.vb');
-    const resetScroll = () => {
-      if(vb) {
-        vb.style.scrollBehavior = 'auto';
-        vb.scrollTop = 0;
-        vb.scrollLeft = 0;
-      }
-    };
+    const resetScroll = () => { if(vb) vb.scrollTop = 0; };
     resetScroll();
     requestAnimationFrame(resetScroll);
-    setTimeout(resetScroll, 50);
-    setTimeout(resetScroll, 200);
-    setTimeout(resetScroll, 500);
+    setTimeout(resetScroll, 100);
+    setTimeout(resetScroll, 400);
   }
   if(tab === 'menu') { initMenuModule(); }
 }
@@ -3289,7 +3311,13 @@ function renderFridge() {
   if(cnt) cnt.textContent = state.fridge.length + ' article(s)';
   if(countBadge) countBadge.textContent = state.fridge.length + ' aliment' + (state.fridge.length>1?'s':'');
 
-  // fridgeAISection supprimé — on n'utilise plus cette fonctionnalité
+  // Afficher/cacher section IA (si ≥3 ingrédients)
+  const aiSection = document.getElementById('fridgeAISection');
+  if(aiSection) aiSection.style.display = state.fridge.length >= 3 ? 'block' : 'none';
+  const aiStatus = document.getElementById('fridgeAIStatus');
+  if(aiStatus && state.fridge.length >= 3) {
+    aiStatus.textContent = state.fridge.length + ' ingrédients · Cliquez pour générer';
+  }
 
 
   if(!state.fridge.length) {
@@ -4462,41 +4490,6 @@ function _pickSequence(pool, count) {
   return out;
 }
 
-// Garantit que pour chaque index i, lunchSeq[i].id !== dinnerSeq[i].id
-// Si conflit, tente de permuter avec un autre index dans dinnerSeq.
-function _ensureNoCrossover(lunchSeq, dinnerSeq) {
-  const n = lunchSeq.length;
-  for(let i = 0; i < n; i++) {
-    const l = lunchSeq[i];
-    const d = dinnerSeq[i];
-    if(!l || !d) continue;
-    if(l.id === d.id || l.name === d.name) {
-      // Cherche un index j où dinnerSeq[j] est différent de lunchSeq[i]
-      let swapped = false;
-      for(let j = i + 1; j < n; j++) {
-        if(dinnerSeq[j] && dinnerSeq[j].id !== l.id && dinnerSeq[j].name !== l.name) {
-          const tmp = dinnerSeq[i];
-          dinnerSeq[i] = dinnerSeq[j];
-          dinnerSeq[j] = tmp;
-          swapped = true;
-          break;
-        }
-      }
-      // Si impossible de permuter, cherche dans lunchSeq
-      if(!swapped) {
-        for(let j = i + 1; j < n; j++) {
-          if(lunchSeq[j] && lunchSeq[j].id !== d.id && lunchSeq[j].name !== d.name) {
-            const tmp = lunchSeq[i];
-            lunchSeq[i] = lunchSeq[j];
-            lunchSeq[j] = tmp;
-            break;
-          }
-        }
-      }
-    }
-  }
-}
-
 // ── Génération IA complète ─────────────────────────────────
 async function generateAIMenuFull() {
   const btn = document.getElementById('menuGenBtn');
@@ -4507,6 +4500,7 @@ async function generateAIMenuFull() {
   const p = state.profile || {};
   const diet = state.selectedDiet[0] || p.diet || 'omnivore';
   const allergies = document.getElementById('menuAllergies')?.value || '';
+  const personnes = parseInt(document.getElementById('menuPersonnes')?.value || '2') || 2;
   const cals = calculateDailyCalories(p);
   const ldTarget = cals ? Math.round(cals * 0.65) : 0; // part déjeuner+dîner estimée du total journalier
   const settings = _readMenuFilterSettings();
@@ -4516,16 +4510,20 @@ async function generateAIMenuFull() {
   // jamais toucher au petit-déjeuner ni à la collation, qui restent gérés
   // manuellement par l'utilisateur (saisie libre / checklist, sans recette Jow).
   const mealQueries = _getMealQueriesForProfile(p, diet, allergies);
-  let lunchQuery  = mealQueries.lunch;
-  let dinnerQuery = mealQueries.dinner;
+  const dietPrefix = _dietPrefixFor(diet);
+  let lunchQuery  = mealQueries.lunch.trim();
+  let dinnerQuery = mealQueries.dinner.trim();
   if(settings.cuisine) {
     // Requête simplifiée et menée par la cuisine choisie plutôt que d'empiler
     // cuisine + régime + phrase d'objectif (trop de contraintes à la fois =
     // trop peu de résultats Jow => les mêmes plats reviennent en boucle).
-    const dietPrefix = _dietPrefixFor(diet);
-    lunchQuery  = settings.cuisine + (dietPrefix ? ' ' + dietPrefix : '') + ' déjeuner';
-    dinnerQuery = settings.cuisine + (dietPrefix ? ' ' + dietPrefix : '') + ' dîner';
+    lunchQuery  = (settings.cuisine + (dietPrefix ? ' ' + dietPrefix : '') + ' déjeuner').trim();
+    dinnerQuery = (settings.cuisine + (dietPrefix ? ' ' + dietPrefix : '') + ' dîner').trim();
   }
+  // Requêtes de repli très génériques, utilisées seulement si la requête
+  // principale renvoie trop peu de résultats (évite un créneau vide).
+  const lunchFallback  = (settings.cuisine ? settings.cuisine + ' ' : '') + (dietPrefix ? dietPrefix + ' ' : '') + 'déjeuner';
+  const dinnerFallback = (settings.cuisine ? settings.cuisine + ' ' : '') + (dietPrefix ? dietPrefix + ' ' : '') + 'dîner';
 
   // Jour de départ : on ne touche jamais aux jours déjà passés.
   // getDay() = 0 (dim) .. 6 (sam) ; on convertit en 1 (lun) .. 7 (dim).
@@ -4539,8 +4537,8 @@ async function generateAIMenuFull() {
     // Fetch recipes — uniquement déjeuner et dîner (limites plus larges
     // pour avoir un choix suffisant et limiter les répétitions sur la semaine)
     const [lunchRecsRaw, dinnerRecsRaw] = await Promise.all([
-      _fetchJowRecipesForType(lunchQuery, 28, diet),
-      _fetchJowRecipesForType(dinnerQuery, 28, diet),
+      _fetchJowWithFallback(lunchQuery, lunchFallback, 28, diet),
+      _fetchJowWithFallback(dinnerQuery, dinnerFallback, 28, diet),
     ]);
 
     const lunchRecs  = _applyMenuFilters(lunchRecsRaw, settings, 'déjeuner', emptyDueToAllergen);
@@ -4550,7 +4548,6 @@ async function generateAIMenuFull() {
     const n = remainingDays.length;
     const lunchSeq  = _pickSequence(lunchRecs, n);
     const dinnerSeq = _pickSequence(dinnerRecs, n);
-    _ensureNoCrossover(lunchSeq, dinnerSeq);
 
     const dayMenus = [];
     let weekCost = 0;
@@ -4560,7 +4557,7 @@ async function generateAIMenuFull() {
       const d = dinnerSeq[i];
       const totalKcal = (l?.kcal||0) + (d?.kcal||0);
       const quality = ldTarget ? (Math.abs(totalKcal - ldTarget) <= ldTarget * 0.18 ? 'good' : Math.abs(totalKcal - ldTarget) <= ldTarget * 0.3 ? 'ok' : 'warn') : 'ok';
-      weekCost += ((l?.pricePerPortionEuro||0)+(d?.pricePerPortionEuro||0));
+      weekCost += ((l?.pricePerPortionEuro||0)+(d?.pricePerPortionEuro||0)) * personnes;
       dayMenus.push({
         day: remainingDays[i],
         lunch:  l ? {name: l.name, emoji: '🍽️', kcal: l.kcal, jowId: l.id, photo: l.photo, ingredients: l.ingredients || []} : null,
@@ -4582,6 +4579,10 @@ async function generateAIMenuFull() {
     showToast('✅', 'Menu généré', toastMsg);
     if(emptyDueToAllergen.length) {
       showToast('⚠️', 'Allergènes', 'Aucune recette sans ' + settings.selectedAllergens.join('/') + ' trouvée pour : ' + emptyDueToAllergen.join(', ') + '. Complétez ces créneaux manuellement.');
+    }
+    if(!lunchRecs.length || !dinnerRecs.length) {
+      const missing = [!lunchRecs.length && 'déjeuner', !dinnerRecs.length && 'dîner'].filter(Boolean).join(' et ');
+      showToast('⚠️', 'Jow', 'Aucune recette trouvée pour le ' + missing + '. Essayez avec moins de filtres ou une autre cuisine.');
     }
   } catch(e) {
     showToast('⚠️', 'Erreur', 'Impossible de charger les recettes Jow: ' + e.message);
@@ -4624,6 +4625,20 @@ async function _fetchJowRecipesForType(query, limit, diet) {
   } catch(e) {
     return [];
   }
+}
+
+// Récupère des recettes pour une requête précise ; si elle ne renvoie presque
+// rien (requête trop spécifique ou backend capricieux), on complète
+// automatiquement avec une requête de repli plus générique au lieu de
+// laisser le créneau vide.
+async function _fetchJowWithFallback(query, fallbackQuery, limit, diet) {
+  let recs = await _fetchJowRecipesForType(query, limit, diet);
+  if(recs.length < 4 && fallbackQuery && fallbackQuery.trim() !== query.trim()) {
+    const more = await _fetchJowRecipesForType(fallbackQuery, limit, diet);
+    const seen = new Set(recs.map(r => r.id));
+    recs = recs.concat(more.filter(r => !seen.has(r.id)));
+  }
+  return recs;
 }
 
 
@@ -7400,7 +7415,7 @@ function renderDayDetail() {
       <div class="meal-card-ti">${dayName}</div>
       <div class="meal-card-sub" style="margin-bottom:16px;">${calTarget ? '🎯 Objectif: '+calTarget+' kcal/jour' : 'Aucun menu planifié'}</div>
       <div style="display:flex;gap:6px;flex-direction:column;">
-        <button class="btn acc" onclick="generateAIMenuFull()" style="padding:12px;border-radius:var(--rs);font-weight:800;">✨ Générer le menu de la semaine</button>
+        <button class="btn acc" onclick="generateAIMenuFull()" style="padding:12px;border-radius:var(--rs);font-weight:800;">🇫🇷 Générer avec Jow.fr</button>
         <div style="display:flex;gap:6px;">
           <button class="btn sm" style="flex:1;" onclick="openMealEdit(${selectedDay},'b')">🌅 Matin</button>
           <button class="btn sm" style="flex:1;" onclick="openMealEdit(${selectedDay},'l')">☀️ Midi</button>
@@ -7465,10 +7480,7 @@ function renderDayDetail() {
           <span style="font-size:.65rem;color:var(--tx3);">+</span>
         </div>`;
       return `
-        <div class="meal-slot" onclick="openMealEdit(${selectedDay},'${sc.key}')"
-          oncontextmenu="event.preventDefault();_previewMealSlot(${selectedDay},'${sc.key}');return false;"
-          data-longpress-day="${selectedDay}" data-longpress-slot="${sc.key}"
-          style="border-left:3px solid var(--ac);padding:0;overflow:hidden;-webkit-touch-callout:none;">
+        <div class="meal-slot" onclick="openMealEdit(${selectedDay},'${sc.key}')" style="border-left:3px solid var(--ac);padding:0;overflow:hidden;">
           <div style="display:flex;align-items:stretch;width:100%;">
             ${(()=>{ const md=menu[sc.key+'Data']; return md?.photo?`<img src="${md.photo}" style="width:56px;height:56px;object-fit:cover;flex-shrink:0;" onerror="this.style.display=&apos;none&apos;">`:
               `<div style="width:56px;height:56px;background:linear-gradient(${sc.grad});display:flex;align-items:center;justify-content:center;font-size:1.2rem;flex-shrink:0;">${sc.icon}</div>`;})()}
@@ -7478,12 +7490,10 @@ function renderDayDetail() {
               ${(()=>{
                 const md = menu[sc.key+'Data'];
                 const bits = [];
-                if(md?.kcal) bits.push('<span style="color:#ff8e53;font-weight:800;">🔥 '+md.kcal+' kcal</span>');
-                if(md?.time) bits.push('<span style="color:var(--tx2);">⏱️ '+md.time+'min</span>');
-                if(md?.prot) bits.push('<span style="color:#3498db;font-weight:800;">💪 '+md.prot+'g</span>');
-                if(md?.carb) bits.push('<span style="color:#f39c12;font-weight:800;">🍞 '+md.carb+'g</span>');
-                if(md?.fat)  bits.push('<span style="color:#27ae60;font-weight:800;">🥑 '+md.fat+'g</span>');
-                return bits.length ? '<div style="font-size:.6rem;margin-top:4px;display:flex;flex-wrap:wrap;gap:5px;">'+bits.join('')+'</div>' : '';
+                if(md?.kcal) bits.push('🔥 '+md.kcal);
+                if(md?.time) bits.push('⏱️ '+md.time+'min');
+                if(md?.prot) bits.push('💪 '+md.prot+'g');
+                return bits.length ? '<div style="font-size:.6rem;color:var(--ac);margin-top:2px;font-weight:700;">'+bits.join(' · ')+'</div>' : '';
               })()}
             </div>
             <div style="display:flex;align-items:center;gap:4px;padding:0 8px;flex-shrink:0;">
@@ -7505,62 +7515,7 @@ function renderDayDetail() {
 }
 
 
-// ── Long press sur un slot de repas → aperçu ─────────────────
-function _previewMealSlot(day, slot) {
-  const menu = state.weekMenu[day] || {};
-  const md = menu[slot+'Data'];
-  const name = menu[slot] || '';
-  if(!name) return;
-
-  const box = document.createElement('div');
-  box.style.cssText = 'position:fixed;inset:0;z-index:900;background:rgba(0,0,0,.55);backdrop-filter:blur(6px);display:flex;align-items:flex-end;justify-content:center;';
-
-  const slotLabel = {b:'🌅 Petit-déjeuner',l:'☀️ Déjeuner',d:'🌙 Dîner',snack:'🍎 Collation'}[slot] || '';
-  const photo = md?.photo ? `<img src="${md.photo}" style="width:100%;height:180px;object-fit:cover;border-radius:16px 16px 0 0;" onerror="this.style.display='none'">` : '';
-
-  const nutriBits = [];
-  if(md?.kcal) nutriBits.push(`<div style="text-align:center;background:rgba(255,142,83,.15);border-radius:10px;padding:8px 10px;"><div style="font-size:.95rem;font-weight:900;color:#ff8e53;">${md.kcal}</div><div style="font-size:.55rem;color:var(--tx2);">kcal</div></div>`);
-  if(md?.time) nutriBits.push(`<div style="text-align:center;background:var(--bg2);border-radius:10px;padding:8px 10px;"><div style="font-size:.95rem;font-weight:900;color:var(--tx);">${md.time}min</div><div style="font-size:.55rem;color:var(--tx2);">cuisson</div></div>`);
-  if(md?.prot) nutriBits.push(`<div style="text-align:center;background:rgba(52,152,219,.15);border-radius:10px;padding:8px 10px;"><div style="font-size:.95rem;font-weight:900;color:#3498db;">${md.prot}g</div><div style="font-size:.55rem;color:var(--tx2);">protéines</div></div>`);
-  if(md?.carb) nutriBits.push(`<div style="text-align:center;background:rgba(243,156,18,.15);border-radius:10px;padding:8px 10px;"><div style="font-size:.95rem;font-weight:900;color:#f39c12;">${md.carb}g</div><div style="font-size:.55rem;color:var(--tx2);">glucides</div></div>`);
-  if(md?.fat)  nutriBits.push(`<div style="text-align:center;background:rgba(39,174,96,.15);border-radius:10px;padding:8px 10px;"><div style="font-size:.95rem;font-weight:900;color:#27ae60;">${md.fat}g</div><div style="font-size:.55rem;color:var(--tx2);">lipides</div></div>`);
-
-  const ingrs = (md?.ingredients || []).slice(0,8).map(i => typeof i==='string'?i:(i.name||'')).filter(Boolean);
-  const ingHtml = ingrs.length ? `<div style="margin-top:12px;"><div style="font-size:.62rem;font-weight:800;color:var(--tx3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px;">Ingrédients</div><div style="display:flex;flex-wrap:wrap;gap:5px;">${ingrs.map(i=>`<span style="background:var(--bg2);border-radius:99px;padding:3px 10px;font-size:.68rem;font-weight:700;">${i}</span>`).join('')}</div></div>` : '';
-
-  box.innerHTML = `<div style="background:var(--bg);border-radius:22px 22px 0 0;width:100%;max-width:480px;max-height:85vh;overflow-y:auto;">
-    ${photo}
-    <div style="padding:18px 18px 32px;">
-      <div style="font-size:.65rem;font-weight:800;color:var(--ac);text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px;">${slotLabel}</div>
-      <div style="font-size:1rem;font-weight:900;margin-bottom:12px;line-height:1.3;">${name}</div>
-      ${nutriBits.length ? `<div style="display:grid;grid-template-columns:repeat(${Math.min(nutriBits.length,5)},1fr);gap:6px;">${nutriBits.join('')}</div>` : ''}
-      ${ingHtml}
-      <div style="display:flex;gap:8px;margin-top:16px;">
-        <button onclick="this.closest('[style*=fixed]').remove();openMealEdit(${day},'${slot}')" style="flex:1;padding:12px;border-radius:14px;background:var(--grad);color:#fff;font-weight:800;border:none;cursor:pointer;">✏️ Modifier</button>
-        <button onclick="this.closest('[style*=fixed]').remove()" style="flex:1;padding:12px;border-radius:14px;background:var(--bg2);color:var(--tx2);font-weight:700;border:none;cursor:pointer;">Fermer</button>
-      </div>
-    </div>
-  </div>`;
-  box.onclick = e => { if(e.target === box) box.remove(); };
-  document.body.appendChild(box);
-}
-
-// Long press tactile global sur les meal-slots
-(function() {
-  let _lpTimer = null;
-  document.addEventListener('touchstart', function(e) {
-    const slot = e.target.closest('[data-longpress-day]');
-    if(!slot) return;
-    _lpTimer = setTimeout(function() {
-      _lpTimer = null;
-      const day = parseInt(slot.dataset.longpressDay);
-      const s = slot.dataset.longpressSlot;
-      if(day && s) _previewMealSlot(day, s);
-    }, 500);
-  }, {passive:true});
-  document.addEventListener('touchend', function() { if(_lpTimer) { clearTimeout(_lpTimer); _lpTimer = null; } }, {passive:true});
-  document.addEventListener('touchmove', function() { if(_lpTimer) { clearTimeout(_lpTimer); _lpTimer = null; } }, {passive:true});
-})();
+function applyAIMenuResult(data) {
   if(!data.days) return;
   const startDay = data.startDay || 1;
   data.days.forEach((d,i) => {
@@ -9195,20 +9150,22 @@ async function regenDayAI(day) {
   const diet = state.selectedDiet[0] || p.diet || 'omnivore';
   const query = _getMealQueriesForProfile(p, diet, '');
   const settings = _readMenuFilterSettings();
-  let lunchQuery  = query.lunch;
-  let dinnerQuery = query.dinner;
+  const dietPrefix = _dietPrefixFor(diet);
+  let lunchQuery  = query.lunch.trim();
+  let dinnerQuery = query.dinner.trim();
   if(settings.cuisine) {
-    const dietPrefix = _dietPrefixFor(diet);
-    lunchQuery  = settings.cuisine + (dietPrefix ? ' ' + dietPrefix : '') + ' déjeuner';
-    dinnerQuery = settings.cuisine + (dietPrefix ? ' ' + dietPrefix : '') + ' dîner';
+    lunchQuery  = (settings.cuisine + (dietPrefix ? ' ' + dietPrefix : '') + ' déjeuner').trim();
+    dinnerQuery = (settings.cuisine + (dietPrefix ? ' ' + dietPrefix : '') + ' dîner').trim();
   }
+  const lunchFallback  = (settings.cuisine ? settings.cuisine + ' ' : '') + (dietPrefix ? dietPrefix + ' ' : '') + 'déjeuner';
+  const dinnerFallback = (settings.cuisine ? settings.cuisine + ' ' : '') + (dietPrefix ? dietPrefix + ' ' : '') + 'dîner';
   const emptyDueToAllergen = [];
 
   try {
     showToast('⏳', 'Jow', 'Recherche de nouvelles recettes…');
     const [lunchRecsRaw, dinnerRecsRaw] = await Promise.all([
-      _fetchJowRecipesForType(lunchQuery, 12, diet),
-      _fetchJowRecipesForType(dinnerQuery, 12, diet),
+      _fetchJowWithFallback(lunchQuery, lunchFallback, 12, diet),
+      _fetchJowWithFallback(dinnerQuery, dinnerFallback, 12, diet),
     ]);
     const lunchRecs  = _applyMenuFilters(lunchRecsRaw, settings, 'déjeuner', emptyDueToAllergen);
     const dinnerRecs = _applyMenuFilters(dinnerRecsRaw, settings, 'dîner', emptyDueToAllergen);

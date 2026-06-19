@@ -4544,17 +4544,28 @@ async function generateAIMenuFull() {
     const lunchRecs  = _applyMenuFilters(lunchRecsRaw, settings, 'déjeuner', emptyDueToAllergen);
     const dinnerRecs = _applyMenuFilters(dinnerRecsRaw, settings, 'dîner', emptyDueToAllergen);
 
-    // Sélection sans répétition (tant que le stock de recettes le permet)
+    // Si Jow n'a renvoyé aucune recette du tout (API indisponible, quota,
+    // réseau), on utilise le menu de démonstration intégré plutôt que de
+    // laisser la semaine vide sans explication.
+    if(!lunchRecs.length && !dinnerRecs.length) {
+      applyDemoMenu(diet);
+      showToast('ℹ️', 'Jow indisponible', 'Menu de démonstration utilisé · connectez Jow pour des recettes personnalisées');
+      return;
+    }
+
     const n = remainingDays.length;
     const lunchSeq  = _pickSequence(lunchRecs, n);
     const dinnerSeq = _pickSequence(dinnerRecs, n);
 
     const dayMenus = [];
     let weekCost = 0;
+    let mealsActuallySet = 0;
 
     for(let i = 0; i < n; i++) {
       const l = lunchSeq[i];
       const d = dinnerSeq[i];
+      if(l) mealsActuallySet++;
+      if(d) mealsActuallySet++;
       const totalKcal = (l?.kcal||0) + (d?.kcal||0);
       const quality = ldTarget ? (Math.abs(totalKcal - ldTarget) <= ldTarget * 0.18 ? 'good' : Math.abs(totalKcal - ldTarget) <= ldTarget * 0.3 ? 'ok' : 'warn') : 'ok';
       weekCost += ((l?.pricePerPortionEuro||0)+(d?.pricePerPortionEuro||0)) * personnes;
@@ -4567,22 +4578,21 @@ async function generateAIMenuFull() {
         carb: (l?.carb||0)+(d?.carb||0),
         fat:  (l?.fat||0)+(d?.fat||0),
         quality,
-        tip: quality==='good' ? 'Déjeuner + dîner bien équilibrés ✅' : quality==='warn' ? 'Ajustez les portions (déjeuner + dîner)' : ''
+        tip: quality==='good' ? 'Déjeuner + dîner bien équilibrés ✅' : quality==='warn' ? 'Ajustez les portions' : ''
       });
     }
 
-    applyAIMenuResult({ days: dayMenus, startDay: todayDayNum, summary: 'Menu Jow personnalisé · déjeuner & dîner' });
-    let toastMsg = n + ' jour' + (n>1?'s':'') + ' (déjeuner + dîner) sélectionnés' + (todayDayNum > 1 ? ' (à partir de ce jour)' : '');
-    if(settings.weekBudget > 0 && weekCost > 0) {
-      toastMsg += ' · ~' + Math.round(weekCost) + '€' + (weekCost > settings.weekBudget ? ' (budget dépassé)' : ' / ' + settings.weekBudget + '€');
+    applyAIMenuResult({ days: dayMenus, startDay: todayDayNum, summary: 'Menu Jow · déjeuner & dîner' });
+
+    if(mealsActuallySet > 0) {
+      let toastMsg = n + ' jour' + (n>1?'s':'') + ' planifiés (déjeuner + dîner)' + (todayDayNum > 1 ? ' à partir de ce jour' : '');
+      if(settings.weekBudget > 0 && weekCost > 0) {
+        toastMsg += ' · ~' + Math.round(weekCost) + '€' + (weekCost > settings.weekBudget ? ' (budget dépassé)' : ' / ' + settings.weekBudget + '€');
+      }
+      showToast('✅', 'Menu généré', toastMsg);
     }
-    showToast('✅', 'Menu généré', toastMsg);
     if(emptyDueToAllergen.length) {
       showToast('⚠️', 'Allergènes', 'Aucune recette sans ' + settings.selectedAllergens.join('/') + ' trouvée pour : ' + emptyDueToAllergen.join(', ') + '. Complétez ces créneaux manuellement.');
-    }
-    if(!lunchRecs.length || !dinnerRecs.length) {
-      const missing = [!lunchRecs.length && 'déjeuner', !dinnerRecs.length && 'dîner'].filter(Boolean).join(' et ');
-      showToast('⚠️', 'Jow', 'Aucune recette trouvée pour le ' + missing + '. Essayez avec moins de filtres ou une autre cuisine.');
     }
   } catch(e) {
     showToast('⚠️', 'Erreur', 'Impossible de charger les recettes Jow: ' + e.message);
@@ -7571,8 +7581,6 @@ function applyAIMenuResult(data) {
   saveWeekMenu();
   renderWeek && renderWeek();
   renderDayDetail && renderDayDetail();
-  showToast('✅', 'Menu généré', data.summary || '7 jours planifiés avec des recettes Jow');
-  // Show AI result zone
   const zone = document.getElementById('aiMenuResultZone');
   if(zone && data.summary) {
     zone.innerHTML = '<div style="background:rgba(46,204,113,.08);border:1px solid rgba(46,204,113,.2);border-radius:var(--rs);padding:12px 14px;margin-bottom:14px;font-size:.8rem;color:var(--gn);font-weight:700;">✅ ' + data.summary + '</div>';
@@ -7624,18 +7632,27 @@ function applyDemoMenu(diet) {
     ]
   };
   const pool = demos[diet]||demos.omnivore;
-  const DAYS_NAMES=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche'];
-  pool.forEach((d,i)=>{
-    state.weekMenu[i+1]={
-      b:d.b, l:d.l, d:d.d, snack:d.sn||null,
-      nutri:{kcal:d.kcal,prot:d.prot,carb:d.carb,fat:d.fat},
-      quality:d.q||'ok', tip:d.tip||'',
-    };
+  const todayNum = new Date().getDay() || 7; // 1=Lun … 7=Dim
+  pool.forEach((d,i) => {
+    const dn = i + 1;
+    if(dn < todayNum) return; // ne touche pas aux jours passés
+    if(!state.weekMenu[dn]) state.weekMenu[dn] = {};
+    // Uniquement déjeuner et dîner — le petit-déj et la collation restent libres
+    state.weekMenu[dn].l = d.l;
+    state.weekMenu[dn].d = d.d;
+    state.weekMenu[dn].nutri = {kcal:Math.round((d.kcal||0)*0.65), prot:Math.round((d.prot||0)*0.65), carb:Math.round((d.carb||0)*0.65), fat:Math.round((d.fat||0)*0.65)};
+    state.weekMenu[dn].quality = d.q || 'ok';
+    state.weekMenu[dn].tip = d.tip || '';
   });
-  // Fill remaining days if pool shorter
-  for(let i=pool.length;i<7;i++) {
-    const src=pool[i%pool.length];
-    state.weekMenu[i+1]={b:src.b,l:src.l,d:src.d,snack:src.sn||null,nutri:{kcal:src.kcal,prot:src.prot,carb:src.carb,fat:src.fat},quality:src.q||'ok'};
+  // Complète les jours restants si le pool est plus court que la semaine
+  for(let i = pool.length; i < 7; i++) {
+    const dn = i + 1;
+    if(dn < todayNum) continue;
+    if(!state.weekMenu[dn]) state.weekMenu[dn] = {};
+    const src = pool[i % pool.length];
+    state.weekMenu[dn].l = src.l;
+    state.weekMenu[dn].d = src.d;
+    state.weekMenu[dn].quality = src.q || 'ok';
   }
   saveWeekMenu(); renderWeek(); renderDayDetail();
   const zone=document.getElementById('aiMenuResultZone');

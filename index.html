@@ -1406,13 +1406,15 @@ body.offline-mode .offline-banner{display:block;}
 
           <!-- Zone caméra barcode -->
           <div id="barcodeCamera" style="display:none;margin-bottom:14px;">
-            <div style="background:var(--bg);border-radius:var(--rs);box-shadow:var(--si);overflow:hidden;position:relative;">
-              <video id="barcodeVideo" style="width:100%;max-height:260px;object-fit:cover;display:block;" playsinline autoplay muted></video>
-              <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:70%;height:80px;border:2px solid var(--ac);border-radius:8px;box-shadow:0 0 0 2000px rgba(0,0,0,.4);pointer-events:none;"></div>
-              <div style="position:absolute;bottom:10px;left:0;right:0;text-align:center;font-size:.72rem;font-weight:700;color:rgba(255,255,255,.9);">Centrez le code-barres dans le cadre</div>
+            <div style="background:#000;border-radius:16px;overflow:hidden;position:relative;">
+              <video id="barcodeVideo" style="width:100%;max-height:280px;object-fit:cover;display:block;" playsinline autoplay muted></video>
+              <!-- Overlay corners + scanline injectés dynamiquement par startBarcodeCamera() -->
+              <div style="position:absolute;bottom:10px;left:0;right:0;text-align:center;color:rgba(255,255,255,.85);font-size:.72rem;font-weight:700;pointer-events:none;z-index:2;">
+                Centrez le code-barres dans le cadre
+              </div>
             </div>
-            <button class="btn" style="width:100%;margin-top:8px;" onclick="stopBarcodeCamera()">✕ Arrêter le scan</button>
-            <div id="barcodeScanStatus" style="text-align:center;font-size:.78rem;color:var(--tx2);margin-top:8px;"></div>
+            <button class="btn" style="width:100%;margin-top:8px;border-radius:12px;" onclick="stopBarcodeCamera()">✕ Arrêter le scan</button>
+            <div id="barcodeScanStatus" style="text-align:center;font-size:.78rem;color:var(--tx2);margin-top:8px;min-height:20px;"></div>
           </div>
 
         </div>
@@ -3120,68 +3122,155 @@ function restoreWeekMenu(weekKey) {
   }
 }
 
-// ── 6. REAL-TIME BARCODE CAMERA ──────────────────────────
-let _cameraStream = null;
-let _barcodeInterval = null;
+// ── 6. BARCODE SCANNER (ZXing universel iOS + Android + Chrome) ──
+let _barcodeStream   = null;
+let _barcodeAnimId   = null;
+let _barcodeReader   = null;   // ZXingBrowser.BrowserMultiFormatReader instance
+let _barcodeStopping = false;
 
-async function startCameraBarcode() {
-  const btn = document.getElementById('cameraBarcodeBtn');
-  const zone = document.getElementById('cameraZone');
+async function startBarcodeCamera() {
+  if(_barcodeStream) { stopBarcodeCamera(); return; }
+  _barcodeStopping = false;
+
+  const zone   = document.getElementById('barcodeCamera');
+  const status = document.getElementById('barcodeScanStatus');
   if(!zone) return;
 
-  // Already active? Stop it.
-  if(_cameraStream) { stopCameraBarcode(); return; }
+  zone.style.display = 'block';
+  if(status) status.textContent = 'Initialisation…';
 
-  if(!('BarcodeDetector' in window)) {
-    showToast('⚠️','Non supporté','La détection de code-barres en direct nécessite Chrome/Safari récent');
+  // ── Viewfinder HTML ──────────────────────────────────────────────
+  const vf = zone.querySelector('.bc-viewfinder');
+  if(!vf) {
+    const videoWrap = zone.querySelector('[style*="position:relative"]') || zone.firstElementChild;
+    if(videoWrap) {
+      // Injecter le trait rouge animé + coin markers
+      videoWrap.insertAdjacentHTML('beforeend', `
+        <style>
+          @keyframes bcScanLine { 0%{top:12%} 50%{top:82%} 100%{top:12%} }
+          .bc-viewfinder { position:absolute;inset:0;pointer-events:none; }
+          .bc-corners { position:absolute;top:50%;left:50%;transform:translate(-50%,-55%);width:72%;height:100px; }
+          .bc-corners::before,.bc-corners::after,
+          .bc-corner-br,.bc-corner-bl { content:'';position:absolute;width:22px;height:22px;border-color:#fff;border-style:solid; }
+          .bc-corners::before { top:0;left:0;border-width:3px 0 0 3px;border-radius:4px 0 0 4px; }
+          .bc-corners::after  { top:0;right:0;border-width:3px 3px 0 0;border-radius:0 4px 0 0; }
+          .bc-corner-bl { bottom:0;left:0;border-width:0 0 3px 3px;border-radius:0 0 0 4px; }
+          .bc-corner-br { bottom:0;right:0;border-width:0 3px 3px 0;border-radius:0 0 4px 0; }
+          .bc-scanline { position:absolute;left:50%;transform:translateX(-50%);width:68%;height:2.5px;background:linear-gradient(90deg,transparent,#ff3b30,#ff3b30,transparent);border-radius:2px;box-shadow:0 0 8px 2px rgba(255,59,48,.6);animation:bcScanLine 2s ease-in-out infinite; }
+        </style>
+        <div class="bc-viewfinder">
+          <div style="position:absolute;inset:0;background:rgba(0,0,0,.45);"></div>
+          <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-55%);width:72%;height:100px;background:transparent;box-shadow:0 0 0 9999px rgba(0,0,0,.45);border-radius:4px;"></div>
+          <div class="bc-corners">
+            <div class="bc-corner-bl"></div>
+            <div class="bc-corner-br"></div>
+          </div>
+          <div class="bc-scanline"></div>
+        </div>`);
+    }
+  }
+
+  // ── Charger ZXing si pas encore disponible ───────────────────────
+  if(!window.ZXingBrowser) {
+    if(status) status.textContent = 'Chargement du scanner…';
+    await new Promise((res, rej) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/zxing-js/0.21.3/zxing-browser.min.js';
+      s.onload = res;
+      s.onerror = () => {
+        // fallback CDN
+        const s2 = document.createElement('script');
+        s2.src = 'https://unpkg.com/@zxing/browser@0.1.4/umd/index.min.js';
+        s2.onload = res; s2.onerror = rej;
+        document.head.appendChild(s2);
+      };
+      document.head.appendChild(s);
+    }).catch(() => {});
+  }
+
+  // ── Démarrer le flux caméra ───────────────────────────────────────
+  try {
+    _barcodeStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }
+    });
+  } catch(e) {
+    if(status) status.textContent = '❌ Caméra inaccessible : ' + e.message;
+    zone.style.display = 'none';
     return;
   }
 
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width:1280, height:720 } });
-    _cameraStream = stream;
-    if(btn) { btn.textContent = '⏹ Arrêter'; btn.style.background = 'var(--rd)'; btn.style.color = '#fff'; }
+  const video = document.getElementById('barcodeVideo');
+  if(!video) { stopBarcodeCamera(); return; }
+  video.srcObject = _barcodeStream;
+  await video.play().catch(()=>{});
+  if(status) status.textContent = '🔍 Cherche un code-barres…';
 
-    zone.style.display = 'block';
-    zone.innerHTML = '<div style="position:relative;border-radius:16px;overflow:hidden;background:#000;">'
-      + '<video id="barcodeVideo" autoplay playsinline muted style="width:100%;display:block;border-radius:16px;"></video>'
-      + '<div style="position:absolute;inset:20%;border:2px solid rgba(255,255,255,.8);border-radius:8px;box-shadow:0 0 0 9999px rgba(0,0,0,.3);"></div>'
-      + '<div style="position:absolute;bottom:12px;left:0;right:0;text-align:center;color:#fff;font-size:.72rem;font-weight:700;">Pointez vers un code-barres</div>'
-      + '</div>';
+  // ── Détection ─────────────────────────────────────────────────────
+  const onDetected = (code) => {
+    if(_barcodeStopping) return;
+    _barcodeStopping = true;
+    // Flash visuel
+    if(status) { status.textContent = '✅ Code détecté : ' + code; status.style.color = 'var(--gn)'; }
+    try { navigator.vibrate?.([80, 40, 80]); } catch(e) {}
+    setTimeout(() => {
+      stopBarcodeCamera();
+      const inp = document.getElementById('barcodeInput');
+      if(inp) inp.value = code;
+      lookupBarcode(code);
+    }, 300);
+  };
 
-    const video = document.getElementById('barcodeVideo');
-    video.srcObject = stream;
+  // Méthode 1 : ZXing BrowserMultiFormatReader (iOS Safari + Android Chrome)
+  if(window.ZXingBrowser?.BrowserMultiFormatReader) {
+    const Lib = window.ZXingBrowser;
+    const hints = new Map();
+    const fmts = Lib.BarcodeFormat ? [
+      Lib.BarcodeFormat.EAN_13, Lib.BarcodeFormat.EAN_8,
+      Lib.BarcodeFormat.UPC_A,  Lib.BarcodeFormat.UPC_E,
+      Lib.BarcodeFormat.CODE_128, Lib.BarcodeFormat.CODE_39,
+      Lib.BarcodeFormat.QR_CODE, Lib.BarcodeFormat.DATA_MATRIX,
+    ] : [];
+    if(fmts.length) hints.set(2, fmts); // DecodeHintType.POSSIBLE_FORMATS
 
-    const detector = new BarcodeDetector({ formats: ['ean_13','ean_8','upc_a','upc_e','code_128','code_39','qr_code'] });
-
-    _barcodeInterval = setInterval(async () => {
-      if(video.readyState !== 4) return;
-      try {
-        const codes = await detector.detect(video);
-        if(codes.length > 0) {
-          const code = codes[0].rawValue;
-          stopCameraBarcode();
-          // Fill in the barcode input
-          const inp = document.getElementById('barcodeInp');
-          if(inp) inp.value = code;
-          lookupBarcode(code);
-          showToast('✅','Code détecté', code);
-        }
-      } catch(e) {}
-    }, 400);
-
-  } catch(e) {
-    showToast('❌','Caméra','Impossible d\'accéder à la caméra: ' + e.message);
+    _barcodeReader = new Lib.BrowserMultiFormatReader(hints);
+    _barcodeReader.decodeFromVideoElement(video, (result, err) => {
+      if(result && !_barcodeStopping) onDetected(result.getText());
+    }).catch(() => {});
+    return;
   }
+
+  // Méthode 2 : BarcodeDetector natif (Chrome desktop/Android)
+  if('BarcodeDetector' in window) {
+    const detector = new BarcodeDetector({
+      formats: ['ean_13','ean_8','upc_a','upc_e','code_128','code_39','qr_code']
+    });
+    const tick = async () => {
+      if(_barcodeStopping) return;
+      if(video.readyState === 4) {
+        try {
+          const codes = await detector.detect(video);
+          if(codes.length) { onDetected(codes[0].rawValue); return; }
+        } catch(e) {}
+      }
+      _barcodeAnimId = requestAnimationFrame(tick);
+    };
+    _barcodeAnimId = requestAnimationFrame(tick);
+    return;
+  }
+
+  // Aucune méthode dispo
+  if(status) status.textContent = '⚠️ Scanner non supporté sur ce navigateur. Saisissez le code manuellement.';
 }
 
-function stopCameraBarcode() {
-  if(_barcodeInterval) { clearInterval(_barcodeInterval); _barcodeInterval = null; }
-  if(_cameraStream) { _cameraStream.getTracks().forEach(t => t.stop()); _cameraStream = null; }
-  const zone = document.getElementById('cameraZone');
-  if(zone) { zone.style.display = 'none'; zone.innerHTML = ''; }
-  const btn = document.getElementById('cameraBarcodeBtn');
-  if(btn) { btn.textContent = '📷 Caméra live'; btn.style.background = ''; btn.style.color = ''; }
+function stopBarcodeCamera() {
+  _barcodeStopping = true;
+  if(_barcodeAnimId) { cancelAnimationFrame(_barcodeAnimId); _barcodeAnimId = null; }
+  if(_barcodeReader) { try { _barcodeReader.reset(); } catch(e) {} _barcodeReader = null; }
+  if(_barcodeStream) { _barcodeStream.getTracks().forEach(t => t.stop()); _barcodeStream = null; }
+  const zone = document.getElementById('barcodeCamera');
+  if(zone) zone.style.display = 'none';
+  const status = document.getElementById('barcodeScanStatus');
+  if(status) { status.textContent = ''; status.style.color = ''; }
 }
 
 // ── 7. TABLET / DESKTOP LAYOUT ───────────────────────────
@@ -5510,31 +5599,8 @@ function _applyMDBTranslation(recipeId, translated) {
 // ═══════════════════════════════════════════════════════════
 
 // ═══════════════════════════════════════════════════════════
-// 📷 SCAN CAMÉRA AMÉLIORÉ (BarcodeDetector + ZXing fallback)
-// ═══════════════════════════════════════════════════════════
-let _barcodeDetector = null;
-let _scanActive = false;
-
-async function initBarcodeDetector() {
-  if(_barcodeDetector) return _barcodeDetector;
-  try {
-    if('BarcodeDetector' in window) {
-      const formats = await BarcodeDetector.getSupportedFormats().catch(() => ['ean_13','ean_8','upc_a','upc_e','code_128','code_39','qr_code']);
-      _barcodeDetector = new BarcodeDetector({formats});
-      console.log('[Barcode] Native BarcodeDetector ready');
-      return _barcodeDetector;
-    }
-  } catch(e) {}
-  // Fallback: ZXing
-  try {
-    if(window.ZXing) {
-      _barcodeDetector = { _zxing: true };
-      console.log('[Barcode] ZXing fallback');
-      return _barcodeDetector;
-    }
-  } catch(e) {}
-  return null;
-}
+// ── Barcode detector compat alias ───────────────────────────
+// (startBarcodeCamera / stopBarcodeCamera définis dans le bloc 6 ci-dessus)
 
 
 
@@ -6323,68 +6389,6 @@ function restoreWeekMenu(weekKey) {
     renderWeek();
     showToast('📅', 'Menu restauré', h.label);
   }
-}
-
-// ── 6. REAL-TIME BARCODE CAMERA ──────────────────────────
-
-async function startCameraBarcode() {
-  const btn = document.getElementById('cameraBarcodeBtn');
-  const zone = document.getElementById('cameraZone');
-  if(!zone) return;
-
-  // Already active? Stop it.
-  if(_cameraStream) { stopCameraBarcode(); return; }
-
-  if(!('BarcodeDetector' in window)) {
-    showToast('⚠️','Non supporté','La détection de code-barres en direct nécessite Chrome/Safari récent');
-    return;
-  }
-
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width:1280, height:720 } });
-    _cameraStream = stream;
-    if(btn) { btn.textContent = '⏹ Arrêter'; btn.style.background = 'var(--rd)'; btn.style.color = '#fff'; }
-
-    zone.style.display = 'block';
-    zone.innerHTML = '<div style="position:relative;border-radius:16px;overflow:hidden;background:#000;">'
-      + '<video id="barcodeVideo" autoplay playsinline muted style="width:100%;display:block;border-radius:16px;"></video>'
-      + '<div style="position:absolute;inset:20%;border:2px solid rgba(255,255,255,.8);border-radius:8px;box-shadow:0 0 0 9999px rgba(0,0,0,.3);"></div>'
-      + '<div style="position:absolute;bottom:12px;left:0;right:0;text-align:center;color:#fff;font-size:.72rem;font-weight:700;">Pointez vers un code-barres</div>'
-      + '</div>';
-
-    const video = document.getElementById('barcodeVideo');
-    video.srcObject = stream;
-
-    const detector = new BarcodeDetector({ formats: ['ean_13','ean_8','upc_a','upc_e','code_128','code_39','qr_code'] });
-
-    _barcodeInterval = setInterval(async () => {
-      if(video.readyState !== 4) return;
-      try {
-        const codes = await detector.detect(video);
-        if(codes.length > 0) {
-          const code = codes[0].rawValue;
-          stopCameraBarcode();
-          // Fill in the barcode input
-          const inp = document.getElementById('barcodeInp');
-          if(inp) inp.value = code;
-          lookupBarcode(code);
-          showToast('✅','Code détecté', code);
-        }
-      } catch(e) {}
-    }, 400);
-
-  } catch(e) {
-    showToast('❌','Caméra','Impossible d\'accéder à la caméra: ' + e.message);
-  }
-}
-
-function stopCameraBarcode() {
-  if(_barcodeInterval) { clearInterval(_barcodeInterval); _barcodeInterval = null; }
-  if(_cameraStream) { _cameraStream.getTracks().forEach(t => t.stop()); _cameraStream = null; }
-  const zone = document.getElementById('cameraZone');
-  if(zone) { zone.style.display = 'none'; zone.innerHTML = ''; }
-  const btn = document.getElementById('cameraBarcodeBtn');
-  if(btn) { btn.textContent = '📷 Caméra live'; btn.style.background = ''; btn.style.color = ''; }
 }
 
 // ── 7. TABLET / DESKTOP LAYOUT ───────────────────────────

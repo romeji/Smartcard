@@ -536,8 +536,8 @@ svg{display:block;flex-shrink:0;}
 /* ══ RECETTES ══ */
 .rc-grid{display:flex;flex-direction:column;gap:10px;margin-bottom:14px;}
 .rc{background:var(--bg);border-radius:var(--r);box-shadow:var(--so);overflow:hidden;cursor:pointer;transition:all .15s;}
-.rc-img-wrap{width:100%;height:180px;overflow:hidden;background:var(--bg2);border-radius:var(--r) var(--r) 0 0;}
-.rc-img-wrap img{width:100%;height:100%;object-fit:cover;object-position:center;display:block;}
+.rc-img-wrap{width:100%;aspect-ratio:16/9;overflow:hidden;background:var(--bg2);border-radius:var(--r) var(--r) 0 0;flex-shrink:0;}
+.rc-img-wrap img{width:100%;height:100%;object-fit:cover;object-position:center top;display:block;}
 .rc-bd{padding:12px 14px;}
 .rc-nm{font-weight:900;font-size:.92rem;margin-bottom:5px;line-height:1.3;}
 .rc-mt{font-size:.7rem;color:var(--tx2);display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px;}
@@ -789,7 +789,7 @@ svg{display:block;flex-shrink:0;}
 /* ══ MODALS ══ */
 .overlay{position:fixed;inset:0;background:rgba(45,26,46,.5);backdrop-filter:blur(8px);z-index:600;display:none;align-items:flex-end;justify-content:center;padding-bottom:env(safe-area-inset-bottom);}
 .overlay.on{display:flex;}
-.modal{background:var(--bg);border-radius:22px 22px 0 0;padding:20px 20px calc(24px + env(safe-area-inset-bottom));width:100%;max-width:480px;max-height:88vh;overflow-y:auto;}
+.modal{background:var(--bg);border-radius:22px 22px 0 0;padding:20px 20px 0;width:100%;max-width:480px;max-height:92vh;overflow-y:auto;-webkit-overflow-scrolling:touch;}
 .mhdl{width:36px;height:4px;background:var(--bg2);border-radius:99px;margin:0 auto 16px;}
 .modal-ti{font-size:1.1rem;font-weight:900;color:var(--tx);margin-bottom:5px;}
 .modal-su{font-size:.78rem;color:var(--tx2);margin-bottom:16px;}
@@ -927,7 +927,7 @@ svg{display:block;flex-shrink:0;}
 /* Spoonacular recipe card */
 .spoon-recipe{background:var(--bg);border-radius:var(--r);box-shadow:var(--so);overflow:hidden;cursor:pointer;transition:transform .15s,box-shadow .15s;}
 .spoon-recipe:active{transform:scale(.97);}
-.spoon-recipe-img{width:100%;height:160px;object-fit:cover;object-position:center;display:block;background:var(--bg2);border-radius:var(--r) var(--r) 0 0;}
+.spoon-recipe-img{width:100%;aspect-ratio:16/9;object-fit:cover;object-position:center top;display:block;background:var(--bg2);border-radius:var(--r) var(--r) 0 0;}
 .spoon-recipe-body{padding:10px 12px;}
 .spoon-recipe-name{font-weight:800;font-size:.83rem;margin-bottom:4px;line-height:1.3;}
 .spoon-recipe-meta{font-size:.65rem;color:var(--tx2);display:flex;flex-wrap:wrap;gap:6px;}
@@ -1898,7 +1898,7 @@ body.offline-mode .offline-banner{display:block;}
 
 <!-- ══ MODAL: DÉTAIL RECETTE ══ -->
 <div class="overlay" id="recipeDetailOverlay" onclick="if(event.target===this)closeRecipeDetail()">
-  <div class="modal" id="recipeDetailModal" style="max-height:90vh;overflow-y:auto;"></div>
+  <div class="modal" id="recipeDetailModal" style="max-height:94vh;overflow-y:auto;-webkit-overflow-scrolling:touch;"></div>
 </div>
 
 <!-- ══ MODAL: ÉDITION REPAS ══ -->
@@ -3400,7 +3400,7 @@ function _renderFridgeAIResults(recipes, results, status) {
       const photo = r.photo || null;
       return '<div style="background:var(--bg);border-radius:var(--rs);box-shadow:var(--so);margin-bottom:10px;overflow:hidden;cursor:pointer;" data-rid="' + (r.id||'') + '" data-rname="' + (r.name||'').replace(/"/g,'&quot;') + '" onclick="openRecipeDetail(this.dataset.rid||this.dataset.rname)">'
         // Photo band
-        + (photo ? '<img src="'+photo+'" style="width:100%;height:120px;object-fit:cover;" loading="lazy" onerror="this.remove()">' : '')
+        + (photo ? '<img src="'+photo+'" style="width:100%;aspect-ratio:16/9;object-fit:cover;object-position:center top;display:block;" loading="lazy" onerror="this.remove()">' : '')
         // Body
         + '<div style="padding:12px 14px;">'
         + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">'
@@ -3644,7 +3644,6 @@ ${qty}${nm}
 <img
 src="${r.photo}" data-cands="${(r.photoCandidates||[]).slice(1).join('|')}"
 loading="lazy"
-style="width:100%;height:100%;object-fit:cover;"
 onerror="_imgFallback(this,(this.dataset.cands||'').split('|').filter(Boolean))">
 </div>
 `
@@ -5226,7 +5225,7 @@ style="height:36px;object-fit:contain;"
     <div class="mhdl"></div>
     <button onclick="closeRecipeDetail()" style="display:inline-flex;align-items:center;gap:6px;background:none;border:none;cursor:pointer;color:var(--tx2);font-size:.82rem;font-weight:700;padding:0 0 12px 0;">← Retour</button>
 
-    ${recipe.photo ? `<img src="${recipe.photo}" data-cands="${(recipe.photoCandidates||[]).join('|')}" loading="lazy" style="width:calc(100% + 36px);height:200px;object-fit:cover;margin:-20px -18px 16px;border-radius:var(--r) var(--r) 0 0;" onerror="_imgFallback(this,(this.dataset.cands||'').split('|').filter(c=>c&&c!==this.src))">` : ''}
+    ${recipe.photo ? `<div style="width:calc(100% + 40px);margin:-20px -20px 16px;overflow:hidden;"><img src="${recipe.photo}" data-cands="${(recipe.photoCandidates||[]).join('|')}" loading="lazy" style="width:100%;aspect-ratio:16/9;object-fit:cover;object-position:center top;display:block;" onerror="_imgFallback(this,(this.dataset.cands||'').split('|').filter(c=>c&&c!==this.src))"></div>` : ''}
 
     <div style="font-size:1.15rem;font-weight:900;margin-bottom:6px;line-height:1.3;">${recipe.name}</div>
 
@@ -5285,7 +5284,7 @@ style="height:36px;object-fit:contain;"
     ${stepsHtml}
 
     <!-- Actions -->
-    <div style="display:flex;gap:8px;position:sticky;bottom:0;background:var(--bg);padding:10px 0;">
+    <div style="display:flex;gap:8px;position:sticky;bottom:0;z-index:10;background:var(--bg);padding:12px 0 calc(12px + env(safe-area-inset-bottom));margin-top:4px;border-top:1px solid var(--bg2);">
       <button class="btn acc" onclick="addSpoonRecipeToDay('${recipe.id}')" style="flex:1;padding:13px;border-radius:var(--rs);font-weight:800;">📅 Ajouter au menu</button>
       <button id="jowModalBm" onclick="_jowToggleBookmark('${recipe.id}')"
         style="padding:13px;border-radius:var(--rs);background:${isBookmarked?'rgba(246,211,101,.2)':'var(--bg2)'};border:none;font-size:1.1rem;cursor:pointer;"
@@ -7075,7 +7074,7 @@ function renderRecipeModal(recipe, portions, isBookmarked) {
   modal.innerHTML = `
     <div class="mhdl"></div>
     <button onclick="closeRecipeDetail()" style="display:inline-flex;align-items:center;gap:6px;background:none;border:none;cursor:pointer;color:var(--tx2);font-size:.82rem;font-weight:700;padding:0 0 12px 0;">← Retour</button>
-    ${recipe.photo ? `<img src="${recipe.photo}" data-cands="${(recipe.photoCandidates||[]).join('|')}" loading="lazy" style="width:calc(100% + 36px);height:200px;object-fit:cover;margin:-20px -18px 16px;border-radius:var(--r) var(--r) 0 0;" onerror="_imgFallback(this,(this.dataset.cands||'').split('|').filter(c=>c&&c!==this.src))">` : ''}
+    ${recipe.photo ? `<div style="width:calc(100% + 40px);margin:-20px -20px 16px;overflow:hidden;"><img src="${recipe.photo}" data-cands="${(recipe.photoCandidates||[]).join('|')}" loading="lazy" style="width:100%;aspect-ratio:16/9;object-fit:cover;object-position:center top;display:block;" onerror="_imgFallback(this,(this.dataset.cands||'').split('|').filter(c=>c&&c!==this.src))"></div>` : ''}
     <div style="font-size:1.15rem;font-weight:900;margin-bottom:10px;line-height:1.3;">${frName}</div>
 
     <!-- Sélecteur de portions -->
@@ -7121,7 +7120,7 @@ function renderRecipeModal(recipe, portions, isBookmarked) {
     </div>` : ''}
 
     <!-- Actions -->
-    <div style="display:flex;gap:8px;position:sticky;bottom:0;background:var(--bg);padding:10px 0;">
+    <div style="display:flex;gap:8px;position:sticky;bottom:0;z-index:10;background:var(--bg);padding:12px 0 calc(12px + env(safe-area-inset-bottom));border-top:1px solid var(--bg2);">
       <button class="btn acc" onclick="addSpoonRecipeToDay('${recipe.id}')" style="flex:1;padding:13px;border-radius:var(--rs);font-weight:800;">📅 Ajouter au menu</button>
       <button onclick="toggleBookmark('${recipe.id}')" style="padding:13px;border-radius:var(--rs);background:${isBookmarked?"rgba(246,211,101,.2)":"var(--bg2)"};border:none;font-size:1.1rem;cursor:pointer;">${isBookmarked?"⭐":"☆"}</button>
       ${recipe.sourceUrl ? `<a href="${recipe.sourceUrl}" target="_blank" style="padding:13px;border-radius:var(--rs);background:var(--bg2);color:var(--tx2);font-size:.75rem;display:flex;align-items:center;text-decoration:none;">🔗</a>` : ''}
@@ -7537,7 +7536,7 @@ function _previewMealSlot(day, slot) {
   const overlay = document.createElement('div');
   overlay.style.cssText = 'position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.6);backdrop-filter:blur(8px);display:flex;align-items:flex-end;justify-content:center;';
   overlay.innerHTML = `
-    <div style="background:var(--bg);border-radius:20px 20px 0 0;width:100%;max-width:500px;max-height:88vh;overflow-y:auto;">
+    <div style="background:var(--bg);border-radius:20px 20px 0 0;width:100%;max-width:500px;max-height:92vh;overflow-y:auto;-webkit-overflow-scrolling:touch;">
       ${photo}
       <div style="padding:18px 18px 36px;">
         <div style="font-size:.62rem;font-weight:900;color:var(--ac);text-transform:uppercase;letter-spacing:.9px;margin-bottom:5px;">${labels[slot]||''}</div>

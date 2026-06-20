@@ -1407,14 +1407,34 @@ body.offline-mode .offline-banner{display:block;}
           <!-- Zone caméra barcode -->
           <div id="barcodeCamera" style="display:none;margin-bottom:14px;">
             <div style="background:#000;border-radius:16px;overflow:hidden;position:relative;">
-              <video id="barcodeVideo" style="width:100%;max-height:280px;object-fit:cover;display:block;" playsinline autoplay muted></video>
-              <!-- Overlay corners + scanline injectés dynamiquement par startBarcodeCamera() -->
+              <video id="barcodeVideo" style="width:100%;max-height:300px;object-fit:cover;display:block;" playsinline autoplay muted></video>
+              <canvas id="barcodeCanvas" style="display:none;"></canvas>
+              <!-- Viewfinder overlay -->
+              <div id="barcodeOverlay" style="position:absolute;inset:0;pointer-events:none;">
+                <!-- Assombrissement autour du cadre -->
+                <svg style="position:absolute;inset:0;width:100%;height:100%;" preserveAspectRatio="none">
+                  <defs>
+                    <mask id="scanMask">
+                      <rect width="100%" height="100%" fill="white"/>
+                      <rect x="12%" y="25%" width="76%" height="50%" rx="6" fill="black"/>
+                    </mask>
+                  </defs>
+                  <rect width="100%" height="100%" fill="rgba(0,0,0,0.5)" mask="url(#scanMask)"/>
+                </svg>
+                <!-- Coins blancs -->
+                <div style="position:absolute;left:12%;top:25%;width:22px;height:22px;border-top:3px solid #fff;border-left:3px solid #fff;border-radius:4px 0 0 0;"></div>
+                <div style="position:absolute;right:12%;top:25%;width:22px;height:22px;border-top:3px solid #fff;border-right:3px solid #fff;border-radius:0 4px 0 0;"></div>
+                <div style="position:absolute;left:12%;bottom:25%;width:22px;height:22px;border-bottom:3px solid #fff;border-left:3px solid #fff;border-radius:0 0 0 4px;"></div>
+                <div style="position:absolute;right:12%;bottom:25%;width:22px;height:22px;border-bottom:3px solid #fff;border-right:3px solid #fff;border-radius:0 0 4px 0;"></div>
+                <!-- Trait rouge animé -->
+                <div id="barcodeScanLine" style="position:absolute;left:13%;width:74%;height:2px;background:linear-gradient(90deg,transparent,#ff3b30 20%,#ff3b30 80%,transparent);box-shadow:0 0 8px 2px rgba(255,59,48,.7);top:25%;"></div>
+              </div>
               <div style="position:absolute;bottom:10px;left:0;right:0;text-align:center;color:rgba(255,255,255,.85);font-size:.72rem;font-weight:700;pointer-events:none;z-index:2;">
                 Centrez le code-barres dans le cadre
               </div>
             </div>
             <button class="btn" style="width:100%;margin-top:8px;border-radius:12px;" onclick="stopBarcodeCamera()">✕ Arrêter le scan</button>
-            <div id="barcodeScanStatus" style="text-align:center;font-size:.78rem;color:var(--tx2);margin-top:8px;min-height:20px;"></div>
+            <div id="barcodeScanStatus" style="text-align:center;font-size:.78rem;color:var(--tx2);margin-top:8px;min-height:20px;font-weight:700;"></div>
           </div>
 
         </div>
@@ -2845,68 +2865,6 @@ function renderAll() {
 // ═══════════════════════════════════════════════════════════
 
 // ── 1. ONBOARDING ────────────────────────────────────────
-function checkOnboarding() {
-  try {
-    if(localStorage.getItem('sc_onboarding_done')) return;
-    setTimeout(showOnboarding, 800);
-  } catch(e) {}
-}
-
-function showOnboarding() {
-  if(document.getElementById('onboardingOverlay')) return;
-  const steps = [
-    { icon:'🛒', title:'Bienvenue sur SmartCard !', sub:'Votre assistant cuisine intelligent.', color:'#ff6b6b' },
-    { icon:'🧊', title:'Gérez votre frigo', sub:'Ajoutez vos aliments et recevez des recettes adaptées à vos stocks.', color:'#00d2c6' },
-    { icon:'📷', title:'Scannez vos produits', sub:'Photographiez vos tickets de caisse ou scannez les codes-barres pour les ajouter automatiquement.', color:'#6c5ce7' },
-    { icon:'⚙️', title:'Personnalisez votre profil', sub:'Renseignez votre profil nutritionnel pour des recommandations précises.', color:'#f39c12' },
-    { icon:'✨', title:'Prêt à commencer !', sub:'Commencez par ajouter des articles à votre liste de courses.', color:'#27ae60' },
-  ];
-  let current = 0;
-
-  const overlay = document.createElement('div');
-  overlay.id = 'onboardingOverlay';
-  overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px 24px;';
-
-  function render() {
-    const s = steps[current];
-    overlay.innerHTML = '<div style="width:100%;max-width:360px;text-align:center;">'
-      // Progress dots
-      + '<div style="display:flex;justify-content:center;gap:6px;margin-bottom:32px;">'
-      + steps.map((_,i) => '<div style="width:'+(i===current?'20':'6')+'px;height:6px;border-radius:3px;background:'+(i===current?s.color:'var(--bg2)')+';transition:all .3s;"></div>').join('')
-      + '</div>'
-      // Icon
-      + '<div style="width:100px;height:100px;border-radius:28px;background:'+s.color+';display:flex;align-items:center;justify-content:center;font-size:3rem;margin:0 auto 24px;box-shadow:0 12px 32px '+s.color+'44;">'
-      + s.icon + '</div>'
-      // Text
-      + '<div style="font-size:1.35rem;font-weight:900;margin-bottom:10px;color:var(--tx);">'+s.title+'</div>'
-      + '<div style="font-size:.9rem;color:var(--tx2);line-height:1.6;margin-bottom:36px;">'+s.sub+'</div>'
-      // Buttons
-      + '<button onclick="onboardNext()" style="width:100%;padding:16px;border:none;border-radius:16px;background:'+s.color+';color:#fff;font-weight:900;font-size:.95rem;cursor:pointer;margin-bottom:12px;">'
-      + (current < steps.length-1 ? 'Suivant →' : '🚀 Commencer') + '</button>'
-      + (current > 0 ? '<button onclick="onboardPrev()" style="width:100%;padding:12px;border:none;background:none;color:var(--tx2);font-size:.82rem;cursor:pointer;">← Précédent</button>' : '')
-      + '<button onclick="onboardSkip()" style="width:100%;padding:10px;border:none;background:none;color:var(--tx3);font-size:.75rem;cursor:pointer;">Passer</button>'
-      + '</div>';
-  }
-
-  window.onboardNext = function() {
-    if(current < steps.length - 1) { current++; render(); }
-    else onboardDone();
-  };
-  window.onboardPrev = function() { if(current > 0) { current--; render(); } };
-  window.onboardSkip = function() { onboardDone(); };
-  window.onboardDone = function() {
-    try { localStorage.setItem('sc_onboarding_done', '1'); } catch(e) {}
-    overlay.style.opacity = '0';
-    overlay.style.transition = 'opacity .4s';
-    setTimeout(() => overlay.remove(), 400);
-    // Open profile setup
-    setTimeout(() => openMenuProfile(), 500);
-  };
-
-  render();
-  document.body.appendChild(overlay);
-}
-
 // ── 2. VOICE RECOGNITION ─────────────────────────────────
 let _voiceActive = false;
 let _voiceRecognition = null;
@@ -3033,26 +2991,6 @@ const PRIX_APPROX = {
   'huile':3.5,'vinaigre':2,'sel':0.5,'sucre':1.2,'fécule':1.5,
 };
 
-function estimateRecipeCost(recipe) {
-  if(!recipe || !Array.isArray(recipe.ingredients)) return null;
-  let total = 0;
-  let found = 0;
-  recipe.ingredients.forEach(ing => {
-    const name = (typeof ing === 'string' ? ing : ing.name || '').toLowerCase();
-    const qtyStr = typeof ing === 'object' ? (ing.qty || '') : '';
-    const grams = parseFloat(qtyStr) || 150;
-    const key = Object.keys(PRIX_APPROX).find(k => name.includes(k));
-    if(key) {
-      // Prix approximatif pour la quantité
-      const pricePerKg = PRIX_APPROX[key];
-      total += (pricePerKg * grams / 1000);
-      found++;
-    }
-  });
-  if(!found) return null;
-  return { total: Math.round(total * 100) / 100, perPortion: Math.round(total / (recipe.portions || 4) * 100) / 100 };
-}
-
 function formatCost(c) {
   if(!c) return '';
   return c.toFixed(2).replace('.', ',') + ' €';
@@ -3111,142 +3049,99 @@ function renderMenuHistory() {
     + '</div>';
 }
 
-function restoreWeekMenu(weekKey) {
-  const h = (state.menuHistory||[]).find(h => h.weekKey === weekKey);
-  if(!h) return;
-  if(confirm('Restaurer le menu de "' + h.label + '" ? Le menu actuel sera remplacé.')) {
-    state.weekMenu = JSON.parse(JSON.stringify(h.snapshot));
-    saveState();
-    renderWeek();
-    showToast('📅', 'Menu restauré', h.label);
-  }
-}
-
-// ── 6. BARCODE SCANNER (ZXing universel iOS + Android + Chrome) ──
+// ── 6. BARCODE SCANNER — ZXing @0.19.1 (chargé en <head>) ───────
 let _barcodeStream   = null;
 let _barcodeAnimId   = null;
-let _barcodeReader   = null;   // ZXingBrowser.BrowserMultiFormatReader instance
+let _barcodeReader   = null;
 let _barcodeStopping = false;
+let _scanLineDir     = 1;
+let _scanLinePos     = 25; // % depuis le haut (entre 25% et 75%)
 
 async function startBarcodeCamera() {
-  if(_barcodeStream) { stopBarcodeCamera(); return; }
+  if(_barcodeReader) { stopBarcodeCamera(); return; }
   _barcodeStopping = false;
 
   const zone   = document.getElementById('barcodeCamera');
   const status = document.getElementById('barcodeScanStatus');
   if(!zone) return;
-
   zone.style.display = 'block';
-  if(status) status.textContent = 'Initialisation…';
-
-  // ── Viewfinder HTML ──────────────────────────────────────────────
-  const vf = zone.querySelector('.bc-viewfinder');
-  if(!vf) {
-    const videoWrap = zone.querySelector('[style*="position:relative"]') || zone.firstElementChild;
-    if(videoWrap) {
-      // Injecter le trait rouge animé + coin markers
-      videoWrap.insertAdjacentHTML('beforeend', `
-        <style>
-          @keyframes bcScanLine { 0%{top:12%} 50%{top:82%} 100%{top:12%} }
-          .bc-viewfinder { position:absolute;inset:0;pointer-events:none; }
-          .bc-corners { position:absolute;top:50%;left:50%;transform:translate(-50%,-55%);width:72%;height:100px; }
-          .bc-corners::before,.bc-corners::after,
-          .bc-corner-br,.bc-corner-bl { content:'';position:absolute;width:22px;height:22px;border-color:#fff;border-style:solid; }
-          .bc-corners::before { top:0;left:0;border-width:3px 0 0 3px;border-radius:4px 0 0 4px; }
-          .bc-corners::after  { top:0;right:0;border-width:3px 3px 0 0;border-radius:0 4px 0 0; }
-          .bc-corner-bl { bottom:0;left:0;border-width:0 0 3px 3px;border-radius:0 0 0 4px; }
-          .bc-corner-br { bottom:0;right:0;border-width:0 3px 3px 0;border-radius:0 0 4px 0; }
-          .bc-scanline { position:absolute;left:50%;transform:translateX(-50%);width:68%;height:2.5px;background:linear-gradient(90deg,transparent,#ff3b30,#ff3b30,transparent);border-radius:2px;box-shadow:0 0 8px 2px rgba(255,59,48,.6);animation:bcScanLine 2s ease-in-out infinite; }
-        </style>
-        <div class="bc-viewfinder">
-          <div style="position:absolute;inset:0;background:rgba(0,0,0,.45);"></div>
-          <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-55%);width:72%;height:100px;background:transparent;box-shadow:0 0 0 9999px rgba(0,0,0,.45);border-radius:4px;"></div>
-          <div class="bc-corners">
-            <div class="bc-corner-bl"></div>
-            <div class="bc-corner-br"></div>
-          </div>
-          <div class="bc-scanline"></div>
-        </div>`);
-    }
-  }
-
-  // ── Charger ZXing si pas encore disponible ───────────────────────
-  if(!window.ZXingBrowser) {
-    if(status) status.textContent = 'Chargement du scanner…';
-    await new Promise((res, rej) => {
-      const s = document.createElement('script');
-      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/zxing-js/0.21.3/zxing-browser.min.js';
-      s.onload = res;
-      s.onerror = () => {
-        // fallback CDN
-        const s2 = document.createElement('script');
-        s2.src = 'https://unpkg.com/@zxing/browser@0.1.4/umd/index.min.js';
-        s2.onload = res; s2.onerror = rej;
-        document.head.appendChild(s2);
-      };
-      document.head.appendChild(s);
-    }).catch(() => {});
-  }
-
-  // ── Démarrer le flux caméra ───────────────────────────────────────
-  try {
-    _barcodeStream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }
-    });
-  } catch(e) {
-    if(status) status.textContent = '❌ Caméra inaccessible : ' + e.message;
-    zone.style.display = 'none';
-    return;
-  }
+  if(status) status.textContent = '🔍 Démarrage scanner…';
 
   const video = document.getElementById('barcodeVideo');
-  if(!video) { stopBarcodeCamera(); return; }
-  video.srcObject = _barcodeStream;
-  await video.play().catch(()=>{});
-  if(status) status.textContent = '🔍 Cherche un code-barres…';
+  if(!video) return;
 
-  // ── Détection ─────────────────────────────────────────────────────
+  // ── Animer le trait rouge dès l'ouverture ────────────────────────
+  const scanLine = document.getElementById('barcodeScanLine');
+  _scanLinePos = 25; _scanLineDir = 1;
+  const animateLine = () => {
+    if(_barcodeStopping || !scanLine) return;
+    _scanLinePos += _scanLineDir * 0.5;
+    if(_scanLinePos >= 73) _scanLineDir = -1;
+    if(_scanLinePos <= 25) _scanLineDir = 1;
+    scanLine.style.top = _scanLinePos + '%';
+    _barcodeAnimId = requestAnimationFrame(animateLine);
+  };
+  _barcodeAnimId = requestAnimationFrame(animateLine);
+
+  // ── Callback détection ───────────────────────────────────────────
   const onDetected = (code) => {
     if(_barcodeStopping) return;
     _barcodeStopping = true;
-    // Flash visuel
-    if(status) { status.textContent = '✅ Code détecté : ' + code; status.style.color = 'var(--gn)'; }
-    try { navigator.vibrate?.([80, 40, 80]); } catch(e) {}
+    try { navigator.vibrate?.([60, 30, 60]); } catch(e) {}
+    if(status) { status.textContent = '✅ ' + code; status.style.color = '#27ae60'; }
+    const overlay = document.getElementById('barcodeOverlay');
+    if(overlay) { overlay.style.transition = 'box-shadow .15s'; overlay.style.boxShadow = 'inset 0 0 0 3px #27ae60'; }
     setTimeout(() => {
       stopBarcodeCamera();
-      const inp = document.getElementById('barcodeInput');
-      if(inp) inp.value = code;
-      lookupBarcode(code);
-    }, 300);
+      const inp = document.getElementById('barcodeInput') || document.getElementById('barcodeInp');
+      if(inp) { inp.value = code; inp.dispatchEvent(new Event('input')); }
+      if(typeof lookupBarcode === 'function') lookupBarcode(code);
+      else showToast('✅', 'Code scanné', code);
+    }, 400);
   };
+    _barcodeAnimId = requestAnimationFrame(animateLine);
 
-  // Méthode 1 : ZXing BrowserMultiFormatReader (iOS Safari + Android Chrome)
-  if(window.ZXingBrowser?.BrowserMultiFormatReader) {
-    const Lib = window.ZXingBrowser;
-    const hints = new Map();
-    const fmts = Lib.BarcodeFormat ? [
-      Lib.BarcodeFormat.EAN_13, Lib.BarcodeFormat.EAN_8,
-      Lib.BarcodeFormat.UPC_A,  Lib.BarcodeFormat.UPC_E,
-      Lib.BarcodeFormat.CODE_128, Lib.BarcodeFormat.CODE_39,
-      Lib.BarcodeFormat.QR_CODE, Lib.BarcodeFormat.DATA_MATRIX,
-    ] : [];
-    if(fmts.length) hints.set(2, fmts); // DecodeHintType.POSSIBLE_FORMATS
-
-    _barcodeReader = new Lib.BrowserMultiFormatReader(hints);
-    _barcodeReader.decodeFromVideoElement(video, (result, err) => {
-      if(result && !_barcodeStopping) onDetected(result.getText());
-    }).catch(() => {});
-    return;
+  // ── Méthode 1 : window.ZXing (chargé en <head>) ──────────────────
+  if(window.ZXing) {
+    try {
+      const hints = new Map();
+      const ZXing = window.ZXing;
+      // Formats à détecter
+      if(ZXing.BarcodeFormat) {
+        hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [
+          ZXing.BarcodeFormat.EAN_13, ZXing.BarcodeFormat.EAN_8,
+          ZXing.BarcodeFormat.UPC_A,  ZXing.BarcodeFormat.UPC_E,
+          ZXing.BarcodeFormat.CODE_128, ZXing.BarcodeFormat.CODE_39,
+          ZXing.BarcodeFormat.QR_CODE,
+        ]);
+        hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
+      }
+      _barcodeReader = new ZXing.BrowserMultiFormatReader(hints, 200);
+      // Arrêter le stream manuel - ZXing gère son propre stream
+      if(_barcodeStream) { _barcodeStream.getTracks().forEach(t => t.stop()); _barcodeStream = null; }
+      await _barcodeReader.decodeFromConstraints(
+        { video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } } },
+        video,
+        (result, err) => {
+          if(result && !_barcodeStopping) onDetected(result.getText());
+        }
+      );
+      return;
+    } catch(e) {
+      console.warn('[Barcode] ZXing err:', e);
+    }
   }
 
-  // Méthode 2 : BarcodeDetector natif (Chrome desktop/Android)
+  // ── Méthode 2 : BarcodeDetector natif (Chrome Android) ───────────
   if('BarcodeDetector' in window) {
     const detector = new BarcodeDetector({
       formats: ['ean_13','ean_8','upc_a','upc_e','code_128','code_39','qr_code']
     });
-    const tick = async () => {
+    let lastCheck = 0;
+    const tick = async (ts) => {
       if(_barcodeStopping) return;
-      if(video.readyState === 4) {
+      if(ts - lastCheck > 150 && video.readyState === 4) {
+        lastCheck = ts;
         try {
           const codes = await detector.detect(video);
           if(codes.length) { onDetected(codes[0].rawValue); return; }
@@ -3254,23 +3149,53 @@ async function startBarcodeCamera() {
       }
       _barcodeAnimId = requestAnimationFrame(tick);
     };
-    _barcodeAnimId = requestAnimationFrame(tick);
+    // Annuler l'animation scanline existante et en démarrer une nouvelle
+    cancelAnimationFrame(_barcodeAnimId);
+    const animAndScan = (ts) => {
+      if(_barcodeStopping) return;
+      // Animer le trait
+      if(scanLine) {
+        _scanLinePos += _scanLineDir * 0.4;
+        if(_scanLinePos >= 73) _scanLineDir = -1;
+        if(_scanLinePos <= 25) _scanLineDir = 1;
+        scanLine.style.top = _scanLinePos + '%';
+      }
+      // Détecter tous les ~150ms
+      if(ts - lastCheck > 150 && video.readyState === 4) {
+        lastCheck = ts;
+        detector.detect(video).then(codes => {
+          if(codes.length && !_barcodeStopping) onDetected(codes[0].rawValue);
+        }).catch(() => {});
+      }
+      _barcodeAnimId = requestAnimationFrame(animAndScan);
+    };
+    _barcodeAnimId = requestAnimationFrame(animAndScan);
     return;
   }
 
-  // Aucune méthode dispo
-  if(status) status.textContent = '⚠️ Scanner non supporté sur ce navigateur. Saisissez le code manuellement.';
+  // ── Aucune méthode ────────────────────────────────────────────────
+  if(status) status.textContent = '⚠️ Navigateur non compatible. Saisissez le code manuellement.';
 }
 
 function stopBarcodeCamera() {
   _barcodeStopping = true;
   if(_barcodeAnimId) { cancelAnimationFrame(_barcodeAnimId); _barcodeAnimId = null; }
-  if(_barcodeReader) { try { _barcodeReader.reset(); } catch(e) {} _barcodeReader = null; }
-  if(_barcodeStream) { _barcodeStream.getTracks().forEach(t => t.stop()); _barcodeStream = null; }
+  if(_barcodeReader) {
+    try { _barcodeReader.reset(); } catch(e) {}
+    _barcodeReader = null;
+  }
+  if(_barcodeStream) {
+    _barcodeStream.getTracks().forEach(t => t.stop());
+    _barcodeStream = null;
+  }
+  const video = document.getElementById('barcodeVideo');
+  if(video) { try { video.srcObject = null; } catch(e) {} }
   const zone = document.getElementById('barcodeCamera');
   if(zone) zone.style.display = 'none';
   const status = document.getElementById('barcodeScanStatus');
   if(status) { status.textContent = ''; status.style.color = ''; }
+  const overlay = document.getElementById('barcodeOverlay');
+  if(overlay) { overlay.style.boxShadow = ''; }
 }
 
 // ── 7. TABLET / DESKTOP LAYOUT ───────────────────────────
@@ -6122,284 +6047,6 @@ function getPremiumBadge() {
 
 
 // ═══════════════════════════════════════════════════════════
-// 🚀 NOUVELLES FONCTIONNALITÉS
-// ═══════════════════════════════════════════════════════════
-
-// ── 1. ONBOARDING ────────────────────────────────────────
-function checkOnboarding() {
-  try {
-    if(localStorage.getItem('sc_onboarding_done')) return;
-    setTimeout(showOnboarding, 800);
-  } catch(e) {}
-}
-
-function showOnboarding() {
-  if(document.getElementById('onboardingOverlay')) return;
-  const steps = [
-    { icon:'🛒', title:'Bienvenue sur SmartCard !', sub:'Votre assistant cuisine intelligent.', color:'#ff6b6b' },
-    { icon:'🧊', title:'Gérez votre frigo', sub:'Ajoutez vos aliments et recevez des recettes adaptées à vos stocks.', color:'#00d2c6' },
-    { icon:'📷', title:'Scannez vos produits', sub:'Photographiez vos tickets de caisse ou scannez les codes-barres pour les ajouter automatiquement.', color:'#6c5ce7' },
-    { icon:'⚙️', title:'Personnalisez votre profil', sub:'Renseignez votre profil nutritionnel pour des recommandations précises.', color:'#f39c12' },
-    { icon:'✨', title:'Prêt à commencer !', sub:'Commencez par ajouter des articles à votre liste de courses.', color:'#27ae60' },
-  ];
-  let current = 0;
-
-  const overlay = document.createElement('div');
-  overlay.id = 'onboardingOverlay';
-  overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px 24px;';
-
-  function render() {
-    const s = steps[current];
-    overlay.innerHTML = '<div style="width:100%;max-width:360px;text-align:center;">'
-      // Progress dots
-      + '<div style="display:flex;justify-content:center;gap:6px;margin-bottom:32px;">'
-      + steps.map((_,i) => '<div style="width:'+(i===current?'20':'6')+'px;height:6px;border-radius:3px;background:'+(i===current?s.color:'var(--bg2)')+';transition:all .3s;"></div>').join('')
-      + '</div>'
-      // Icon
-      + '<div style="width:100px;height:100px;border-radius:28px;background:'+s.color+';display:flex;align-items:center;justify-content:center;font-size:3rem;margin:0 auto 24px;box-shadow:0 12px 32px '+s.color+'44;">'
-      + s.icon + '</div>'
-      // Text
-      + '<div style="font-size:1.35rem;font-weight:900;margin-bottom:10px;color:var(--tx);">'+s.title+'</div>'
-      + '<div style="font-size:.9rem;color:var(--tx2);line-height:1.6;margin-bottom:36px;">'+s.sub+'</div>'
-      // Buttons
-      + '<button onclick="onboardNext()" style="width:100%;padding:16px;border:none;border-radius:16px;background:'+s.color+';color:#fff;font-weight:900;font-size:.95rem;cursor:pointer;margin-bottom:12px;">'
-      + (current < steps.length-1 ? 'Suivant →' : '🚀 Commencer') + '</button>'
-      + (current > 0 ? '<button onclick="onboardPrev()" style="width:100%;padding:12px;border:none;background:none;color:var(--tx2);font-size:.82rem;cursor:pointer;">← Précédent</button>' : '')
-      + '<button onclick="onboardSkip()" style="width:100%;padding:10px;border:none;background:none;color:var(--tx3);font-size:.75rem;cursor:pointer;">Passer</button>'
-      + '</div>';
-  }
-
-  window.onboardNext = function() {
-    if(current < steps.length - 1) { current++; render(); }
-    else onboardDone();
-  };
-  window.onboardPrev = function() { if(current > 0) { current--; render(); } };
-  window.onboardSkip = function() { onboardDone(); };
-  window.onboardDone = function() {
-    try { localStorage.setItem('sc_onboarding_done', '1'); } catch(e) {}
-    overlay.style.opacity = '0';
-    overlay.style.transition = 'opacity .4s';
-    setTimeout(() => overlay.remove(), 400);
-    // Open profile setup
-    setTimeout(() => openMenuProfile(), 500);
-  };
-
-  render();
-  document.body.appendChild(overlay);
-}
-
-// ── 2. VOICE RECOGNITION ─────────────────────────────────
-
-function initVoice() {
-  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if(!SR) return false;
-  _voiceRecognition = new SR();
-  _voiceRecognition.lang = 'fr-FR';
-  _voiceRecognition.interimResults = false;
-  _voiceRecognition.maxAlternatives = 1;
-  _voiceRecognition.onresult = handleVoiceResult;
-  _voiceRecognition.onerror = (e) => {
-    _voiceActive = false;
-    updateVoiceBtn(false);
-    if(e.error !== 'aborted') showToast('🎤','Erreur voix', e.error);
-  };
-  _voiceRecognition.onend = () => { _voiceActive = false; updateVoiceBtn(false); };
-  return true;
-}
-
-function toggleVoice(context) {
-  if(!initVoice()) { showToast('⚠️','Non supporté','La reconnaissance vocale n\'est pas disponible sur ce navigateur'); return; }
-  if(_voiceActive) {
-    _voiceRecognition.abort();
-    _voiceActive = false;
-    updateVoiceBtn(false);
-    return;
-  }
-  _voiceActive = true;
-  window._voiceContext = context || 'liste';
-  updateVoiceBtn(true);
-  _voiceRecognition.start();
-  showToast('🎤','Écoute…','Dites un aliment ou article');
-}
-
-function updateVoiceBtn(active) {
-  document.querySelectorAll('.voice-btn').forEach(b => {
-    b.style.background = active ? 'var(--rd)' : '';
-    b.style.color = active ? '#fff' : '';
-    b.textContent = active ? '🔴' : '🎤';
-  });
-}
-
-function handleVoiceResult(event) {
-  const transcript = event.results[0][0].transcript.toLowerCase().trim();
-  console.log('[Voice]', transcript, 'ctx:', window._voiceContext);
-  const ctx = window._voiceContext || 'liste';
-  if(ctx === 'frigo') {
-    // Parse "ajoute X" or just "X"
-    const name = transcript.replace(/^(ajoute|mets|rajoute|met|ajouter)\s+/i, '').trim();
-    addFridgeItemByName(name);
-    showToast('🧊', name, 'Ajouté au frigo');
-  } else {
-    const name = transcript.replace(/^(ajoute|mets|rajoute|met|ajouter)\s+/i, '').trim();
-    addItemByName(name);
-    showToast('🛒', name, 'Ajouté à la liste');
-  }
-}
-
-function addFridgeItemByName(name) {
-  const prod = (typeof PRODUCTS !== 'undefined' ? PRODUCTS : []).find(p => p.name.toLowerCase().includes(name));
-  const emoji = prod ? prod.emoji : '🛍️';
-  state.fridge.push({ id:'f'+Date.now(), name: prod ? prod.name : name, emoji, qty:1, addedAt:Date.now() });
-  saveFridge();
-  renderFridge();
-}
-
-// ── 3. SHARE LIST ─────────────────────────────────────────
-function shareList() {
-  const items = state.items.filter(i => !i.checked);
-  if(!items.length) { showToast('ℹ️','Liste vide','Ajoutez des articles avant de partager'); return; }
-
-  const text = '🛒 Ma liste de courses SmartCard\n\n'
-    + items.map(i => '• ' + (i.emoji||'') + ' ' + i.name + (i.qty > 1 ? ' ×'+i.qty : '')).join('\n')
-    + '\n\nGénéré avec SmartCard 🍽️';
-
-  if(navigator.share) {
-    navigator.share({ title: 'Ma liste de courses', text }).catch(() => copyTextToClipboard(text));
-  } else {
-    copyTextToClipboard(text);
-    showToast('📋','Copié !','La liste est dans votre presse-papier');
-  }
-}
-
-function copyTextToClipboard(text) {
-  navigator.clipboard?.writeText(text).catch(() => {
-    const ta = document.createElement('textarea');
-    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
-    document.body.appendChild(ta); ta.select();
-    document.execCommand('copy'); ta.remove();
-  });
-}
-
-function showQRCode(content, title) {
-  // Generate QR using a free API
-  const url = 'https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=' + encodeURIComponent(content);
-  const overlay = document.createElement('div');
-  overlay.style.cssText = 'position:fixed;inset:0;z-index:900;background:rgba(0,0,0,.6);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;';
-  overlay.innerHTML = '<div style="background:var(--bg);border-radius:20px;padding:24px;text-align:center;max-width:280px;width:90%;">'
-    + '<div style="font-weight:900;font-size:1rem;margin-bottom:16px;">'+title+'</div>'
-    + '<img src="'+url+'" style="width:200px;height:200px;border-radius:12px;margin-bottom:16px;" alt="QR Code">'
-    + '<div style="font-size:.72rem;color:var(--tx2);margin-bottom:16px;">Scannez ce code pour accéder à la liste</div>'
-    + '<button onclick="this.closest(\'[style*=fixed]\').remove()" class="btn" style="width:100%;padding:12px;">Fermer</button>'
-    + '</div>';
-  overlay.onclick = e => { if(e.target === overlay) overlay.remove(); };
-  document.body.appendChild(overlay);
-}
-
-function shareQRList() {
-  const items = state.items.filter(i => !i.checked);
-  if(!items.length) { showToast('ℹ️','Liste vide','Rien à partager'); return; }
-  const text = items.map(i => (i.emoji||'') + ' ' + i.name).join('\n');
-  showQRCode(text, '📲 Ma liste de courses');
-}
-
-function estimateRecipeCost(recipe) {
-  if(!recipe || !Array.isArray(recipe.ingredients)) return null;
-  let total = 0;
-  let found = 0;
-  recipe.ingredients.forEach(ing => {
-    const name = (typeof ing === 'string' ? ing : ing.name || '').toLowerCase();
-    const qtyStr = typeof ing === 'object' ? (ing.qty || '') : '';
-    const grams = parseFloat(qtyStr) || 150;
-    const key = Object.keys(PRIX_APPROX).find(k => name.includes(k));
-    if(key) {
-      // Prix approximatif pour la quantité
-      const pricePerKg = PRIX_APPROX[key];
-      total += (pricePerKg * grams / 1000);
-      found++;
-    }
-  });
-  if(!found) return null;
-  return { total: Math.round(total * 100) / 100, perPortion: Math.round(total / (recipe.portions || 4) * 100) / 100 };
-}
-
-function formatCost(c) {
-  if(!c) return '';
-  return c.toFixed(2).replace('.', ',') + ' €';
-}
-
-// ── 5. MENU HISTORY ───────────────────────────────────────
-function saveCurrentWeekToHistory() {
-  const menu = state.weekMenu;
-  const hasData = Object.values(menu).some(d => d && (d.b || d.l || d.d));
-  if(!hasData) return;
-  if(!state.menuHistory) state.menuHistory = [];
-  // Check if this week already saved
-  const weekKey = _getCurrentWeekKey();
-  if(state.menuHistory.some(h => h.weekKey === weekKey)) return;
-  // Calculate average nutrition
-  const days = Object.values(menu).filter(d => d && d.nutri && d.nutri.kcal);
-  const avgKcal = days.length ? Math.round(days.reduce((s,d)=>s+(d.nutri.kcal||0),0)/days.length) : 0;
-  state.menuHistory.unshift({
-    weekKey,
-    savedAt: Date.now(),
-    label: _getWeekLabel(),
-    avgKcal,
-    daysCount: Object.values(menu).filter(d=>d&&(d.l||d.d)).length,
-    snapshot: JSON.parse(JSON.stringify(menu)),
-  });
-  // Keep max 8 weeks
-  if(state.menuHistory.length > 8) state.menuHistory = state.menuHistory.slice(0, 8);
-  saveState();
-}
-
-function _getCurrentWeekKey() {
-  const now = new Date();
-  const startOfYear = new Date(now.getFullYear(), 0, 1);
-  const week = Math.ceil(((now - startOfYear) / 86400000 + startOfYear.getDay() + 1) / 7);
-  return now.getFullYear() + '-W' + week;
-}
-
-function _getWeekLabel() {
-  const now = new Date();
-  const day = now.getDate();
-  const months = ['jan','fév','mar','avr','mai','jun','jul','aoû','sep','oct','nov','déc'];
-  return 'Semaine du ' + day + ' ' + months[now.getMonth()];
-}
-
-function renderMenuHistory() {
-  if(!state.menuHistory || !state.menuHistory.length) return '';
-  return '<div style="margin-top:14px;">'
-    + '<div style="font-weight:900;font-size:.85rem;margin-bottom:10px;">📚 Semaines précédentes</div>'
-    + state.menuHistory.map(h => '<div style="background:var(--bg2);border-radius:var(--rs);padding:12px 14px;margin-bottom:6px;display:flex;align-items:center;gap:12px;cursor:pointer;" onclick="restoreWeekMenu('+JSON.stringify(h.weekKey)+')">'
-      + '<div style="flex:1;">'
-      + '<div style="font-weight:800;font-size:.82rem;">'+h.label+'</div>'
-      + '<div style="font-size:.68rem;color:var(--tx2);">'+h.daysCount+' jours · '+(h.avgKcal ? h.avgKcal+' kcal/j moy' : '')+'</div>'
-      + '</div>'
-      + '<button style="background:none;border:none;font-size:.72rem;color:var(--ac);font-weight:800;cursor:pointer;">Restaurer</button>'
-      + '</div>').join('')
-    + '</div>';
-}
-
-function restoreWeekMenu(weekKey) {
-  const h = (state.menuHistory||[]).find(h => h.weekKey === weekKey);
-  if(!h) return;
-  if(confirm('Restaurer le menu de "' + h.label + '" ? Le menu actuel sera remplacé.')) {
-    state.weekMenu = JSON.parse(JSON.stringify(h.snapshot));
-    saveState();
-    renderWeek();
-    showToast('📅', 'Menu restauré', h.label);
-  }
-}
-
-// ── 7. TABLET / DESKTOP LAYOUT ───────────────────────────
-function applyTabletLayout() {
-  const isWide = window.innerWidth >= 768;
-  document.body.classList.toggle('tablet-layout', isWide);
-}
-window.addEventListener('resize', applyTabletLayout);
-applyTabletLayout();
-
-
 // ═══════════════════════════════════════════════════════════
 // 📸 RECONNAISSANCE PHOTO FRIGO — Gemini Vision
 // ═══════════════════════════════════════════════════════════
@@ -8282,31 +7929,6 @@ function openCreateRecipeModal(editRecipe) {
 }
 
 // ── Création recette : helpers ──────────────────────────────
-function crHandlePhoto(input) {
-  const file = input.files[0];
-  if(!file) return;
-  // Validate: max 5MB
-  if(file.size > 5 * 1024 * 1024) { showToast('⚠️', 'Image trop lourde', 'Maximum 5 Mo'); return; }
-  const reader = new FileReader();
-  reader.onload = e => {
-    window._crPhotoData = e.target.result;
-    // Update preview (works for both id variants)
-    const prev = document.getElementById('crPhotoPreview');
-    if(prev) {
-      prev.style.border = 'none';
-      prev.style.fontSize = '0';
-      prev.innerHTML = '<img src="'+e.target.result+'" style="width:100%;height:100%;object-fit:cover;border-radius:calc(var(--rs) - 2px);">';
-    }
-    // Show delete button
-    const delBtn = document.getElementById('crPhotoDelBtn');
-    if(delBtn) delBtn.style.display = '';
-    // Also update old-style preview if present
-    const oldPrev = document.getElementById('crPhotoPreviewImg');
-    if(oldPrev) { oldPrev.src = e.target.result; oldPrev.style.display = 'block'; }
-  };
-  reader.readAsDataURL(file);
-}
-
 function crDeletePhoto() {
   window._crPhotoData = null;
   const prev = document.getElementById('crPhotoPreview');

@@ -1387,11 +1387,10 @@ body.offline-mode .offline-banner{display:block;}
         <!-- ═══ MODULE CODE-BARRES ═══ -->
         <div id="scanModBarcode" style="display:none;">
 
-          <!-- Barre de recherche manuelle -->
           <div class="card mb14">
             <div style="font-weight:800;font-size:.88rem;margin-bottom:10px;">🔍 Scanner ou saisir un code-barres</div>
             <div style="display:flex;gap:8px;margin-bottom:10px;">
-              <input class="inp" id="barcodeInput" type="text" inputmode="numeric" pattern="[0-9]*"
+              <input class="inp" id="barcodeInput" type="text" inputmode="numeric"
                 placeholder="Ex: 3017620422003 (Nutella)"
                 onkeydown="if(event.key==='Enter')lookupBarcode()"
                 style="flex:1;letter-spacing:2px;">
@@ -1402,37 +1401,40 @@ body.offline-mode .offline-banner{display:block;}
             </button>
           </div>
 
-          <!-- Zone scanner — toujours dans le DOM, juste cachée -->
-          <div id="barcodeCamera" style="display:none;margin-bottom:14px;">
-            <!-- Wrapper avec hauteur fixe pour que l'overlay fonctionne -->
-            <div id="barcodeCameraWrap" style="position:relative;width:100%;height:280px;border-radius:16px;overflow:hidden;background:#111;">
-              <video id="barcodeVideo" playsinline autoplay muted
-                style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;"></video>
-              <!-- Masque sombre autour du rectangle de scan -->
-              <div style="position:absolute;inset:0;pointer-events:none;">
-                <!-- Bandes sombres haut/bas/gauche/droite -->
-                <div style="position:absolute;top:0;left:0;right:0;height:25%;background:rgba(0,0,0,.55);"></div>
-                <div style="position:absolute;bottom:0;left:0;right:0;height:25%;background:rgba(0,0,0,.55);"></div>
-                <div style="position:absolute;top:25%;bottom:25%;left:0;width:8%;background:rgba(0,0,0,.55);"></div>
-                <div style="position:absolute;top:25%;bottom:25%;right:0;width:8%;background:rgba(0,0,0,.55);"></div>
-              </div>
-              <!-- Coins du rectangle -->
-              <div style="position:absolute;top:25%;left:8%;width:22px;height:22px;border-top:3px solid #fff;border-left:3px solid #fff;border-radius:3px 0 0 0;pointer-events:none;"></div>
-              <div style="position:absolute;top:25%;right:8%;width:22px;height:22px;border-top:3px solid #fff;border-right:3px solid #fff;border-radius:0 3px 0 0;pointer-events:none;"></div>
-              <div style="position:absolute;bottom:25%;left:8%;width:22px;height:22px;border-bottom:3px solid #fff;border-left:3px solid #fff;border-radius:0 0 0 3px;pointer-events:none;"></div>
-              <div style="position:absolute;bottom:25%;right:8%;width:22px;height:22px;border-bottom:3px solid #fff;border-right:3px solid #fff;border-radius:0 0 3px 0;pointer-events:none;"></div>
+          <!-- Wrapper scanner — Html5Qrcode injecte la vidéo ici -->
+          <div id="barcodeCamera" style="display:none;margin-bottom:14px;position:relative;">
+            <style>
+              /* Masquer l'UI interne de Html5Qrcode, garder seulement la vidéo */
+              #bcQrRegion { border-radius:16px; overflow:hidden; background:#111; }
+              #bcQrRegion video { width:100% !important; height:280px !important; object-fit:cover !important; display:block !important; border-radius:16px !important; }
+              #bcQrRegion img { display:none !important; }
+              #bcQrRegion__dashboard { display:none !important; }
+              #bcQrRegion__scan_region > img { display:none !important; }
+              #bcQrRegion__scan_region { border:none !important; box-shadow:none !important; }
+            </style>
+            <div id="bcQrRegion" style="width:100%;"></div>
+
+            <!-- Overlay viewfinder par-dessus la vidéo -->
+            <div style="position:absolute;top:0;left:0;right:0;height:280px;pointer-events:none;border-radius:16px;overflow:hidden;">
+              <!-- Bandes sombres autour du rectangle -->
+              <div style="position:absolute;top:0;left:0;right:0;height:22%;background:rgba(0,0,0,.55);"></div>
+              <div style="position:absolute;bottom:0;left:0;right:0;height:22%;background:rgba(0,0,0,.55);"></div>
+              <div style="position:absolute;top:22%;bottom:22%;left:0;width:6%;background:rgba(0,0,0,.55);"></div>
+              <div style="position:absolute;top:22%;bottom:22%;right:0;width:6%;background:rgba(0,0,0,.55);"></div>
+              <!-- Coins blancs -->
+              <div style="position:absolute;top:22%;left:6%;width:20px;height:20px;border-top:3px solid #fff;border-left:3px solid #fff;border-radius:3px 0 0 0;"></div>
+              <div style="position:absolute;top:22%;right:6%;width:20px;height:20px;border-top:3px solid #fff;border-right:3px solid #fff;border-radius:0 3px 0 0;"></div>
+              <div style="position:absolute;bottom:22%;left:6%;width:20px;height:20px;border-bottom:3px solid #fff;border-left:3px solid #fff;border-radius:0 0 0 3px;"></div>
+              <div style="position:absolute;bottom:22%;right:6%;width:20px;height:20px;border-bottom:3px solid #fff;border-right:3px solid #fff;border-radius:0 0 3px 0;"></div>
               <!-- Trait rouge animé -->
-              <div id="barcodeScanLine" style="position:absolute;left:9%;width:82%;height:2px;
-                background:linear-gradient(90deg,transparent,#ff3b30 10%,#ff3b30 90%,transparent);
-                box-shadow:0 0 8px 2px rgba(255,59,48,.7);pointer-events:none;top:25%;"></div>
+              <div id="barcodeScanLine" style="position:absolute;left:7%;width:86%;height:2px;background:linear-gradient(90deg,transparent,#ff3b30 10%,#ff3b30 90%,transparent);box-shadow:0 0 8px 2px rgba(255,59,48,.7);top:22%;transition:top 0s;"></div>
+              <!-- Flash vert -->
+              <div id="barcodeFlash" style="position:absolute;inset:0;background:transparent;border-radius:16px;transition:background .3s;"></div>
               <!-- Label -->
-              <div style="position:absolute;bottom:8px;left:0;right:0;text-align:center;color:rgba(255,255,255,.9);font-size:.68rem;font-weight:700;pointer-events:none;text-shadow:0 1px 3px #000;">
-                Centrez le code-barres dans le rectangle
-              </div>
-              <!-- Flash vert détection -->
-              <div id="barcodeFlash" style="position:absolute;inset:0;background:rgba(39,174,96,0);pointer-events:none;transition:background .2s;border-radius:16px;"></div>
+              <div style="position:absolute;bottom:6px;left:0;right:0;text-align:center;color:rgba(255,255,255,.9);font-size:.68rem;font-weight:700;text-shadow:0 1px 3px #000;">Centrez le code-barres dans le rectangle</div>
             </div>
-            <div id="barcodeScanStatus" style="text-align:center;font-size:.8rem;font-weight:700;margin-top:10px;min-height:22px;"></div>
+
+            <div id="barcodeScanStatus" style="text-align:center;font-size:.8rem;font-weight:700;margin-top:10px;min-height:22px;color:var(--tx2);"></div>
             <button class="btn" style="width:100%;margin-top:8px;border-radius:12px;padding:12px;" onclick="stopBarcodeCamera()">✕ Arrêter le scan</button>
           </div>
 
@@ -3049,179 +3051,76 @@ function renderMenuHistory() {
 }
 
 // ── 6. BARCODE SCANNER ───────────────────────────────────────────
-let _bcStream   = null;
-let _bcAnimId   = null;
-let _bcStopping = false;
-let _bcScanDir  = 1;
-let _bcScanPos  = 25;  // % top du trait rouge (entre 25 et 72)
+let _bcH5 = null, _bcAnimId = null, _bcStopping = false, _bcDir = 1, _bcPos = 22;
 
 async function startBarcodeCamera() {
-  if(_bcStream) { stopBarcodeCamera(); return; }
+  if(_bcH5) { stopBarcodeCamera(); return; }
   _bcStopping = false;
-
   const camZone = document.getElementById('barcodeCamera');
-  const video   = document.getElementById('barcodeVideo');
   const status  = document.getElementById('barcodeScanStatus');
   const btn     = document.getElementById('barcodeCamBtn');
-  if(!camZone || !video) return;
-
-  // Afficher la zone
+  if(!camZone) return;
   camZone.style.display = 'block';
-  if(btn) { btn.textContent = '⏹ Arrêter le scan'; btn.onclick = stopBarcodeCamera; }
-  if(status) { status.textContent = '📷 Accès caméra…'; status.style.color = 'var(--tx2)'; }
-
-  // Démarrer le flux
-  try {
-    _bcStream = await navigator.mediaDevices.getUserMedia({
-      video: {
-        facingMode: { ideal: 'environment' },
-        width:  { ideal: 1280 },
-        height: { ideal: 720 }
-      },
-      audio: false
-    });
-  } catch(e) {
-    if(status) { status.textContent = '❌ ' + (e.message || 'Caméra refusée'); status.style.color = '#e74c3c'; }
-    camZone.style.display = 'none';
-    if(btn) { btn.textContent = '📷 Démarrer le scanner'; btn.onclick = startBarcodeCamera; }
-    return;
-  }
-
-  video.srcObject = _bcStream;
-  video.setAttribute('playsinline', '');
-  video.setAttribute('muted', '');
-  await video.play().catch(() => {});
-  if(status) { status.textContent = '🔍 Recherche du code-barres…'; status.style.color = 'var(--tx2)'; }
-
-  // Animation du trait rouge
+  if(btn)    { btn.textContent = '⏹ Arrêter'; btn.onclick = stopBarcodeCamera; }
+  if(status) { status.textContent = '📷 Démarrage…'; status.style.color = 'var(--tx2)'; }
+  // Animation trait rouge
   const line = document.getElementById('barcodeScanLine');
-  _bcScanPos = 25; _bcScanDir = 1;
-
-  const onDetected = (code) => {
+  _bcPos = 22; _bcDir = 1;
+  const anim = () => {
+    if(_bcStopping) return;
+    _bcPos += _bcDir * 0.55;
+    if(_bcPos >= 74) _bcDir = -1;
+    if(_bcPos <= 22) _bcDir =  1;
+    if(line) line.style.top = _bcPos + '%';
+    _bcAnimId = requestAnimationFrame(anim);
+  };
+  _bcAnimId = requestAnimationFrame(anim);
+  // Callback détection
+  const onSuccess = (code) => {
     if(_bcStopping) return;
     _bcStopping = true;
-    // Flash vert
-    const flash = document.getElementById('barcodeFlash');
-    if(flash) { flash.style.background = 'rgba(39,174,96,.35)'; setTimeout(() => { flash.style.background = 'rgba(39,174,96,0)'; }, 400); }
     try { navigator.vibrate?.([60, 40, 80]); } catch(_) {}
+    const flash = document.getElementById('barcodeFlash');
+    if(flash) { flash.style.background = 'rgba(39,174,96,.4)'; setTimeout(() => flash.style.background = 'transparent', 500); }
     if(status) { status.textContent = '✅ ' + code; status.style.color = '#27ae60'; }
     setTimeout(() => {
       stopBarcodeCamera();
       const inp = document.getElementById('barcodeInput');
-      if(inp) { inp.value = code; }
+      if(inp) inp.value = code;
       if(typeof lookupBarcode === 'function') lookupBarcode(code);
       else showToast('✅', 'Code scanné', code);
-    }, 500);
+    }, 600);
   };
-
-  // ── BarcodeDetector natif (Chrome Android, Chrome Desktop, Edge) ─
-  if('BarcodeDetector' in window) {
-    let detector;
-    try {
-      const supported = await BarcodeDetector.getSupportedFormats().catch(() => ['ean_13','ean_8','upc_a','upc_e','code_128','code_39','qr_code']);
-      detector = new BarcodeDetector({ formats: supported });
-    } catch(e) {
-      detector = new BarcodeDetector({ formats: ['ean_13','ean_8','upc_a','upc_e','code_128','code_39','qr_code'] });
-    }
-    let last = 0;
-    const tick = (ts) => {
-      if(_bcStopping) return;
-      // Animer trait
-      if(line) {
-        _bcScanPos += _bcScanDir * 0.5;
-        if(_bcScanPos >= 72) _bcScanDir = -1;
-        if(_bcScanPos <= 25) _bcScanDir =  1;
-        line.style.top = _bcScanPos + '%';
-      }
-      // Détecter ~10x/sec
-      if(ts - last > 100 && video.readyState >= 2) {
-        last = ts;
-        detector.detect(video).then(codes => {
-          if(codes.length && !_bcStopping) onDetected(codes[0].rawValue);
-        }).catch(() => {});
-      }
-      _bcAnimId = requestAnimationFrame(tick);
-    };
-    _bcAnimId = requestAnimationFrame(tick);
-    return;
-  }
-
-  // ── Fallback canvas + html5-qrcode (iOS Safari, Firefox) ─────────
-  if(typeof Html5Qrcode !== 'undefined') {
-    // Créer un div temporaire hors écran pour Html5Qrcode
-    let qrDiv = document.getElementById('_bcQrDiv');
-    if(!qrDiv) {
-      qrDiv = document.createElement('div');
-      qrDiv.id = '_bcQrDiv';
-      qrDiv.style.cssText = 'position:fixed;left:-9999px;width:1px;height:1px;overflow:hidden;';
-      document.body.appendChild(qrDiv);
-    }
-    // Arrêter notre propre stream — Html5Qrcode va ouvrir le sien
-    if(_bcStream) { _bcStream.getTracks().forEach(t => t.stop()); _bcStream = null; }
-
-    const h5 = new Html5Qrcode('_bcQrDiv', { verbose: false });
-    window._bcH5 = h5;
-
-    // Animer le trait pendant que Html5Qrcode scan
-    const animOnly = () => {
-      if(_bcStopping) return;
-      if(line) {
-        _bcScanPos += _bcScanDir * 0.5;
-        if(_bcScanPos >= 72) _bcScanDir = -1;
-        if(_bcScanPos <= 25) _bcScanDir =  1;
-        line.style.top = _bcScanPos + '%';
-      }
-      _bcAnimId = requestAnimationFrame(animOnly);
-    };
-    _bcAnimId = requestAnimationFrame(animOnly);
-
-    // Brancher la vidéo de Html5Qrcode sur notre <video>
-    h5.start(
+  // Lancer Html5Qrcode dans #bcQrRegion (div visible)
+  try {
+    if(typeof Html5Qrcode === 'undefined') throw new Error('html5-qrcode non chargé');
+    _bcH5 = new Html5Qrcode('bcQrRegion', { verbose: false });
+    await _bcH5.start(
       { facingMode: 'environment' },
-      { fps: 12, qrbox: { width: 260, height: 100 }, disableFlip: false },
-      (code) => { if(!_bcStopping) onDetected(code); },
+      {
+        fps: 12,
+        qrbox: (w, h) => ({ width: Math.round(w * 0.88), height: Math.round(h * 0.52) }),
+        aspectRatio: 1.4,
+        disableFlip: false,
+      },
+      onSuccess,
       () => {}
-    ).then(() => {
-      // Récupérer le stream interne de h5 et le brancher sur notre video
-      const internalVideo = qrDiv.querySelector('video');
-      if(internalVideo && internalVideo.srcObject) {
-        _bcStream = internalVideo.srcObject;
-        video.srcObject = _bcStream;
-        video.play().catch(() => {});
-      }
-    }).catch(e => {
-      if(status) { status.textContent = '❌ ' + (e || 'Caméra inaccessible'); status.style.color = '#e74c3c'; }
-    });
-    return;
+    );
+    if(status) { status.textContent = '🔍 Recherche du code-barres…'; status.style.color = 'var(--tx2)'; }
+  } catch(e) {
+    if(status) { status.textContent = '❌ ' + (e.message || String(e) || 'Caméra refusée'); status.style.color = '#e74c3c'; }
+    stopBarcodeCamera();
   }
-
-  // ── Aucune méthode dispo ──────────────────────────────────────────
-  if(status) { status.textContent = '⚠️ Navigateur non compatible — saisissez le code manuellement.'; status.style.color = '#e67e22'; }
-
-  // Animer quand même le trait pour l'UX
-  const animOnly2 = () => {
-    if(_bcStopping) return;
-    if(line) {
-      _bcScanPos += _bcScanDir * 0.5;
-      if(_bcScanPos >= 72) _bcScanDir = -1;
-      if(_bcScanPos <= 25) _bcScanDir =  1;
-      line.style.top = _bcScanPos + '%';
-    }
-    _bcAnimId = requestAnimationFrame(animOnly2);
-  };
-  _bcAnimId = requestAnimationFrame(animOnly2);
 }
 
 function stopBarcodeCamera() {
   _bcStopping = true;
   if(_bcAnimId) { cancelAnimationFrame(_bcAnimId); _bcAnimId = null; }
-  if(window._bcH5) { try { window._bcH5.stop().catch(()=>{}); } catch(e) {} window._bcH5 = null; }
-  document.getElementById('_bcQrDiv')?.remove();
-  if(_bcStream) { _bcStream.getTracks().forEach(t => t.stop()); _bcStream = null; }
-  const video = document.getElementById('barcodeVideo');
-  if(video) { try { video.srcObject = null; } catch(e) {} }
+  if(_bcH5) { _bcH5.stop().catch(() => {}).finally(() => { try { _bcH5.clear(); } catch(e) {} _bcH5 = null; }); }
   const camZone = document.getElementById('barcodeCamera');
   if(camZone) camZone.style.display = 'none';
+  const region = document.getElementById('bcQrRegion');
+  if(region) region.innerHTML = '';
   const btn = document.getElementById('barcodeCamBtn');
   if(btn) { btn.textContent = '📷 Démarrer le scanner'; btn.onclick = startBarcodeCamera; }
   const status = document.getElementById('barcodeScanStatus');

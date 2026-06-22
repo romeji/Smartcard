@@ -6476,51 +6476,61 @@ function getGlobalRecipeDB() {
 async function saveToGlobalDB(recipes) {
   if(!Array.isArray(recipes) || !recipes.length) return 0;
   const existing = getGlobalRecipeDB();
-  const existingIds = new Set(existing.map(r => r.id));
+  const existingIds   = new Set(existing.map(r => r.id));
   const existingNames = new Set(existing.map(r => (r.name||'').toLowerCase()));
   let added = 0;
-  const firestoreErrors = [];
 
   for(const r of recipes) {
     if(!r.name || !r.id) continue;
-    // Skip if already in local cache (by ID or name)
-    if(existingIds.has(r.id) || existingNames.has(r.name.toLowerCase())) {
-      // Still try to push to Firestore in case it wasn't saved there yet
-    } else {
-      const clean = {...r};
-      delete clean._rawMeal;
-      clean._savedAt = Date.now();
-      existing.unshift(clean);
+
+    // Mettre en cache mémoire avec photo
+    if(!window._jowCache) window._jowCache = {};
+    window._jowCache[r.id] = r;
+
+    if(!existingIds.has(r.id) && !existingNames.has(r.name.toLowerCase())) {
+      // Stocker SANS photo en localStorage (économise ~90% de l'espace)
+      const lean = {...r};
+      delete lean.photo;
+      delete lean.photoCandidates;
+      delete lean._rawMeal;
+      lean._savedAt = Date.now();
+      existing.unshift(lean);
       existingIds.add(r.id);
       existingNames.add(r.name.toLowerCase());
       added++;
     }
 
-    // Always persist to Firestore shared collection
+    // Persister dans Firestore
     if(typeof db !== 'undefined' && db && typeof currentUser !== 'undefined' && currentUser) {
       try {
         const firestoreData = {...r};
         delete firestoreData._rawMeal;
-        // Strip base64 photos — too large for Firestore (1MB doc limit)
         if(firestoreData.photo && firestoreData.photo.startsWith('data:')) delete firestoreData.photo;
         await db.collection('recipes').doc(r.id).set({
           ...firestoreData,
-          savedBy: currentUser.uid,
+          savedBy:      currentUser.uid,
           savedByEmail: currentUser.email || '',
-          savedAt: firebase.firestore.FieldValue.serverTimestamp(),
-        }, {merge: true});
-        console.log('[DB] ✅ Recipe saved to Firestore:', r.name);
+          savedAt:      firebase.firestore.FieldValue.serverTimestamp(),
+        }, { merge: true });
       } catch(e) {
-        console.error('[DB] ❌ Firestore save failed for', r.name, ':', e.code, e.message);
-        firestoreErrors.push(e.message);
+        console.warn('[DB] Firestore save failed:', r.name, e.code);
       }
-    } else if(!currentUser) {
-      console.warn('[DB] Not logged in — recipe saved to local cache only');
     }
   }
 
-  if(added > 0) localStorage.setItem('sc_global_recipes', JSON.stringify(existing.slice(0, 300)));
-  if(firestoreErrors.length) console.warn('[DB] Firestore errors:', firestoreErrors);
+  if(added > 0) {
+    // Sauvegarder en localStorage avec gestion de la limite 5MB
+    try {
+      const data = JSON.stringify(existing.slice(0, 2000));
+      localStorage.setItem('sc_global_recipes', data);
+    } catch(e) {
+      // Quota dépassé : réduire à 500 recettes
+      try {
+        localStorage.setItem('sc_global_recipes', JSON.stringify(existing.slice(0, 500)));
+        console.warn('[DB] localStorage quota: réduit à 500 recettes');
+      } catch(e2) {}
+    }
+  }
   return added;
 }
 
@@ -6560,20 +6570,28 @@ async function syncGlobalRecipesFromFirestore() {
       }
     });
     if(added > 0) {
-      localStorage.setItem('sc_global_recipes', JSON.stringify(existing.slice(0, 300)));
+      localStorage.setItem('sc_global_recipes', JSON.stringify(existing.slice(0, 2000)));
       console.log('[Firestore] +' + added + ' recettes partagées (dont Jow)');
       if(_menuTab === 'recipes') { try { (_myRecipesSubTab === 'favs' ? renderFavsGrid : renderRecipesGrid)(); } catch(e){} }
     }
   }
 
-  // Simple query without orderBy — avoids needing a composite index
+  // Charger par lots de 500 (limite Firestore) pour récupérer toutes les recettes
+  const BATCH = 500;
   try {
-    _recipesUnsub = db.collection('recipes').limit(150).onSnapshot(
-      snap => applySnap(snap),
-      err  => {
+    _recipesUnsub = db.collection('recipes').limit(BATCH).onSnapshot(
+      snap => {
+        applySnap(snap);
+        // Si on a atteint la limite, charger le prochain lot
+        if(snap.size === BATCH) {
+          const lastDoc = snap.docs[snap.docs.length - 1];
+          db.collection('recipes').startAfter(lastDoc).limit(BATCH).get()
+            .then(snap2 => applySnap(snap2)).catch(() => {});
+        }
+      },
+      err => {
         console.warn('[Firestore] recipes onSnapshot error:', err.message);
-        // Fallback: one-time get
-        db.collection('recipes').limit(150).get().then(applySnap).catch(()=>{});
+        db.collection('recipes').limit(BATCH).get().then(applySnap).catch(() => {});
       }
     );
   } catch(e) {

@@ -4100,35 +4100,47 @@ function addMDBMissingToList(names) {
 // ═══════════════════════════════════════════════════════════
 function toggleBookmark(id) {
   if(!state.recipeBookmarks) state.recipeBookmarks = [];
-  const idx = state.recipeBookmarks.findIndex(b=>b.id===id);
-  if(idx >= 0) {
-    state.recipeBookmarks.splice(idx, 1);
-    showToast('☆','Retiré des favoris','');
+  const alreadyIdx = state.recipeBookmarks.findIndex(b => b.id === id);
+
+  if(alreadyIdx >= 0) {
+    state.recipeBookmarks.splice(alreadyIdx, 1);
+    showToast('☆', 'Retiré des favoris', '');
   } else {
-    // Trouver la recette
-    const all = [...getAllRecipes(), ...(window._mdbDetailCache ? Object.values(window._mdbDetailCache).map(m=>{
-      const ings=[];for(let i=1;i<=20;i++){const n=m['strIngredient'+i];if(n&&n.trim())ings.push({name:n.trim(),qty:(m['strMeasure'+i]||'').trim()});}
-      return null; // mealdb removed
-    }) : [])];
-    const r = all.find(x=>x.id===id) || window._currentRecipe;
+    // Chercher dans toutes les sources disponibles
+    const r = (window._jowCache && window._jowCache[id])
+           || getAllRecipes().find(x => x.id === id)
+           || window._currentRecipe;
     if(r) {
-      state.recipeBookmarks.push({...r, bookmarkedAt: Date.now()});
-      showToast('⭐','Ajouté aux favoris',r.name);
+      // Anti-doublon : vérifier par id ET par nom
+      const alreadyInBm = state.recipeBookmarks.some(b => b.id === r.id || b.name === r.name);
+      if(!alreadyInBm) {
+        state.recipeBookmarks.push({...r, bookmarkedAt: Date.now()});
+        // Sauvegarder dans Firestore + localStorage
+        saveToGlobalDB([r]).catch(() => {});
+        showToast('⭐', 'Favori ajouté', r.name);
+      } else {
+        showToast('ℹ️', 'Déjà en favori', r.name);
+        return;
+      }
     }
   }
   saveState();
-  // Mettre à jour les boutons visibles
+
+  // Mettre à jour tous les boutons favoris visibles
+  const isNowBm = state.recipeBookmarks.some(b => b.id === id);
   document.querySelectorAll('[onclick*="toggleBookmark"]').forEach(btn => {
-    if(btn.getAttribute('onclick')?.includes("'"+id+"'") || btn.getAttribute('onclick')?.includes('"'+id+'"')) {
-      const isNowBm = state.recipeBookmarks.some(b=>b.id===id);
+    const oc = btn.getAttribute('onclick') || '';
+    if(oc.includes("'" + id + "'") || oc.includes('"' + id + '"')) {
       if(btn.textContent.includes('☆') || btn.textContent.includes('⭐')) {
         btn.textContent = isNowBm ? '⭐' : '☆';
       }
     }
   });
   if(document.getElementById('menuPanelFavorites')?.style.display !== 'none') {
-    renderFavoritesPanel();
+    if(typeof renderFavoritesPanel === 'function') renderFavoritesPanel();
   }
+  if(typeof renderFavsGrid === 'function') setTimeout(() => renderFavsGrid(), 100);
+  if(typeof renderRecipesGrid === 'function') setTimeout(() => renderRecipesGrid(), 100);
 }
 
 function renderFavoritesPanel() {
@@ -5077,26 +5089,22 @@ function _renderJowResults(rawList, query) {
 //  BOOKMARK
 // ═══════════════════════════════════════════════════════════════════
 function _jowToggleBookmark(id) {
+  // S'assurer que la recette est dans _jowCache avant d'appeler toggleBookmark
   const recipe = window._jowCache && window._jowCache[id];
-  if(!recipe) return;
-  if(!state.recipeBookmarks) state.recipeBookmarks = [];
-  const idx = state.recipeBookmarks.findIndex(function(b){ return b.id===id; });
-  if(idx >= 0) {
-    state.recipeBookmarks.splice(idx, 1);
-    showToast('☆','Retiré','Favori supprimé');
-  } else {
-    state.recipeBookmarks.push(recipe);
-    _jowSaveRecipe(recipe); // persistance locale
-    saveToGlobalDB([recipe]).catch(function(){}); // persistance Firestore partagee
-    showToast('⭐','Favori ajouté','Recette sauvegardée et partagée !');
+  if(recipe) {
+    // Pré-charger dans getAllRecipes via saveToGlobalDB si pas encore en local
+    const existing = getGlobalRecipeDB();
+    if(!existing.some(r => r.id === id)) {
+      saveToGlobalDB([recipe]).catch(() => {});
+    }
   }
-  saveState();
-  // Mettre à jour le bouton dans la grille
-  const btn = document.getElementById('jbm_'+id);
-  if(btn) btn.textContent = idx>=0 ? '☆' : '⭐';
-  // Mettre à jour le bouton dans le modal si ouvert
+  toggleBookmark(id);
+  // Mettre à jour les boutons Jow spécifiques
+  const isBm = (state.recipeBookmarks || []).some(b => b.id === id);
+  const btn = document.getElementById('jbm_' + id);
+  if(btn) btn.textContent = isBm ? '⭐' : '☆';
   const modalBm = document.getElementById('jowModalBm');
-  if(modalBm) modalBm.textContent = idx>=0 ? '☆' : '⭐';
+  if(modalBm) modalBm.textContent = isBm ? '⭐' : '☆';
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -6486,11 +6494,6 @@ function getGlobalRecipeDB() {
 
 async function saveToGlobalDB(recipes) {
   if(!Array.isArray(recipes) || !recipes.length) return 0;
-
-  // ── Diagnostic ───────────────────────────────────────────────────
-  console.log('[DB] saveToGlobalDB appelé avec', recipes.length, 'recettes');
-  console.log('[DB] db disponible:', typeof db !== 'undefined' && !!db);
-  console.log('[DB] currentUser:', typeof currentUser !== 'undefined' ? (currentUser ? currentUser.email : 'null') : 'undefined');
 
   // ── Toujours mettre en cache mémoire (avec photos) ───────────────
   if(!window._jowCache) window._jowCache = {};
@@ -9323,7 +9326,7 @@ function getAllRecipes() {
 }
 
 function filterRecipesView(q) {
-  _recipeSearch=q.toLowerCase();
+  window._recipeSearch = (q || '').toLowerCase();
   renderRecipesGrid();
 }
 

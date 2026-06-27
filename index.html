@@ -1058,7 +1058,7 @@ body.offline-mode .offline-banner{display:block;}
 .nx-ai-title{font-weight:900;font-size:.8rem;margin:3px 0 2px;}
 .nx-ai-body{font-size:.72rem;color:var(--tx2);line-height:1.5;}
 </style>
-<script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
+<script src="https://unpkg.com/@zxing/browser@0.1.5/umd/index.min.js"></script>
 
 </head>
 <body>
@@ -3064,12 +3064,24 @@ function renderMenuHistory() {
     + '</div>';
 }
 
-// ── 6. BARCODE SCANNER — BarcodeDetector natif + recadrage canvas ─
+// ── 6. BARCODE SCANNER — @zxing/browser + canvas recadrage ────────
+// Fonctionne sur PC Chrome, Android Chrome, iOS Safari 14.3+
+// Zéro dépendance native — ZXing décode en JS pur
+
 let _bcStream  = null;
-let _bcLineId  = null;   // rAF animation trait rouge
-let _bcScanId  = null;   // rAF boucle de détection
+let _bcLineId  = null;
+let _bcScanId  = null;
 let _bcRunning = false;
 let _bcDir = 1, _bcPos = 25;
+let _bcControls = null; // contrôles ZXing
+
+function _getZXing() {
+  // @zxing/browser expose ZXingBrowser en UMD
+  if(window.ZXingBrowser) return window.ZXingBrowser;
+  // Fallback si chargé sous un autre nom
+  if(window.ZXing) return window.ZXing;
+  return null;
+}
 
 async function startBarcodeCamera() {
   if(_bcRunning) { stopBarcodeCamera(); return; }
@@ -3080,36 +3092,12 @@ async function startBarcodeCamera() {
   const btn    = document.getElementById('barcodeCamBtn');
   if(!cam || !video) return;
 
-  if(!('BarcodeDetector' in window)) {
-    if(status) { status.textContent = '❌ Non supporté sur ce navigateur/iOS'; status.style.color = '#e74c3c'; }
-    showToast('⚠️', 'Non supporté', 'Essayez Chrome Android ou Safari iOS 17+');
-    return;
-  }
-
   _bcRunning = true;
   cam.style.display = 'block';
   if(btn)    { btn.textContent = '⏹ Arrêter'; btn.onclick = stopBarcodeCamera; }
-  if(status) { status.textContent = '📷 Accès caméra…'; status.style.color = 'var(--tx2)'; }
+  if(status) { status.textContent = '📷 Démarrage…'; status.style.color = 'var(--tx2)'; }
 
-  // Ouvrir la caméra arrière
-  try {
-    _bcStream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
-      audio: false
-    });
-  } catch(e) {
-    _bcRunning = false;
-    if(status) { status.textContent = '❌ ' + (e.message || 'Caméra refusée'); status.style.color = '#e74c3c'; }
-    cam.style.display = 'none';
-    if(btn) { btn.textContent = '📷 Démarrer le scanner'; btn.onclick = startBarcodeCamera; }
-    return;
-  }
-
-  video.srcObject = _bcStream;
-  await video.play().catch(() => {});
-  if(status) { status.textContent = '🔍 Pointez un code-barres…'; status.style.color = 'var(--tx2)'; }
-
-  // ── Animation trait rouge ─────────────────────────────────────────
+  // Animation trait rouge immédiate
   const line = document.getElementById('barcodeScanLine');
   _bcPos = 25; _bcDir = 1;
   const anim = () => {
@@ -3122,191 +3110,110 @@ async function startBarcodeCamera() {
   };
   _bcLineId = requestAnimationFrame(anim);
 
-  // ── Créer le détecteur ────────────────────────────────────────────
-  let detector;
-  try {
-    const supported = await BarcodeDetector.getSupportedFormats();
-    detector = new BarcodeDetector({ formats: supported });
-  } catch(e) {
-    detector = new BarcodeDetector({
-      formats: ['ean_13','ean_8','upc_a','upc_e','code_128','code_39','qr_code']
-    });
+  const onDetected = (code) => {
+    if(!_bcRunning) return;
+    _bcRunning = false;
+    const flash = document.getElementById('barcodeFlash');
+    if(flash) { flash.style.background = 'rgba(39,174,96,.45)'; setTimeout(() => flash.style.background = 'transparent', 500); }
+    try { navigator.vibrate?.([60, 40, 80]); } catch(e) {}
+    if(status) { status.textContent = '✅ ' + code; status.style.color = '#27ae60'; }
+    setTimeout(() => {
+      stopBarcodeCamera();
+      const inp = document.getElementById('barcodeInput');
+      if(inp) inp.value = code;
+      if(typeof lookupBarcode === 'function') lookupBarcode(code);
+    }, 500);
+  };
+
+  const ZXB = _getZXing();
+
+  // ── ZXing browser (PC + iOS + Android) ─────────────────────────
+  if(ZXB && ZXB.BrowserMultiFormatReader) {
+    try {
+      const reader = new ZXB.BrowserMultiFormatReader();
+      _bcControls = await reader.decodeFromConstraints(
+        { video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } } },
+        video,
+        (result, err) => {
+          if(result && _bcRunning) onDetected(result.getText());
+        }
+      );
+      if(status && _bcRunning) { status.textContent = '🔍 Pointez un code-barres…'; status.style.color = 'var(--tx2)'; }
+      return;
+    } catch(e) {
+      console.warn('[Scanner] ZXing err:', e.message);
+      if(status) { status.textContent = '❌ ' + (e.message || 'Erreur caméra'); status.style.color = '#e74c3c'; }
+      stopBarcodeCamera();
+      return;
+    }
   }
 
-  // ── Canvas de recadrage sur la zone du rectangle ──────────────────
-  const scanCanvas = document.createElement('canvas');
-  const scanCtx = scanCanvas.getContext('2d', { willReadFrequently: true });
-  let last = 0;
-  let detected = false;
-
-  const scan = async (ts) => {
-    if(!_bcRunning || detected) return;
-    if(ts - last > 100 && video.readyState >= 2) {
-      last = ts;
-      try {
-        const vw = video.videoWidth;
-        const vh = video.videoHeight;
-        if(vw && vh) {
-          // Zone correspondant exactement au rectangle affiché (5% / 25% / 90% / 50%)
-          const sx = vw * 0.05;
-          const sy = vh * 0.25;
-          const sw = vw * 0.90;
-          const sh = vh * 0.50;
-          scanCanvas.width  = sw;
-          scanCanvas.height = sh;
-          scanCtx.drawImage(video, sx, sy, sw, sh, 0, 0, sw, sh);
-          const codes = await detector.detect(scanCanvas);
-          if(codes.length) {
-            detected = true;
-            const code = codes[0].rawValue;
-            _bcRunning = false;
-            // Flash vert
-            const flash = document.getElementById('barcodeFlash');
-            if(flash) { flash.style.background = 'rgba(39,174,96,.45)'; setTimeout(() => flash.style.background = 'transparent', 500); }
-            // Vibration
-            try { navigator.vibrate?.([60, 40, 80]); } catch(e) {}
-            if(status) { status.textContent = '✅ ' + code; status.style.color = '#27ae60'; }
-            setTimeout(() => {
-              stopBarcodeCamera();
-              const inp = document.getElementById('barcodeInput');
-              if(inp) inp.value = code;
-              if(typeof lookupBarcode === 'function') lookupBarcode(code);
-            }, 500);
-            return;
-          }
+  // ── Fallback BarcodeDetector natif (Android Chrome) ────────────
+  if('BarcodeDetector' in window) {
+    try {
+      _bcStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: false
+      });
+      video.srcObject = _bcStream;
+      await video.play().catch(() => {});
+      if(status && _bcRunning) { status.textContent = '🔍 Pointez un code-barres…'; status.style.color = 'var(--tx2)'; }
+      const fmts = await BarcodeDetector.getSupportedFormats().catch(() => ['ean_13','ean_8','upc_a','upc_e','code_128','code_39','qr_code']);
+      const detector = new BarcodeDetector({ formats: fmts });
+      const scanCanvas = document.createElement('canvas');
+      const scanCtx = scanCanvas.getContext('2d', { willReadFrequently: true });
+      let last = 0; let detected = false;
+      const scan = async (ts) => {
+        if(!_bcRunning || detected) return;
+        if(ts - last > 100 && video.readyState >= 2) {
+          last = ts;
+          try {
+            const vw = video.videoWidth, vh = video.videoHeight;
+            if(vw && vh) {
+              const sx = vw * 0.05, sy = vh * 0.25, sw = vw * 0.90, sh = vh * 0.50;
+              scanCanvas.width = sw; scanCanvas.height = sh;
+              scanCtx.drawImage(video, sx, sy, sw, sh, 0, 0, sw, sh);
+              const codes = await detector.detect(scanCanvas);
+              if(codes.length) { detected = true; onDetected(codes[0].rawValue); return; }
+            }
+          } catch(e) {}
         }
-      } catch(e) { /* frame sans code — normal */ }
+        _bcScanId = requestAnimationFrame(scan);
+      };
+      _bcScanId = requestAnimationFrame(scan);
+      return;
+    } catch(e) {
+      if(status) { status.textContent = '❌ ' + (e.message || 'Caméra refusée'); status.style.color = '#e74c3c'; }
+      stopBarcodeCamera();
+      return;
     }
-    _bcScanId = requestAnimationFrame(scan);
-  };
-  _bcScanId = requestAnimationFrame(scan);
+  }
+
+  // ── Aucune méthode dispo ────────────────────────────────────────
+  if(status) { status.textContent = '❌ Scanner non supporté (HTTPS requis)'; status.style.color = '#e74c3c'; }
+  stopBarcodeCamera();
 }
+
+// Scanner V2 = même chose (alias pour le bouton test)
+async function startBarcodeCameraV2() { return startBarcodeCamera(); }
 
 function stopBarcodeCamera() {
   _bcRunning = false;
   if(_bcLineId) { cancelAnimationFrame(_bcLineId); _bcLineId = null; }
   if(_bcScanId) { cancelAnimationFrame(_bcScanId); _bcScanId = null; }
-  if(_bcStream) { _bcStream.getTracks().forEach(t => t.stop()); _bcStream = null; }
+  if(_bcControls) { try { _bcControls.stop(); } catch(e) {} _bcControls = null; }
+  if(_bcStream)   { _bcStream.getTracks().forEach(t => t.stop()); _bcStream = null; }
   const video = document.getElementById('bcVideo');
   if(video) { try { video.srcObject = null; } catch(e) {} }
   const cam = document.getElementById('barcodeCamera');
   if(cam) cam.style.display = 'none';
-  const btn = document.getElementById('barcodeCamBtn');
-  if(btn) { btn.textContent = '📷 Démarrer le scanner'; btn.onclick = startBarcodeCamera; }
+  const btn  = document.getElementById('barcodeCamBtn');
+  const btn2 = document.getElementById('barcodeCamBtn2');
+  if(btn)  { btn.textContent  = '📷 Scanner';      btn.onclick  = startBarcodeCamera; }
+  if(btn2) { btn2.textContent = '🔬 Scanner v2';   btn2.onclick = startBarcodeCameraV2; }
   const status = document.getElementById('barcodeScanStatus');
   if(status) { status.textContent = ''; status.style.color = ''; }
 }
-
-// ── 6b. SCANNER V2 — BarcodeDetector + canvas recadrage ──────────
-async function startBarcodeCameraV2() {
-  if(_bcRunning) { stopBarcodeCamera(); return; }
-
-  const cam    = document.getElementById('barcodeCamera');
-  const video  = document.getElementById('bcVideo');
-  const status = document.getElementById('barcodeScanStatus');
-  const btn    = document.getElementById('barcodeCamBtn2');
-  if(!cam || !video) return;
-
-  if(!('BarcodeDetector' in window)) {
-    if(status) { status.textContent = '❌ BarcodeDetector non supporté'; status.style.color = '#e74c3c'; }
-    showToast('⚠️', 'Non supporté', 'Essayez Chrome Android ou Safari iOS 17+');
-    return;
-  }
-
-  _bcRunning = true;
-  cam.style.display = 'block';
-  if(btn)    { btn.textContent = '⏹ Arrêter'; btn.onclick = stopBarcodeCamera; }
-  if(status) { status.textContent = '📷 Accès caméra…'; status.style.color = 'var(--tx2)'; }
-
-  // Ouvrir la caméra arrière
-  try {
-    _bcStream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
-      audio: false
-    });
-  } catch(e) {
-    _bcRunning = false;
-    if(status) { status.textContent = '❌ ' + (e.message || 'Caméra refusée'); status.style.color = '#e74c3c'; }
-    cam.style.display = 'none';
-    if(btn) { btn.textContent = '🔬 Scanner v2'; btn.onclick = startBarcodeCameraV2; }
-    return;
-  }
-
-  video.srcObject = _bcStream;
-  await video.play().catch(() => {});
-  if(status) { status.textContent = '🔍 [V2] Pointez un code-barres…'; status.style.color = 'var(--tx2)'; }
-
-  // Animation trait rouge
-  const line = document.getElementById('barcodeScanLine');
-  _bcPos = 25; _bcDir = 1;
-  const anim = () => {
-    if(!_bcRunning) return;
-    _bcPos += _bcDir * 0.6;
-    if(_bcPos >= 73) _bcDir = -1;
-    if(_bcPos <= 25) _bcDir =  1;
-    if(line) line.style.top = _bcPos + '%';
-    _bcLineId = requestAnimationFrame(anim);
-  };
-  _bcLineId = requestAnimationFrame(anim);
-
-  // Créer le détecteur
-  let detector;
-  try {
-    const supported = await BarcodeDetector.getSupportedFormats();
-    detector = new BarcodeDetector({ formats: supported });
-  } catch(e) {
-    detector = new BarcodeDetector({
-      formats: ['ean_13','ean_8','upc_a','upc_e','code_128','code_39','qr_code']
-    });
-  }
-
-  // Canvas de recadrage sur la zone du rectangle
-  const scanCanvas = document.createElement('canvas');
-  const scanCtx = scanCanvas.getContext('2d', { willReadFrequently: true });
-  let last = 0;
-  let detected = false;
-
-  const scan = async (ts) => {
-    if(!_bcRunning || detected) return;
-    if(ts - last > 100 && video.readyState >= 2) {
-      last = ts;
-      try {
-        const vw = video.videoWidth;
-        const vh = video.videoHeight;
-        if(vw && vh) {
-          // Zone correspondant au rectangle affiché (5% / 25% / 90% / 50%)
-          const sx = vw * 0.05;
-          const sy = vh * 0.25;
-          const sw = vw * 0.90;
-          const sh = vh * 0.50;
-          scanCanvas.width  = sw;
-          scanCanvas.height = sh;
-          scanCtx.drawImage(video, sx, sy, sw, sh, 0, 0, sw, sh);
-          const codes = await detector.detect(scanCanvas);
-          if(codes.length) {
-            detected = true;
-            const code = codes[0].rawValue;
-            _bcRunning = false;
-            const flash = document.getElementById('barcodeFlash');
-            if(flash) { flash.style.background = 'rgba(39,174,96,.45)'; setTimeout(() => flash.style.background = 'transparent', 500); }
-            try { navigator.vibrate?.([60, 40, 80]); } catch(e) {}
-            if(status) { status.textContent = '✅ ' + code; status.style.color = '#27ae60'; }
-            setTimeout(() => {
-              stopBarcodeCamera();
-              const inp = document.getElementById('barcodeInput');
-              if(inp) inp.value = code;
-              if(typeof lookupBarcode === 'function') lookupBarcode(code);
-            }, 500);
-            return;
-          }
-        }
-      } catch(e) { /* frame sans code */ }
-    }
-    _bcScanId = requestAnimationFrame(scan);
-  };
-  _bcScanId = requestAnimationFrame(scan);
-}
-
 
 function applyTabletLayout() {
   const isWide = window.innerWidth >= 768;

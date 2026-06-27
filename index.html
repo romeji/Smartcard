@@ -1059,7 +1059,7 @@ body.offline-mode .offline-banner{display:block;}
 .nx-ai-body{font-size:.72rem;color:var(--tx2);line-height:1.5;}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2@1.8.4/dist/quagga.min.js"></script>
+<script src="https://unpkg.com/@zxing/browser@0.1.4/umd/index.min.js"></script>
 </head>
 <body>
 
@@ -1396,49 +1396,53 @@ body.offline-mode .offline-banner{display:block;}
                 style="flex:1;letter-spacing:2px;">
               <button class="btn acc" onclick="lookupBarcode()" style="padding:11px 14px;">🔍</button>
             </div>
-            <button id="barcodeCamBtn" class="btn acc" style="width:100%;padding:13px;border-radius:14px;font-weight:800;font-size:.88rem;" onclick="startBarcodeCamera()">
+            <button id="barcodeCamBtn" class="btn acc"
+              style="width:100%;padding:13px;border-radius:14px;font-weight:800;font-size:.88rem;"
+              onclick="startBarcodeCamera()">
               📷 Démarrer le scanner
             </button>
           </div>
 
-          <!-- Zone scanner -->
+          <!-- Zone scanner : video + overlay rectangle -->
           <div id="barcodeCamera" style="display:none;margin-bottom:14px;">
             <div style="position:relative;width:100%;height:280px;border-radius:16px;overflow:hidden;background:#000;">
 
-              <!-- Vidéo native getUserMedia - contrôle total -->
+              <!-- La video est injectée ici par ZXing -->
               <video id="bcVideo" playsinline autoplay muted
-                style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:1;display:block;"></video>
+                style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;"></video>
 
-              <!-- Overlay rectangle z-index:2 toujours au-dessus -->
-              <div style="position:absolute;inset:0;z-index:2;pointer-events:none;">
-                <div style="position:absolute;top:0;left:0;right:0;height:22%;background:rgba(0,0,0,.6);"></div>
-                <div style="position:absolute;bottom:0;left:0;right:0;height:22%;background:rgba(0,0,0,.6);"></div>
-                <div style="position:absolute;top:22%;bottom:22%;left:0;width:6%;background:rgba(0,0,0,.6);"></div>
-                <div style="position:absolute;top:22%;bottom:22%;right:0;width:6%;background:rgba(0,0,0,.6);"></div>
-                <div style="position:absolute;top:22%;left:6%;width:22px;height:22px;border-top:3px solid #fff;border-left:3px solid #fff;border-radius:4px 0 0 0;"></div>
-                <div style="position:absolute;top:22%;right:6%;width:22px;height:22px;border-top:3px solid #fff;border-right:3px solid #fff;border-radius:0 4px 0 0;"></div>
-                <div style="position:absolute;bottom:22%;left:6%;width:22px;height:22px;border-bottom:3px solid #fff;border-left:3px solid #fff;border-radius:0 0 0 4px;"></div>
-                <div style="position:absolute;bottom:22%;right:6%;width:22px;height:22px;border-bottom:3px solid #fff;border-right:3px solid #fff;border-radius:0 0 4px 0;"></div>
-                <div id="barcodeScanLine" style="position:absolute;left:7%;width:86%;height:2px;background:linear-gradient(90deg,transparent,#ff3b30 15%,#ff3b30 85%,transparent);box-shadow:0 0 10px 2px rgba(255,59,48,.8);top:22%;"></div>
-                <div id="barcodeFlash" style="position:absolute;inset:0;background:transparent;transition:background .25s;"></div>
-                <div style="position:absolute;bottom:9px;left:0;right:0;text-align:center;color:rgba(255,255,255,.92);font-size:.68rem;font-weight:700;text-shadow:0 1px 4px rgba(0,0,0,.9);">Alignez le code-barres dans le rectangle</div>
+              <!-- Overlay rectangle — toujours z-index 10 par-dessus -->
+              <div style="position:absolute;inset:0;z-index:10;pointer-events:none;">
+                <!-- Zones sombres haut/bas/gauche/droite -->
+                <div style="position:absolute;top:0;left:0;right:0;height:25%;background:rgba(0,0,0,.58);"></div>
+                <div style="position:absolute;bottom:0;left:0;right:0;height:25%;background:rgba(0,0,0,.58);"></div>
+                <div style="position:absolute;top:25%;bottom:25%;left:0;width:5%;background:rgba(0,0,0,.58);"></div>
+                <div style="position:absolute;top:25%;bottom:25%;right:0;width:5%;background:rgba(0,0,0,.58);"></div>
+                <!-- Coins blancs -->
+                <div style="position:absolute;top:25%;left:5%;width:20px;height:20px;border-top:3px solid #fff;border-left:3px solid #fff;border-radius:4px 0 0 0;"></div>
+                <div style="position:absolute;top:25%;right:5%;width:20px;height:20px;border-top:3px solid #fff;border-right:3px solid #fff;border-radius:0 4px 0 0;"></div>
+                <div style="position:absolute;bottom:25%;left:5%;width:20px;height:20px;border-bottom:3px solid #fff;border-left:3px solid #fff;border-radius:0 0 0 4px;"></div>
+                <div style="position:absolute;bottom:25%;right:5%;width:20px;height:20px;border-bottom:3px solid #fff;border-right:3px solid #fff;border-radius:0 0 4px 0;"></div>
+                <!-- Trait rouge animé -->
+                <div id="barcodeScanLine"
+                  style="position:absolute;left:6%;width:88%;height:2px;
+                    background:linear-gradient(90deg,transparent,#ff3b30 15%,#ff3b30 85%,transparent);
+                    box-shadow:0 0 10px 3px rgba(255,59,48,.75);top:25%;"></div>
+                <!-- Flash vert à la détection -->
+                <div id="barcodeFlash"
+                  style="position:absolute;inset:0;background:transparent;border-radius:16px;transition:background .3s;"></div>
+                <!-- Label -->
+                <div style="position:absolute;bottom:10px;left:0;right:0;text-align:center;
+                  color:rgba(255,255,255,.9);font-size:.7rem;font-weight:700;
+                  text-shadow:0 1px 4px rgba(0,0,0,.9);">
+                  Pointez le code-barres vers le rectangle
+                </div>
               </div>
-
-              <!-- bcViewport caché pour Quagga (détection uniquement, pas d'affichage) -->
-              <div id="bcViewport" style="position:absolute;inset:0;z-index:0;visibility:hidden;overflow:hidden;"></div>
             </div>
-            <div id="barcodeScanStatus" style="text-align:center;font-size:.82rem;font-weight:700;margin-top:10px;min-height:22px;color:var(--tx2);"></div>
-            <button class="btn" style="width:100%;margin-top:8px;border-radius:12px;padding:12px;font-weight:700;" onclick="stopBarcodeCamera()">✕ Arrêter le scan</button>
-          </div>
-
-          <!-- Fallback capture photo si getUserMedia bloqué -->
-          <div id="barcodeFallback" style="display:none;" class="card mb14">
-            <div style="font-size:.82rem;color:var(--tx2);margin-bottom:10px;">📸 Scanner ne fonctionne pas ? Prenez une photo du code-barres :</div>
-            <label style="display:block;width:100%;padding:12px;border-radius:12px;background:var(--bg2);text-align:center;cursor:pointer;font-weight:700;font-size:.85rem;">
-              📷 Prendre une photo
-              <input type="file" accept="image/*" capture="environment" style="display:none;" onchange="handleBarcodeCapture(this)">
-            </label>
-            <div id="barcodeFallbackStatus" style="text-align:center;font-size:.8rem;font-weight:700;margin-top:8px;min-height:20px;"></div>
+            <div id="barcodeScanStatus"
+              style="text-align:center;font-size:.82rem;font-weight:700;margin-top:10px;min-height:22px;color:var(--tx2);"></div>
+            <button class="btn" style="width:100%;margin-top:8px;border-radius:12px;padding:12px;font-weight:700;"
+              onclick="stopBarcodeCamera()">✕ Arrêter le scan</button>
           </div>
 
         </div>
@@ -3053,13 +3057,17 @@ function renderMenuHistory() {
     + '</div>';
 }
 
-// ── 6. BARCODE SCANNER ────────────────────────────────────────────
-let _bcStream = null, _bcAnimId = null, _bcRunning = false;
-let _bcDir = 1, _bcPos = 22;
+// ── 6. BARCODE SCANNER — @zxing/browser ──────────────────────────
+// @zxing/browser expose window.ZXingBrowser avec BrowserMultiFormatReader
+// Fonctionne sur iOS Safari 14.3+, Android Chrome, Firefox, Edge
+let _zxReader   = null;   // instance BrowserMultiFormatReader
+let _bcAnimId   = null;
+let _bcRunning  = false;
+let _bcDir = 1, _bcPos = 25;
 
 async function startBarcodeCamera() {
   if(_bcRunning) { stopBarcodeCamera(); return; }
-  _bcRunning = false;
+  _bcRunning = true;
 
   const cam    = document.getElementById('barcodeCamera');
   const video  = document.getElementById('bcVideo');
@@ -3067,51 +3075,31 @@ async function startBarcodeCamera() {
   const btn    = document.getElementById('barcodeCamBtn');
   if(!cam || !video) return;
 
-  // Afficher la zone immédiatement
   cam.style.display = 'block';
-  if(btn)    { btn.textContent = '⏹ Arrêter'; btn.onclick = stopBarcodeCamera; }
-  if(status) { status.textContent = '📷 Accès caméra…'; status.style.color = 'var(--tx2)'; }
+  if(btn)    { btn.textContent = '⏹ Arrêter le scan'; btn.onclick = stopBarcodeCamera; }
+  if(status) { status.textContent = '📷 Démarrage caméra…'; status.style.color = 'var(--tx2)'; }
 
-  // Démarrer la caméra arrière via getUserMedia
-  try {
-    _bcStream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
-      audio: false
-    });
-  } catch(e) {
-    if(status) { status.textContent = '❌ Caméra refusée : ' + (e.message || e.name); status.style.color = '#e74c3c'; }
-    document.getElementById('barcodeFallback').style.display = 'block';
-    cam.style.display = 'none';
-    if(btn) { btn.textContent = '📷 Démarrer le scanner'; btn.onclick = startBarcodeCamera; }
-    return;
-  }
-
-  // Brancher le stream sur la <video> visible
-  video.srcObject = _bcStream;
-  await video.play().catch(() => {});
-  _bcRunning = true;
-  if(status) { status.textContent = '🔍 Recherche du code-barres…'; status.style.color = 'var(--tx2)'; }
-
-  // Animer le trait rouge
+  // Animer le trait rouge dès l'ouverture
   const line = document.getElementById('barcodeScanLine');
-  _bcPos = 22; _bcDir = 1;
-  const animLine = () => {
+  _bcPos = 25; _bcDir = 1;
+  const anim = () => {
     if(!_bcRunning) return;
-    _bcPos += _bcDir * 0.6;
-    if(_bcPos >= 74) _bcDir = -1;
-    if(_bcPos <= 22) _bcDir =  1;
+    _bcPos += _bcDir * 0.55;
+    if(_bcPos >= 73) _bcDir = -1;
+    if(_bcPos <= 25) _bcDir =  1;
     if(line) line.style.top = _bcPos + '%';
-    _bcAnimId = requestAnimationFrame(animLine);
+    _bcAnimId = requestAnimationFrame(anim);
   };
-  _bcAnimId = requestAnimationFrame(animLine);
+  _bcAnimId = requestAnimationFrame(anim);
 
-  // Callback détection
+  // Callback détection (une seule fois)
   const onDetected = (code) => {
     if(!_bcRunning) return;
-    _bcRunning = false; // bloquer les détections multiples
-    try { navigator.vibrate?.([60, 40, 80]); } catch(_) {}
+    _bcRunning = false;
+    // Flash vert + vibration
     const flash = document.getElementById('barcodeFlash');
     if(flash) { flash.style.background = 'rgba(39,174,96,.45)'; setTimeout(() => flash.style.background = 'transparent', 500); }
+    try { navigator.vibrate?.([60, 40, 80]); } catch(_) {}
     if(status) { status.textContent = '✅ ' + code; status.style.color = '#27ae60'; }
     setTimeout(() => {
       stopBarcodeCamera();
@@ -3119,125 +3107,87 @@ async function startBarcodeCamera() {
       if(inp) inp.value = code;
       if(typeof lookupBarcode === 'function') lookupBarcode(code);
       else showToast('✅', 'Code scanné', code);
-    }, 600);
+    }, 500);
   };
 
-  // Quagga lit le stream déjà ouvert (pas de nouvelle caméra)
-  if(typeof Quagga !== 'undefined') {
-    Quagga.init({
-      inputStream: {
-        name: 'Live',
-        type: 'LiveStream',
-        target: video, // pointer directement sur la <video> visible
-        constraints: {
-          facingMode: 'environment',
-          width:  { ideal: 1280 },
-          height: { ideal: 720 },
-        },
-        area: { top: '22%', right: '6%', left: '6%', bottom: '22%' },
-      },
-      decoder: {
-        readers: [
-          'ean_reader', 'ean_8_reader',
-          'upc_reader', 'upc_e_reader',
-          'code_128_reader', 'code_39_reader',
-        ],
-        multiple: false,
-      },
-      locate: true,
-      numOfWorkers: Math.min(2, navigator.hardwareConcurrency || 1),
-      frequency: 10,
-    }, (err) => {
-      if(err) {
-        console.warn('[Scanner] Quagga init error:', err);
-        // Quagga a échoué mais la vidéo tourne — utiliser BarcodeDetector natif
-        _fallbackBarcodeDetector(video, onDetected, status);
-        return;
-      }
-      Quagga.offDetected();
-      Quagga.onDetected(data => {
-        const code = data?.codeResult?.code;
-        if(code && _bcRunning) onDetected(code);
-      });
-      Quagga.start();
-    });
-    return;
+  // ── @zxing/browser — le meilleur choix cross-platform ─────────────
+  const ZXB = window.ZXingBrowser;
+  if(ZXB && ZXB.BrowserMultiFormatReader) {
+    try {
+      _zxReader = new ZXB.BrowserMultiFormatReader();
+      // decodeFromVideoDevice(null = caméra par défaut, videoElement, callback)
+      await _zxReader.decodeFromConstraints(
+        { video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } } },
+        video,
+        (result, err) => {
+          if(result && _bcRunning) onDetected(result.getText());
+          // err est normal (frame sans code) — ne pas logger
+        }
+      );
+      if(status && _bcRunning) { status.textContent = '🔍 Pointez un code-barres…'; status.style.color = 'var(--tx2)'; }
+      return;
+    } catch(e) {
+      console.warn('[Scanner] ZXing error:', e.message);
+      if(status) { status.textContent = '❌ ' + (e.message || 'Caméra refusée'); status.style.color = '#e74c3c'; }
+      stopBarcodeCamera();
+      return;
+    }
   }
 
-  // Pas de Quagga : BarcodeDetector natif (Chrome Android)
-  _fallbackBarcodeDetector(video, onDetected, status);
-}
-
-function _fallbackBarcodeDetector(video, onDetected, status) {
+  // ── Fallback : BarcodeDetector natif (Chrome Android) ─────────────
   if('BarcodeDetector' in window) {
-    const det = new BarcodeDetector({ formats: ['ean_13','ean_8','upc_a','upc_e','code_128','code_39','qr_code'] });
-    let last = 0;
-    const tick = (ts) => {
-      if(!_bcRunning) return;
-      if(ts - last > 120 && video.readyState >= 2) {
-        last = ts;
-        det.detect(video).then(codes => {
-          if(codes.length && _bcRunning) onDetected(codes[0].rawValue);
-        }).catch(() => {});
-      }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: false
+      });
+      video.srcObject = stream;
+      await video.play().catch(() => {});
+      if(status && _bcRunning) { status.textContent = '🔍 Pointez un code-barres…'; status.style.color = 'var(--tx2)'; }
+      window._bcNativeStream = stream;
+      const det = new BarcodeDetector({ formats: ['ean_13','ean_8','upc_a','upc_e','code_128','code_39','qr_code'] });
+      let last = 0;
+      const tick = (ts) => {
+        if(!_bcRunning) return;
+        if(ts - last > 120 && video.readyState >= 2) {
+          last = ts;
+          det.detect(video).then(codes => { if(codes.length && _bcRunning) onDetected(codes[0].rawValue); }).catch(()=>{});
+        }
+        requestAnimationFrame(tick);
+      };
       requestAnimationFrame(tick);
-    };
-    requestAnimationFrame(tick);
-  } else {
-    if(status) { status.textContent = '⚠️ Détection non supportée sur ce navigateur'; status.style.color = '#e67e22'; }
+      return;
+    } catch(e) {
+      if(status) { status.textContent = '❌ ' + (e.message || 'Caméra refusée'); status.style.color = '#e74c3c'; }
+      stopBarcodeCamera();
+      return;
+    }
   }
+
+  // ── Aucune méthode disponible ──────────────────────────────────────
+  if(status) { status.textContent = '⚠️ Scanner non supporté sur ce navigateur'; status.style.color = '#e67e22'; }
+  stopBarcodeCamera();
 }
 
 function stopBarcodeCamera() {
   _bcRunning = false;
   if(_bcAnimId) { cancelAnimationFrame(_bcAnimId); _bcAnimId = null; }
-  try { if(typeof Quagga !== 'undefined') { Quagga.offDetected(); Quagga.stop(); } } catch(e) {}
-  if(_bcStream) { _bcStream.getTracks().forEach(t => t.stop()); _bcStream = null; }
+  // Stopper ZXing
+  if(_zxReader) { try { _zxReader.reset(); } catch(e) {} _zxReader = null; }
+  // Stopper le stream natif fallback
+  if(window._bcNativeStream) { window._bcNativeStream.getTracks().forEach(t => t.stop()); window._bcNativeStream = null; }
+  // Couper la vidéo
   const video = document.getElementById('bcVideo');
   if(video) { try { video.srcObject = null; } catch(e) {} }
+  // Masquer la zone
   const cam = document.getElementById('barcodeCamera');
   if(cam) cam.style.display = 'none';
+  // Reset bouton
   const btn = document.getElementById('barcodeCamBtn');
   if(btn) { btn.textContent = '📷 Démarrer le scanner'; btn.onclick = startBarcodeCamera; }
+  // Reset status
   const status = document.getElementById('barcodeScanStatus');
   if(status) { status.textContent = ''; status.style.color = ''; }
-}
-
-// Fallback capture photo si caméra live bloquée
-async function handleBarcodeCapture(input) {
-  const file = input.files?.[0];
-  if(!file) return;
-  input.value = '';
-  const status = document.getElementById('barcodeFallbackStatus');
-  if(status) { status.textContent = '⏳ Analyse…'; status.style.color = 'var(--tx2)'; }
-  const setResult = (code) => {
-    try { navigator.vibrate?.([60, 40, 80]); } catch(_) {}
-    if(status) { status.textContent = '✅ ' + code; status.style.color = '#27ae60'; }
-    const inp = document.getElementById('barcodeInput');
-    if(inp) inp.value = code;
-    if(typeof lookupBarcode === 'function') lookupBarcode(code);
-  };
-  const setErr = () => {
-    if(status) { status.textContent = '❌ Code non détecté — photo plus nette ?'; status.style.color = '#e74c3c'; }
-  };
-  if(typeof Quagga !== 'undefined') {
-    const url = URL.createObjectURL(file);
-    Quagga.decodeSingle({
-      decoder: { readers: ['ean_reader','ean_8_reader','upc_reader','upc_e_reader','code_128_reader','code_39_reader'] },
-      locate: true, src: url,
-    }, result => { URL.revokeObjectURL(url); result?.codeResult?.code ? setResult(result.codeResult.code) : setErr(); });
-    return;
-  }
-  if('BarcodeDetector' in window) {
-    try {
-      const bm  = await createImageBitmap(file);
-      const det = new BarcodeDetector({ formats: ['ean_13','ean_8','upc_a','upc_e','code_128','code_39','qr_code'] });
-      const res = await det.detect(bm);
-      res.length ? setResult(res[0].rawValue) : setErr();
-    } catch(e) { setErr(); }
-    return;
-  }
-  setErr();
 }
 
 // ── 7. TABLET / DESKTOP LAYOUT ───────────────────────────

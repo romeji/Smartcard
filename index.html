@@ -1058,8 +1058,8 @@ body.offline-mode .offline-banner{display:block;}
 .nx-ai-title{font-weight:900;font-size:.8rem;margin:3px 0 2px;}
 .nx-ai-body{font-size:.72rem;color:var(--tx2);line-height:1.5;}
 </style>
-
-
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2@1.8.4/dist/quagga.min.js"></script>
 </head>
 <body>
 
@@ -1386,16 +1386,58 @@ body.offline-mode .offline-banner{display:block;}
 
         <!-- ═══ MODULE CODE-BARRES ═══ -->
         <div id="scanModBarcode" style="display:none;">
+
           <div class="card mb14">
-            <div style="font-weight:800;font-size:.88rem;margin-bottom:10px;">🔍 Saisir un code-barres</div>
-            <div style="display:flex;gap:8px;">
+            <div style="font-weight:800;font-size:.88rem;margin-bottom:10px;">🔍 Scanner ou saisir un code-barres</div>
+            <div style="display:flex;gap:8px;margin-bottom:10px;">
               <input class="inp" id="barcodeInput" type="text" inputmode="numeric"
                 placeholder="Ex: 3017620422003"
                 onkeydown="if(event.key==='Enter')lookupBarcode()"
                 style="flex:1;letter-spacing:2px;">
               <button class="btn acc" onclick="lookupBarcode()" style="padding:11px 14px;">🔍</button>
             </div>
+            <button id="barcodeCamBtn" class="btn acc" style="width:100%;padding:13px;border-radius:14px;font-weight:800;font-size:.88rem;" onclick="startBarcodeCamera()">
+              📷 Démarrer le scanner
+            </button>
           </div>
+
+          <!-- Zone scanner Quagga2 -->
+          <div id="barcodeCamera" style="display:none;margin-bottom:14px;">
+            <div style="position:relative;border-radius:16px;overflow:hidden;background:#000;height:280px;">
+              <!-- Quagga injecte sa vidéo+canvas ici -->
+              <div id="bcViewport" style="width:100%;height:100%;"></div>
+              <!-- Masques sombres autour du rectangle -->
+              <div style="position:absolute;inset:0;pointer-events:none;">
+                <div style="position:absolute;top:0;left:0;right:0;height:22%;background:rgba(0,0,0,.55);"></div>
+                <div style="position:absolute;bottom:0;left:0;right:0;height:22%;background:rgba(0,0,0,.55);"></div>
+                <div style="position:absolute;top:22%;bottom:22%;left:0;width:6%;background:rgba(0,0,0,.55);"></div>
+                <div style="position:absolute;top:22%;bottom:22%;right:0;width:6%;background:rgba(0,0,0,.55);"></div>
+                <!-- Coins blancs -->
+                <div style="position:absolute;top:22%;left:6%;width:20px;height:20px;border-top:3px solid #fff;border-left:3px solid #fff;border-radius:3px 0 0 0;"></div>
+                <div style="position:absolute;top:22%;right:6%;width:20px;height:20px;border-top:3px solid #fff;border-right:3px solid #fff;border-radius:0 3px 0 0;"></div>
+                <div style="position:absolute;bottom:22%;left:6%;width:20px;height:20px;border-bottom:3px solid #fff;border-left:3px solid #fff;border-radius:0 0 0 3px;"></div>
+                <div style="position:absolute;bottom:22%;right:6%;width:20px;height:20px;border-bottom:3px solid #fff;border-right:3px solid #fff;border-radius:0 0 3px 0;"></div>
+                <!-- Trait rouge animé -->
+                <div id="barcodeScanLine" style="position:absolute;left:7%;width:86%;height:2px;background:linear-gradient(90deg,transparent,#ff3b30 10%,#ff3b30 90%,transparent);box-shadow:0 0 8px 2px rgba(255,59,48,.7);top:22%;"></div>
+                <!-- Flash vert -->
+                <div id="barcodeFlash" style="position:absolute;inset:0;background:transparent;border-radius:16px;transition:background .3s;"></div>
+                <div style="position:absolute;bottom:8px;left:0;right:0;text-align:center;color:rgba(255,255,255,.9);font-size:.68rem;font-weight:700;text-shadow:0 1px 3px #000;">Centrez le code-barres dans le rectangle</div>
+              </div>
+            </div>
+            <div id="barcodeScanStatus" style="text-align:center;font-size:.8rem;font-weight:700;margin-top:10px;min-height:22px;color:var(--tx2);"></div>
+            <button class="btn" style="width:100%;margin-top:8px;border-radius:12px;padding:12px;" onclick="stopBarcodeCamera()">✕ Arrêter</button>
+          </div>
+
+          <!-- Fallback capture photo si getUserMedia bloqué -->
+          <div id="barcodeFallback" style="display:none;" class="card mb14">
+            <div style="font-size:.82rem;color:var(--tx2);margin-bottom:10px;">📸 Scanner ne fonctionne pas ? Prenez une photo du code-barres :</div>
+            <label style="display:block;width:100%;padding:12px;border-radius:12px;background:var(--bg2);text-align:center;cursor:pointer;font-weight:700;font-size:.85rem;">
+              📷 Prendre une photo
+              <input type="file" accept="image/*" capture="environment" style="display:none;" onchange="handleBarcodeCapture(this)">
+            </label>
+            <div id="barcodeFallbackStatus" style="text-align:center;font-size:.8rem;font-weight:700;margin-top:8px;min-height:20px;"></div>
+          </div>
+
         </div>
 
         <!-- ═══ MODULE FRIGO IA (Anthropic Vision) ═══ -->
@@ -2117,7 +2159,6 @@ function dbg() {}
 // ═══════════════════════════════════════════════
 // LOCAL STORAGE
 // ═══════════════════════════════════════════════
-// saveState avec debounce 300ms — évite les écritures répétées
 let _saveStateTimer = null;
 function saveState(immediate) {
   if(immediate) { _doSaveState(); return; }
@@ -2146,10 +2187,8 @@ function loadState() {
 // ═══════════════════════════════════════════════
 // FIRESTORE SYNC
 // ═══════════════════════════════════════════════
-// Debounce map pour éviter les écritures Firestore en rafale
 const _syncTimers = {};
 function syncToFirestore(key, value) {
-  // Retourne une Promise résolue immédiatement — ne bloque jamais l'UI
   if(_syncTimers[key]) clearTimeout(_syncTimers[key]);
   _syncTimers[key] = setTimeout(async () => {
     delete _syncTimers[key];
@@ -2162,7 +2201,7 @@ function syncToFirestore(key, value) {
         await _writeFieldReplacing(db.collection('users').doc(currentUser.uid), key, value);
       }
     } catch(e) { console.warn('Sync error:', e.code || e.message); }
-  }, 600); // 600ms debounce — regroupe les appels rapprochés
+  }, 600);
   return Promise.resolve();
 }
 
@@ -2822,9 +2861,7 @@ function renderAll() {
     requestAnimationFrame(() => {
       document.querySelectorAll('.view .vb').forEach(vb => {
         const viewId = vb.closest('.view')?.id;
-        if(viewId && scrollPositions[viewId] !== undefined) {
-          vb.scrollTop = scrollPositions[viewId];
-        }
+        if(viewId && scrollPositions[viewId] !== undefined) vb.scrollTop = scrollPositions[viewId];
       });
     });
   });
@@ -3023,10 +3060,503 @@ function renderMenuHistory() {
     + '</div>';
 }
 
-// ── 6. BARCODE SCANNER — supprimé (saisie manuelle uniquement) ──
-function startBarcodeCamera() {}
-function startBarcodeCameraV2() {}
-function stopBarcodeCamera() {}
+// ── 6. BARCODE SCANNER — Quagga2 ─────────────────────────────────
+let _bcRunning = false, _bcAnimId = null, _bcDir = 1, _bcPos = 22;
+
+async function startBarcodeCamera() {
+  if(_bcRunning) { stopBarcodeCamera(); return; }
+
+  const cam    = document.getElementById('barcodeCamera');
+  const status = document.getElementById('barcodeScanStatus');
+  const btn    = document.getElementById('barcodeCamBtn');
+  if(!cam) return;
+
+  cam.style.display = 'block';
+  if(btn)    { btn.textContent = '⏹ Arrêter'; btn.onclick = stopBarcodeCamera; }
+  if(status) { status.textContent = '📷 Accès caméra…'; status.style.color = 'var(--tx2)'; }
+
+  // Trait rouge animé
+  const line = document.getElementById('barcodeScanLine');
+  _bcPos = 22; _bcDir = 1;
+  const animLine = () => {
+    if(!_bcRunning) return;
+    _bcPos += _bcDir * 0.55;
+    if(_bcPos >= 74) _bcDir = -1;
+    if(_bcPos <= 22) _bcDir =  1;
+    if(line) line.style.top = _bcPos + '%';
+    _bcAnimId = requestAnimationFrame(animLine);
+  };
+
+  const onDetected = (code) => {
+    if(!_bcRunning) return;
+    try { navigator.vibrate?.([60, 40, 80]); } catch(_) {}
+    const flash = document.getElementById('barcodeFlash');
+    if(flash) { flash.style.background = 'rgba(39,174,96,.45)'; setTimeout(() => flash.style.background = 'transparent', 500); }
+    const s = document.getElementById('barcodeScanStatus');
+    if(s) { s.textContent = '✅ ' + code; s.style.color = '#27ae60'; }
+    setTimeout(() => {
+      stopBarcodeCamera();
+      const inp = document.getElementById('barcodeInput');
+      if(inp) inp.value = code;
+      if(typeof lookupBarcode === 'function') lookupBarcode(code);
+      else showToast('✅', 'Code scanné', code);
+    }, 500);
+  };
+
+  // CSS global pour forcer le style de la vidéo/canvas Quagga
+  if(!document.getElementById('_quaggaCSS')) {
+    const s = document.createElement('style');
+    s.id = '_quaggaCSS';
+    s.textContent = `
+      #bcViewport { position:relative; width:100%; height:100%; background:#000; }
+      #bcViewport video {
+        position:absolute !important; top:0 !important; left:0 !important;
+        width:100% !important; height:100% !important;
+        object-fit:cover !important; display:block !important; z-index:1;
+      }
+      #bcViewport canvas.drawingBuffer {
+        position:absolute !important; top:0 !important; left:0 !important;
+        width:100% !important; height:100% !important; opacity:0 !important; z-index:2;
+      }
+      #bcViewport canvas:not(.drawingBuffer) { display:none !important; }
+    `;
+    document.head.appendChild(s);
+  }
+
+  // Quagga2
+  if(typeof Quagga !== 'undefined') {
+    Quagga.init({
+      inputStream: {
+        name: 'Live',
+        type: 'LiveStream',
+        target: document.getElementById('bcViewport'),
+        constraints: {
+          facingMode: 'environment',
+          width:  { ideal: 1280 },
+          height: { ideal: 720 },
+        },
+        area: { top:'22%', right:'6%', left:'6%', bottom:'22%' },
+      },
+      decoder: {
+        readers: ['ean_reader','ean_8_reader','upc_reader','upc_e_reader','code_128_reader','code_39_reader'],
+        multiple: false,
+      },
+      locate: true,
+      numOfWorkers: navigator.hardwareConcurrency > 2 ? 2 : 1,
+      frequency: 10,
+    }, (err) => {
+      if(err) {
+        console.error('[Quagga]', err);
+        document.getElementById('barcodeFallback').style.display = 'block';
+        cam.style.display = 'none';
+        if(status) { status.textContent = '⚠️ Caméra indisponible — utilisez la capture photo ci-dessous'; status.style.color = '#e67e22'; }
+        if(btn) { btn.textContent = '📷 Démarrer le scanner'; btn.onclick = startBarcodeCamera; }
+        return;
+      }
+      _bcRunning = true;
+      Quagga.start();
+      if(status) { status.textContent = '🔍 Recherche du code-barres…'; status.style.color = 'var(--tx2)'; }
+      _bcAnimId = requestAnimationFrame(animLine);
+    });
+
+    Quagga.offDetected();
+    Quagga.onDetected((data) => {
+      const code = data && data.codeResult && data.codeResult.code;
+      if(code) onDetected(code);
+    });
+    return;
+  }
+
+  // Quagga non chargé : fallback
+  if(status) { status.textContent = '⚠️ Module scanner non chargé'; status.style.color = '#e74c3c'; }
+  document.getElementById('barcodeFallback').style.display = 'block';
+  if(btn) { btn.textContent = '📷 Démarrer le scanner'; btn.onclick = startBarcodeCamera; }
+}
+
+function stopBarcodeCamera() {
+  _bcRunning = false;
+  if(_bcAnimId) { cancelAnimationFrame(_bcAnimId); _bcAnimId = null; }
+  try { if(typeof Quagga !== 'undefined') Quagga.stop(); } catch(e) {}
+  const cam = document.getElementById('barcodeCamera');
+  if(cam) cam.style.display = 'none';
+  const vp = document.getElementById('bcViewport');
+  if(vp) vp.innerHTML = '';
+  const btn = document.getElementById('barcodeCamBtn');
+  if(btn) { btn.textContent = '📷 Démarrer le scanner'; btn.onclick = startBarcodeCamera; }
+  const status = document.getElementById('barcodeScanStatus');
+  if(status) { status.textContent = ''; status.style.color = ''; }
+}
+
+// Fallback capture photo (si caméra live bloquée)
+async function handleBarcodeCapture(input) {
+  const file = input.files?.[0];
+  if(!file) return;
+  input.value = '';
+  const status = document.getElementById('barcodeFallbackStatus');
+  if(status) { status.textContent = '⏳ Analyse…'; status.style.color = 'var(--tx2)'; }
+
+  const setResult = (code) => {
+    try { navigator.vibrate?.([60, 40, 80]); } catch(_) {}
+    if(status) { status.textContent = '✅ ' + code; status.style.color = '#27ae60'; }
+    const inp = document.getElementById('barcodeInput');
+    if(inp) inp.value = code;
+    if(typeof lookupBarcode === 'function') lookupBarcode(code);
+  };
+
+  // Quagga décodage image
+  if(typeof Quagga !== 'undefined') {
+    const url = URL.createObjectURL(file);
+    Quagga.decodeSingle({
+      decoder: { readers: ['ean_reader','ean_8_reader','upc_reader','upc_e_reader','code_128_reader','code_39_reader'] },
+      locate: true,
+      src: url,
+    }, (result) => {
+      URL.revokeObjectURL(url);
+      if(result?.codeResult?.code) { setResult(result.codeResult.code); }
+      else if(status) { status.textContent = '❌ Code non détecté — réessayez avec une meilleure lumière'; status.style.color = '#e74c3c'; }
+    });
+    return;
+  }
+
+  // BarcodeDetector natif
+  if('BarcodeDetector' in window) {
+    try {
+      const bm = await createImageBitmap(file);
+      const det = new BarcodeDetector({ formats: ['ean_13','ean_8','upc_a','upc_e','code_128','code_39','qr_code'] });
+      const codes = await det.detect(bm);
+      if(codes.length) { setResult(codes[0].rawValue); return; }
+    } catch(e) {}
+  }
+
+  if(status) { status.textContent = '❌ Code non détecté — réessayez'; status.style.color = '#e74c3c'; }
+}
+
+// ── 7. TABLET / DESKTOP LAYOUT ───────────────────────────
+
+// ══════════════════════════════════════════════════════════════════
+// 🍽️  GÉNÉRATION MENU SEMAINE — Base de données locale + Firestore
+// ══════════════════════════════════════════════════════════════════
+
+// ── Calcul des besoins caloriques journaliers ─────────────────────
+function _getCalorieTarget() {
+  const p = state.profile || {};
+  const base = calculateDailyCalories ? calculateDailyCalories(p) : 2000;
+  const goal = p.goal || 'equilibre';
+  // Ajustement par objectif
+  if(goal === 'perte')   return Math.round(base * 0.82);   // déficit -18%
+  if(goal === 'prise')   return Math.round(base * 1.15);   // surplus +15%
+  if(goal === 'perf')    return Math.round(base * 1.10);   // +10% glucides
+  return base; // maintien / équilibre
+}
+
+// ── Macros cibles pour le déjeuner + dîner (65-70% du total) ─────
+function _getMacroTargets() {
+  const p = state.profile || {};
+  const goal = p.goal || 'equilibre';
+  const kcal = _getCalorieTarget();
+  const ldKcal = Math.round(kcal * 0.67); // lunch + dinner = 67% journée
+  let prot, carb, fat;
+  if(goal === 'perte') {
+    prot = Math.round(ldKcal * 0.30 / 4);  // 30% protéines
+    carb = Math.round(ldKcal * 0.40 / 4);  // 40% glucides
+    fat  = Math.round(ldKcal * 0.30 / 9);  // 30% lipides
+  } else if(goal === 'prise') {
+    prot = Math.round(ldKcal * 0.35 / 4);  // 35% protéines
+    carb = Math.round(ldKcal * 0.45 / 4);  // 45% glucides
+    fat  = Math.round(ldKcal * 0.20 / 9);  // 20% lipides
+  } else if(goal === 'perf') {
+    prot = Math.round(ldKcal * 0.20 / 4);  // 20% protéines
+    carb = Math.round(ldKcal * 0.55 / 4);  // 55% glucides (sport)
+    fat  = Math.round(ldKcal * 0.25 / 9);  // 25% lipides
+  } else { // maintien / équilibre
+    prot = Math.round(ldKcal * 0.25 / 4);
+    carb = Math.round(ldKcal * 0.45 / 4);
+    fat  = Math.round(ldKcal * 0.30 / 9);
+  }
+  return { kcal: ldKcal, prot, carb, fat };
+}
+
+// ── Lire les réglages du panneau de filtres ───────────────────────
+function _readMenuSettings() {
+  return {
+    cuisine:    (document.getElementById('menuCuisine')?.value   || '').toLowerCase(),
+    maxTime:    parseInt(document.getElementById('menuMaxTime')?.value  || '0') || 0,
+    difficulty: document.getElementById('menuDifficulty')?.value || '',
+    weekBudget: parseFloat((document.getElementById('menuBudget')?.value || '').replace(',','.').replace('€','')) || 0,
+    excludes:   (document.getElementById('menuAllergies')?.value || '').split(',').map(s=>s.trim().toLowerCase()).filter(Boolean),
+    allergens:  [...document.querySelectorAll('.menu-allergen-btn.on')].map(b=>(b.dataset.a||'').toLowerCase()),
+  };
+}
+
+// ── Compatibilité régime ──────────────────────────────────────────
+function _recipeMatchesDiet(r, diet) {
+  if(!diet || diet === 'omnivore') return true;
+  const eh = r.eatingHabits || {};
+  const rdiet = (r.diet || '').toLowerCase();
+  switch(diet) {
+    case 'vegan':      return eh.vegan      || rdiet.includes('vegan');
+    case 'veg':        return eh.vegetarian || eh.vegan || rdiet.includes('v%C3%A9g') || rdiet.includes('veg');
+    case 'pesc':       return eh.pescatarian|| eh.vegetarian || eh.vegan || rdiet.includes('pesc');
+    case 'gluten':     return eh.glutenFree || rdiet.includes('gluten');
+    case 'keto':       return rdiet.includes('keto') || ((r.carb||99) < 20);
+    case 'halal':      return !eh.porkless  && rdiet !== 'porc';
+    default:           return true;
+  }
+}
+
+// ── Filtre allergènes (texte dans les ingrédients/allergens) ──────
+function _recipePassesAllergens(r, settings) {
+  const text = [
+    r.name || '',
+    ...(r.allergens || []),
+    ...(r.ingredients || []).map(i => typeof i === 'string' ? i : (i.name||'')),
+  ].join(' ').toLowerCase();
+
+  for(const ex of settings.excludes) {
+    if(text.includes(ex)) return false;
+  }
+  for(const al of settings.allergens) {
+    if(text.includes(al)) return false;
+  }
+  return true;
+}
+
+// ── Charger toutes les recettes (depuis cache — pas de Firestore ici) ─
+async function _loadAllRecipes() {
+  // Utiliser le cache mémoire s'il est frais
+  if(_recipesCache && Date.now() - _recipesCacheTs < _RECIPES_TTL) {
+    return _recipesCache;
+  }
+
+  // Fusionner toutes les sources locales
+  const jowRecs    = window._jowCache ? Object.values(window._jowCache) : [];
+  const localRecs  = getGlobalRecipeDB ? getGlobalRecipeDB() : [];
+  const customRecs = state.customRecipes  || [];
+  const bookmarks  = state.recipeBookmarks || [];
+
+  const seen = new Set();
+  const all  = [...jowRecs, ...localRecs, ...customRecs, ...bookmarks].filter(r => {
+    if(!r || !r.name || !r.id) return false;
+    if(seen.has(r.id)) return false;
+    seen.add(r.id);
+    return true;
+  });
+
+  // Si le cache local est vide, déclencher un chargement Firestore en arrière-plan
+  if(all.length < 5 && typeof db !== 'undefined' && db) {
+    syncGlobalRecipesFromFirestore().then(() => {
+      _recipesCache   = null; // forcer rechargement au prochain appel
+    }).catch(() => {});
+  }
+
+  _recipesCache   = all;
+  _recipesCacheTs = Date.now();
+  return all;
+}
+
+// ── Score de pertinence d'une recette vs objectif ─────────────────
+function _recipeScore(r, targets, goal) {
+  const rKcal = r.kcal || 0;
+  const rProt = r.prot || 0;
+  const rCarb = r.carb || 0;
+  // Score = 0 à 100 (plus c'est élevé, mieux c'est)
+  const halfKcal  = targets.kcal / 2; // par repas
+  const kcalDiff  = Math.abs(rKcal - halfKcal) / halfKcal;
+  let score = Math.max(0, 100 - kcalDiff * 100);
+  if(goal === 'perte' && rKcal > halfKcal * 1.2) score -= 30; // pénaliser trop calorique
+  if(goal === 'prise' && rProt > 25) score += 20;             // bonus protéines
+  if(goal === 'perf'  && rCarb > 40) score += 20;             // bonus glucides sport
+  return score;
+}
+
+// ── Conseil nutritionnel pour un jour ────────────────────────────
+function _dayTip(totalKcal, targets, goal) {
+  const ratio = totalKcal / targets.kcal;
+  const labels = { perte:'perte de poids', prise:'prise de masse', perf:'performance', equilibre:'équilibre', maintien:'maintien' };
+  const gl = labels[goal] || 'équilibre';
+  if(ratio < 0.75) return { q:'warn', tip:`🔻 Repas trop légers pour votre objectif ${gl} (${totalKcal} kcal). Ajoutez une collation.` };
+  if(ratio > 1.25) return { q:'warn', tip:`🔺 Repas trop caloriques pour votre objectif ${gl} (${totalKcal} kcal). Essayez un repas plus léger.` };
+  if(ratio >= 0.90 && ratio <= 1.10) return { q:'good', tip:`✅ Journée idéale pour votre objectif ${gl}.` };
+  return { q:'ok', tip:`👌 Repas corrects pour votre objectif ${gl}.` };
+}
+
+// ═════════════════════════════════════════════════════════════════
+// POINT D'ENTRÉE PRINCIPAL — bouton "Générer le menu de la semaine"
+// ═════════════════════════════════════════════════════════════════
+async function generateAIMenuFull() {
+  const btn = document.getElementById('menuGenBtn');
+  const txt = document.getElementById('menuGenBtnTxt');
+  if(btn) btn.disabled = true;
+  if(txt) txt.innerHTML = '⏳ Génération en cours…';
+
+  try {
+    const p        = state.profile || {};
+    const diet     = state.selectedDiet?.[0] || p.diet || 'omnivore';
+    const goal     = p.goal || 'equilibre';
+    const settings = _readMenuSettings();
+    const targets  = _getMacroTargets();
+
+    // Jours restants de la semaine (à partir d'aujourd'hui inclus)
+    const todayDayNum  = new Date().getDay() || 7; // 1=Lun … 7=Dim
+    const DAY_NAMES    = ['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche'];
+    const remainingNums = Array.from({length: 7}, (_,i) => i+1).filter(d => d >= todayDayNum);
+
+    // Charger toutes les recettes
+    const allRecipes = await _loadAllRecipes();
+
+    // Filtrer : régime + allergènes + temps + cuisine + difficulté
+    const filtered = allRecipes.filter(r => {
+      if(!_recipeMatchesDiet(r, diet))          return false;
+      if(!_recipePassesAllergens(r, settings))  return false;
+      if(settings.maxTime > 0 && (r.time || r.cookTime || 0) > settings.maxTime) return false;
+      if(settings.cuisine && r.origin && !r.origin.toLowerCase().includes(settings.cuisine)) return false;
+      if(settings.difficulty && r.difficulty && String(r.difficulty) !== settings.difficulty) return false;
+      if(!(r.kcal > 0)) return false; // on veut des macros
+      return true;
+    });
+
+    // Séparer déjeuners et dîners (mealTypes: ['l'] = déjeuner, ['d'] = dîner)
+    const lunchPool  = filtered.filter(r => !r.mealTypes || r.mealTypes.includes('l') || r.mealTypes.length === 0);
+    const dinnerPool = filtered.filter(r => !r.mealTypes || r.mealTypes.includes('d') || r.mealTypes.length === 0);
+
+    // Message si base insuffisante
+    const MIN = 2;
+    const warnings = [];
+    if(filtered.length === 0) {
+      showToast('⚠️','Base vide',`Aucune recette ${diet} disponible. Explorez des recettes d'abord.`);
+      return;
+    }
+    if(lunchPool.length < MIN)  warnings.push(`peu de recettes déjeuner (${lunchPool.length})`);
+    if(dinnerPool.length < MIN) warnings.push(`peu de recettes dîner (${dinnerPool.length})`);
+
+    // Trier par score de pertinence (mieux adapté à l'objectif en premier)
+    const sortByScore = pool => [...pool].sort((a,b) => _recipeScore(b, targets, goal) - _recipeScore(a, targets, goal));
+    const lunchSorted  = sortByScore(lunchPool);
+    const dinnerSorted = sortByScore(dinnerPool);
+
+    // Piocher sans répétition pour toute la semaine
+    const usedIds = new Set();
+    const pick = (pool) => {
+      const r = pool.find(r => !usedIds.has(r.id));
+      if(r) { usedIds.add(r.id); return r; }
+      // Si tout a été utilisé, on autorise les répétitions
+      return pool[Math.floor(Math.random() * pool.length)] || null;
+    };
+
+    // Générer le menu
+    const dayMenus = [];
+    for(const dayNum of remainingNums) {
+      const lunch  = pick(lunchSorted);
+      // S'assurer que dîner ≠ déjeuner
+      const dinner = dinnerSorted.find(r => !usedIds.has(r.id) && r.id !== lunch?.id)
+                  || dinnerSorted.find(r => r.id !== lunch?.id)
+                  || dinnerSorted[0];
+      if(dinner && !usedIds.has(dinner.id)) usedIds.add(dinner.id);
+
+      const totalKcal = (lunch?.kcal||0) + (dinner?.kcal||0);
+      const { q, tip } = _dayTip(totalKcal, targets, goal);
+
+      dayMenus.push({ day: DAY_NAMES[dayNum-1], dayNum, lunch, dinner, totalKcal, q, tip });
+    }
+
+    // Appliquer au state.weekMenu
+    for(const dm of dayMenus) {
+      if(!state.weekMenu[dm.dayNum]) state.weekMenu[dm.dayNum] = {};
+      const wm = state.weekMenu[dm.dayNum];
+      const fmt = (r, slot) => r ? {
+        name:      (r.emoji||'🍽️') + ' ' + r.name,
+        kcal:      r.kcal  || 0,
+        prot:      r.prot  || 0,
+        carb:      r.carb  || 0,
+        fat:       r.fat   || 0,
+        time:      r.time  || r.cookTime || null,
+        photo:     r.photo || null,
+        recipeId:  r.id,
+        source:    r.source || 'db',
+        ingredients: (r.ingredients || []).slice(0, 12),
+      } : null;
+      if(dm.lunch)  { wm.l     = (dm.lunch.emoji||'🍽️') + ' ' + dm.lunch.name;  wm.lData  = fmt(dm.lunch,  'l'); }
+      if(dm.dinner) { wm.d     = (dm.dinner.emoji||'🌙') + ' ' + dm.dinner.name; wm.dData  = fmt(dm.dinner, 'd'); }
+      wm.quality = dm.q;
+      wm.tip     = dm.tip;
+      wm.nutri   = { kcal: dm.totalKcal, prot:(dm.lunch?.prot||0)+(dm.dinner?.prot||0), carb:(dm.lunch?.carb||0)+(dm.dinner?.carb||0), fat:(dm.lunch?.fat||0)+(dm.dinner?.fat||0) };
+    }
+
+    saveWeekMenu();
+    renderWeek?.();
+    renderDayDetail?.();
+
+    // Toast de résumé
+    const goalLabels = { perte:'perte de poids 📉', prise:'prise de masse 💪', perf:'performance 🏃', maintien:'maintien ⚖️', equilibre:'équilibre 🥗' };
+    let msg = `${remainingNums.length} jour${remainingNums.length>1?'s':''} planifiés · ${goalLabels[goal]||goal}`;
+    if(warnings.length) msg += ` · ⚠️ ${warnings.join(', ')}`;
+    showToast('✅', 'Menu généré', msg);
+
+  } catch(e) {
+    console.error('[Menu]', e);
+    showToast('⚠️','Erreur', e.message || 'Impossible de générer le menu');
+  } finally {
+    if(btn) btn.disabled = false;
+    if(txt) txt.textContent = '✨ Générer le menu de la semaine';
+  }
+}
+function generateWeekMenu() { generateAIMenuFull(); } // compat
+function generateAIMenu()   { generateAIMenuFull(); } // compat
+
+// ── Régénérer UN jour depuis la vue détail ────────────────────────
+async function regenDayAI(day) {
+  const btn = document.querySelector('[onclick*="regenDayAI"]');
+  if(btn) btn.disabled = true;
+  try {
+    const p        = state.profile || {};
+    const diet     = state.selectedDiet?.[0] || p.diet || 'omnivore';
+    const goal     = p.goal || 'equilibre';
+    const settings = _readMenuSettings();
+    const targets  = _getMacroTargets();
+
+    const allRecipes = await _loadAllRecipes();
+    const filtered = allRecipes.filter(r =>
+      _recipeMatchesDiet(r, diet) &&
+      _recipePassesAllergens(r, settings) &&
+      (r.kcal > 0) &&
+      (settings.maxTime <= 0 || (r.time||r.cookTime||0) <= settings.maxTime)
+    );
+
+    if(!filtered.length) { showToast('⚠️','Base vide','Explorez des recettes d'abord.'); return; }
+
+    const sorted    = [...filtered].sort((a,b) => _recipeScore(b,targets,goal) - _recipeScore(a,targets,goal));
+    const wm        = state.weekMenu[day] || {};
+    const curLId    = wm.lData?.recipeId || '';
+    const curDId    = wm.dData?.recipeId || '';
+
+    const lPool  = sorted.filter(r => !r.mealTypes || r.mealTypes.includes('l'));
+    const dPool  = sorted.filter(r => !r.mealTypes || r.mealTypes.includes('d'));
+
+    const newL = lPool.find(r => r.id !== curLId) || lPool[0];
+    const newD = dPool.find(r => r.id !== curDId && r.id !== newL?.id) || dPool.find(r => r.id !== newL?.id) || dPool[0];
+
+    if(!state.weekMenu[day]) state.weekMenu[day] = {};
+    const fmt = (r) => r ? { name:(r.emoji||'🍽️')+' '+r.name, kcal:r.kcal||0, prot:r.prot||0, carb:r.carb||0, fat:r.fat||0, time:r.time||r.cookTime||null, photo:r.photo||null, recipeId:r.id, source:r.source||'db', ingredients:(r.ingredients||[]).slice(0,12) } : null;
+
+    if(newL) { state.weekMenu[day].l = (newL.emoji||'🍽️')+' '+newL.name; state.weekMenu[day].lData = fmt(newL); }
+    if(newD) { state.weekMenu[day].d = (newD.emoji||'🌙')+' '+newD.name; state.weekMenu[day].dData = fmt(newD); }
+
+    const totalKcal = (newL?.kcal||0)+(newD?.kcal||0);
+    const {q,tip} = _dayTip(totalKcal, targets, goal);
+    state.weekMenu[day].quality = q;
+    state.weekMenu[day].tip = tip;
+
+    _refreshDayNutri?.(day);
+    saveWeekMenu();
+    renderWeek?.();
+    renderDayDetail?.();
+    showToast('✅','Jour mis à jour','Nouvelles recettes sélectionnées');
+  } catch(e) {
+    showToast('⚠️','Erreur', e.message);
+  } finally {
+    if(btn) btn.disabled = false;
+  }
+}
 
 function applyTabletLayout() {
   const isWide = window.innerWidth >= 768;
@@ -3906,47 +4436,35 @@ function addMDBMissingToList(names) {
 // ═══════════════════════════════════════════════════════════
 function toggleBookmark(id) {
   if(!state.recipeBookmarks) state.recipeBookmarks = [];
-  const alreadyIdx = state.recipeBookmarks.findIndex(b => b.id === id);
-
-  if(alreadyIdx >= 0) {
-    state.recipeBookmarks.splice(alreadyIdx, 1);
-    showToast('☆', 'Retiré des favoris', '');
+  const idx = state.recipeBookmarks.findIndex(b=>b.id===id);
+  if(idx >= 0) {
+    state.recipeBookmarks.splice(idx, 1);
+    showToast('☆','Retiré des favoris','');
   } else {
-    // Chercher dans toutes les sources disponibles
-    const r = (window._jowCache && window._jowCache[id])
-           || getAllRecipes().find(x => x.id === id)
-           || window._currentRecipe;
+    // Trouver la recette
+    const all = [...getAllRecipes(), ...(window._mdbDetailCache ? Object.values(window._mdbDetailCache).map(m=>{
+      const ings=[];for(let i=1;i<=20;i++){const n=m['strIngredient'+i];if(n&&n.trim())ings.push({name:n.trim(),qty:(m['strMeasure'+i]||'').trim()});}
+      return null; // mealdb removed
+    }) : [])];
+    const r = all.find(x=>x.id===id) || window._currentRecipe;
     if(r) {
-      // Anti-doublon : vérifier par id ET par nom
-      const alreadyInBm = state.recipeBookmarks.some(b => b.id === r.id || b.name === r.name);
-      if(!alreadyInBm) {
-        state.recipeBookmarks.push({...r, bookmarkedAt: Date.now()});
-        // Sauvegarder dans Firestore + localStorage
-        saveToGlobalDB([r]).catch(() => {});
-        showToast('⭐', 'Favori ajouté', r.name);
-      } else {
-        showToast('ℹ️', 'Déjà en favori', r.name);
-        return;
-      }
+      state.recipeBookmarks.push({...r, bookmarkedAt: Date.now()});
+      showToast('⭐','Ajouté aux favoris',r.name);
     }
   }
   saveState();
-
-  // Mettre à jour tous les boutons favoris visibles
-  const isNowBm = state.recipeBookmarks.some(b => b.id === id);
+  // Mettre à jour les boutons visibles
   document.querySelectorAll('[onclick*="toggleBookmark"]').forEach(btn => {
-    const oc = btn.getAttribute('onclick') || '';
-    if(oc.includes("'" + id + "'") || oc.includes('"' + id + '"')) {
+    if(btn.getAttribute('onclick')?.includes("'"+id+"'") || btn.getAttribute('onclick')?.includes('"'+id+'"')) {
+      const isNowBm = state.recipeBookmarks.some(b=>b.id===id);
       if(btn.textContent.includes('☆') || btn.textContent.includes('⭐')) {
         btn.textContent = isNowBm ? '⭐' : '☆';
       }
     }
   });
   if(document.getElementById('menuPanelFavorites')?.style.display !== 'none') {
-    if(typeof renderFavoritesPanel === 'function') renderFavoritesPanel();
+    renderFavoritesPanel();
   }
-  if(typeof renderFavsGrid === 'function') setTimeout(() => renderFavsGrid(), 100);
-  if(typeof renderRecipesGrid === 'function') setTimeout(() => renderRecipesGrid(), 100);
 }
 
 function renderFavoritesPanel() {
@@ -4209,276 +4727,6 @@ function _normalizeDifficulty(raw) {
 }
 
 // Lit les réglages du panneau "Options" de planification de semaine
-function _readMenuFilterSettings() {
-  return {
-    maxTime: parseInt(document.getElementById('menuMaxTime')?.value || '0') || 0,
-    cuisine: document.getElementById('menuCuisine')?.value || '',
-    weekBudget: parseFloat((document.getElementById('menuBudget')?.value || '').replace(',', '.').replace('€', '')) || 0,
-    difficulty: document.getElementById('menuDifficulty')?.value || '',
-    excludeTerms: (document.getElementById('menuAllergies')?.value || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean),
-    selectedAllergens: state.selectedAllergens || [],
-  };
-}
-
-// Applique tous les filtres "Options" (allergènes, temps max, difficulté, exclusions, budget)
-// à un lot de recettes Jow. emptyTracker (optionnel) reçoit mealLabel si le filtre
-// allergènes — seul filtre STRICT, jamais de retour en arrière — vide la liste.
-function _applyMenuFilters(recipes, settings, mealLabel, emptyTracker) {
-  let out = recipes;
-
-  // ⚠️ Allergènes : filtre STRICT par sécurité alimentaire (best-effort, pas une garantie médicale).
-  if(settings.selectedAllergens.length) {
-    out = out.filter(r => !settings.selectedAllergens.some(a => _recipeHasAllergen(r, a)));
-    if(!out.length) { if(emptyTracker) emptyTracker.push(mealLabel); return out; }
-  }
-
-  // Filtres "souples" : ignorés s'ils videraient complètement la liste
-  if(settings.maxTime > 0) {
-    const within = out.filter(r => !r.time || r.time <= settings.maxTime);
-    if(within.length) out = within;
-  }
-  if(settings.difficulty) {
-    const within = out.filter(r => { const d = _normalizeDifficulty(r.difficulty); return d === null || d === settings.difficulty; });
-    if(within.length) out = within;
-  }
-  if(settings.excludeTerms.length) {
-    const within = out.filter(r => {
-      const hay = (r.name + ' ' + (r.ingredients||[]).map(i=>i.name).join(' ')).toLowerCase();
-      return !settings.excludeTerms.some(term => hay.includes(term));
-    });
-    if(within.length) out = within;
-  }
-  if(settings.weekBudget > 0) {
-    out = [...out].sort((a,b) => (a.pricePerPortionEuro||0) - (b.pricePerPortionEuro||0));
-  }
-  return out;
-}
-
-// Sélectionne `count` recettes dans `pool` sans répéter un plat tant qu'il en
-// reste un autre disponible (mélange le "sac" complet à chaque épuisement,
-// au lieu d'un simple cycle modulo qui répète le même plat tous les N jours).
-// ── Requête Firebase/cache local pour la génération ─────────
-// Interroge d'abord le cache localStorage (rapide, sans réseau),
-// puis Firestore si insuffisant. Filtres diète/allergènes en client-side
-// pour éviter les index Firestore composites.
-async function _queryRecipesForGeneration(settings, diet) {
-  const localDB = getGlobalRecipeDB ? getGlobalRecipeDB() : [];
-  let pool = localDB.filter(r => _recipeMatchesFilters(r, settings, diet));
-  if(pool.length >= 14) return pool;
-
-  if(typeof db !== 'undefined' && db && typeof currentUser !== 'undefined' && currentUser) {
-    try {
-      let q = db.collection('recipes').limit(60);
-      if(settings.cuisine) q = q.where('origin', '==', settings.cuisine);
-      const snap = await q.get();
-      const seen = new Set(pool.map(r => r.id));
-      const extra = snap.docs
-        .map(d => ({ id: d.id, ...d.data() }))
-        .filter(r => !seen.has(r.id) && _recipeMatchesFilters(r, settings, diet));
-      pool = pool.concat(extra);
-    } catch(e) { console.warn('[Gen] Firestore query:', e.message); }
-  }
-  return pool;
-}
-
-// Vérifie si une recette respecte les filtres cuisine + diète + allergènes
-function _recipeMatchesFilters(r, settings, diet) {
-  if(!r || !r.id) return false;
-  const eh = r.eatingHabits || {};
-  if(settings.cuisine && r.origin !== settings.cuisine) return false;
-  if(diet === 'veg'    && !eh.vegetarian)  return false;
-  if(diet === 'vegan'  && !eh.vegan)       return false;
-  if(diet === 'pesc'   && !eh.pescatarian) return false;
-  if(diet === 'gluten' && !eh.glutenFree)  return false;
-  if(diet === 'halal'  && !eh.porkless)    return false;
-  if((settings.selectedAllergens||[]).some(a => _recipeHasAllergen(r, a))) return false;
-  return true;
-}
-
-function _pickSequence(pool, count) {
-  if(!pool || !pool.length) return new Array(count).fill(null);
-  const out = [];
-  let bag = [];
-  while(out.length < count) {
-    if(!bag.length) bag = [...pool].sort(() => Math.random() - 0.5);
-    out.push(bag.pop());
-  }
-  return out;
-}
-
-// ── Génération IA complète ─────────────────────────────────
-async function generateAIMenuFull() {
-  const btn = document.getElementById('menuGenBtn');
-  const txt = document.getElementById('menuGenBtnTxt');
-  if(btn) btn.disabled = true;
-  const spinner = '<span style="display:inline-block;width:14px;height:14px;border-radius:50%;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;animation:spin .8s linear infinite;margin-right:6px;vertical-align:middle;"></span>';
-  if(txt) txt.innerHTML = spinner + 'Recherche dans votre base\u2026';
-
-  const p = state.profile || {};
-  const diet = state.selectedDiet[0] || p.diet || 'omnivore';
-  const cals = calculateDailyCalories(p);
-  const ldTarget = cals ? Math.round(cals * 0.65) : 0;
-  const settings = _readMenuFilterSettings();
-
-  const todayDayNum = new Date().getDay() || 7;
-  const days = ['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche'];
-  const remainingDays = days.slice(todayDayNum - 1);
-  const n = remainingDays.length;
-  const MIN_POOL = n * 2;
-
-  try {
-    // Etape 1 : Firebase / cache local en priorite
-    let pool = await _queryRecipesForGeneration(settings, diet);
-
-    // Etape 2 : completer avec Jow seulement si insuffisant
-    if(pool.length < MIN_POOL) {
-      if(txt) txt.innerHTML = spinner + 'Recherche sur Jow.fr\u2026';
-      const dp = _dietPrefixFor(diet);
-      const cp = settings.cuisine ? settings.cuisine + ' ' : '';
-      const [lr, dr] = await Promise.all([
-        _fetchJowRecipesForType(cp + (dp ? dp + ' ' : '') + 'd\u00e9jeuner', 20, diet),
-        _fetchJowRecipesForType(cp + (dp ? dp + ' ' : '') + 'd\u00eener',    20, diet),
-      ]);
-      const jowAll = [...lr, ...dr];
-      if(jowAll.length) saveToGlobalDB(jowAll).catch(()=>{});
-      const seen = new Set(pool.map(r => r.id));
-      pool = pool.concat(jowAll.filter(r => !seen.has(r.id) && _recipeMatchesFilters(r, settings, diet)));
-    }
-
-    // Etape 3 : filtres souples (temps, difficulte)
-    const emptyDueToAllergen = [];
-    pool = _applyMenuFilters(pool, settings, 'd\u00e9jeuner+d\u00eener', emptyDueToAllergen);
-
-    // Etape 4 : erreur claire si pool toujours insuffisant - AUCUN fallback random
-    if(pool.length < MIN_POOL) {
-      const what = [];
-      if(settings.cuisine) what.push('cuisine ' + settings.cuisine);
-      if(diet !== 'omnivore') what.push('r\u00e9gime ' + diet);
-      if(settings.maxTime) what.push('< ' + settings.maxTime + ' min');
-      if(settings.selectedAllergens.length) what.push('sans ' + settings.selectedAllergens.join('/'));
-      const detail = what.length ? ' pour\u00a0: ' + what.join(', ') : '';
-      showToast('\u26a0\ufe0f', 'Recettes insuffisantes',
-        pool.length === 0
-          ? 'Aucune recette trouv\u00e9e' + detail + '. \u00c9largissez vos filtres ou explorez Jow d\u2019abord.'
-          : pool.length + ' recette(s) trouv\u00e9e(s)' + detail + ', il en faut ' + MIN_POOL + '. \u00c9largissez vos filtres.');
-      return;
-    }
-
-    // Etape 5 : selection sans repetition
-    // 2xn recettes : n premieres = dejeuner, n suivantes = diner
-    // Garantit qu'un meme plat n'est pas servi midi ET soir le meme jour
-    const shuffled = _pickSequence(pool, MIN_POOL);
-    const lunchSeq  = shuffled.slice(0, n);
-    const dinnerSeq = shuffled.slice(n, MIN_POOL);
-
-    const dayMenus = [];
-    let weekCost = 0;
-    for(let i = 0; i < n; i++) {
-      const l = lunchSeq[i];
-      const d = dinnerSeq[i];
-      const totalKcal = (l?.kcal||0) + (d?.kcal||0);
-      const quality = ldTarget
-        ? (Math.abs(totalKcal - ldTarget) <= ldTarget * 0.18 ? 'good'
-          : Math.abs(totalKcal - ldTarget) <= ldTarget * 0.3 ? 'ok' : 'warn')
-        : 'ok';
-      weekCost += (l?.pricePerPortionEuro||0) + (d?.pricePerPortionEuro||0);
-      dayMenus.push({
-        day: remainingDays[i],
-        lunch:  l ? { name: l.name, emoji: '\ud83c\udf7d\ufe0f', kcal: l.kcal, jowId: l.id, photo: l.photo, ingredients: l.ingredients||[], origin: l.origin||null } : null,
-        dinner: d ? { name: d.name, emoji: '\ud83c\udf19',        kcal: d.kcal, jowId: d.id, photo: d.photo, ingredients: d.ingredients||[], origin: d.origin||null } : null,
-        total_kcal: totalKcal,
-        prot: (l?.prot||0)+(d?.prot||0),
-        carb: (l?.carb||0)+(d?.carb||0),
-        fat:  (l?.fat||0)+(d?.fat||0),
-        quality,
-        tip: quality === 'good' ? 'D\u00e9jeuner + d\u00eener \u00e9quilibr\u00e9s \u2705' : ''
-      });
-    }
-
-    applyAIMenuResult({ days: dayMenus, startDay: todayDayNum, summary: 'D\u00e9jeuner & d\u00eener planifi\u00e9s' });
-
-    let toastMsg = n + ' jour' + (n>1?'s':'') + ' planifi\u00e9s';
-    if(settings.cuisine) toastMsg += ' \u00b7 ' + settings.cuisine;
-    if(settings.weekBudget > 0 && weekCost > 0)
-      toastMsg += ' \u00b7 ~' + Math.round(weekCost) + '\u20ac' + (weekCost > settings.weekBudget ? ' \u26a0\ufe0f' : '');
-    showToast('\u2705', 'Menu g\u00e9n\u00e9r\u00e9', toastMsg);
-    if(emptyDueToAllergen.length)
-      showToast('\u26a0\ufe0f', 'Allerg\u00e8nes', 'Certains cr\u00e9neaux sans recettes s\u00fbres \u00b7 compl\u00e9tez manuellement.');
-
-  } catch(e) {
-    console.error('[Gen]', e);
-    showToast('\u26a0\ufe0f', 'Erreur g\u00e9n\u00e9ration', e.message);
-  } finally {
-    if(btn) btn.disabled = false;
-    if(txt) txt.textContent = '\u2728 G\u00e9n\u00e9rer le menu de la semaine';
-  }
-}
-
-
-function _dietPrefixFor(diet) {
-  const dietMap = {veg:'végétarien', vegan:'vegan', pesc:'poisson', gluten:'sans gluten', keto:'keto', halal:'halal', omnivore:''};
-  return dietMap[diet] || '';
-}
-
-function _getMealQueriesForProfile(p, diet, allergies) {
-  const goal = p.goal || 'equilibre';
-  const dp = _dietPrefixFor(diet);
-
-  // Requêtes simples et directes — Jow comprend mieux les termes courts
-  const goalQueries = {
-    perte:    { lunch: (dp ? dp+' ' : '')+'salade légumes',    dinner: (dp ? dp+' ' : '')+'soupe poisson' },
-    prise:    { lunch: (dp ? dp+' ' : '')+'pâtes riz viande',  dinner: (dp ? dp+' ' : '')+'poulet riz' },
-    perf:     { lunch: (dp ? dp+' ' : '')+'quinoa saumon',     dinner: (dp ? dp+' ' : '')+'pâtes viande' },
-    maintien: { lunch: (dp ? dp+' ' : '')+'poulet légumes',    dinner: (dp ? dp+' ' : '')+'poisson légumes' },
-    equilibre:{ lunch: (dp ? dp+' ' : '')+'plat midi',         dinner: (dp ? dp+' ' : '')+'plat soir' },
-  };
-  return goalQueries[goal] || goalQueries.equilibre;
-}
-
-async function _fetchJowRecipesForType(query, limit, diet) {
-  try {
-    const params = new URLSearchParams({ q: query || 'recette', limit: String(limit) });
-    const resp = await fetch('/api/jow?' + params);
-    if(!resp.ok) return [];
-    const data = await resp.json();
-    const recipes = (data.recipes || []).map(_jowNormalize);
-    // Save to local cache
-    recipes.forEach(r => { _jowSaveRecipe && _jowSaveRecipe(r); });
-    saveToGlobalDB && saveToGlobalDB(recipes).catch(()=>{});
-    return recipes;
-  } catch(e) {
-    return [];
-  }
-}
-
-// Récupère des recettes pour une requête précise ; si elle ne renvoie presque
-// rien (requête trop spécifique ou backend capricieux), on complète
-// automatiquement avec une requête de repli plus générique au lieu de
-// laisser le créneau vide.
-async function _fetchJowWithFallback(query, fallbackQuery, limit, diet) {
-  let recs = await _fetchJowRecipesForType(query, limit, diet);
-
-  // 1er repli : si la requête principale renvoie trop peu de résultats
-  if(recs.length < 5 && fallbackQuery && fallbackQuery.trim() !== query.trim()) {
-    const more = await _fetchJowRecipesForType(fallbackQuery, limit, diet);
-    const seen = new Set(recs.map(r => r.id));
-    recs = recs.concat(more.filter(r => !seen.has(r.id)));
-  }
-
-  // 2ème repli ultra-générique : garantit un pool minimal pour éviter les
-  // répétitions même si Jow ne reconnaît pas les requêtes précédentes
-  if(recs.length < 5) {
-    const generic = await _fetchJowRecipesForType('recette', limit, diet);
-    const seen = new Set(recs.map(r => r.id));
-    recs = recs.concat(generic.filter(r => !seen.has(r.id)));
-  }
-
-  return recs;
-}
-
-
-function generateAIMenu() { generateAIMenuFull(); } // compat alias
-
 // ══════════════════════════════════════════════════════
 // SPOONACULAR API INTEGRATION
 // ══════════════════════════════════════════════════════
@@ -4844,23 +5092,12 @@ function _renderJowResults(rawList, query) {
 
   if(!window._jowCache) window._jowCache = {};
 
-  // Normaliser toutes les recettes et les mettre en cache d'abord
-  const normalized = rawList.map(r => {
+  const cards = rawList.map(function(r) {
     const recipe = _jowNormalize(r);
+    // Mise en cache mémoire + localStorage
     window._jowCache[recipe.id] = recipe;
     _jowSaveRecipe(recipe);
-    return recipe;
-  });
-
-  // Sauvegarder TOUT le batch en une seule fois (plus fiable que une par une)
-  saveToGlobalDB(normalized).then(added => {
-    if(added > 0 && typeof renderRecipesGrid === 'function') {
-      // Refresh le compteur dans l'onglet recettes si visible
-      setTimeout(() => { try { renderRecipesGrid(); } catch(e) {} }, 300);
-    }
-  }).catch(() => {});
-
-  const cards = normalized.map(function(recipe) {
+    saveToGlobalDB([recipe]).catch(function(){}); // sauvegarde dans la base partagee Firestore
 
     const habits  = recipe.eatingHabits || {};
     const nsBadge = _jowNSBadge(recipe.nutriScore);
@@ -4895,22 +5132,26 @@ function _renderJowResults(rawList, query) {
 //  BOOKMARK
 // ═══════════════════════════════════════════════════════════════════
 function _jowToggleBookmark(id) {
-  // S'assurer que la recette est dans _jowCache avant d'appeler toggleBookmark
   const recipe = window._jowCache && window._jowCache[id];
-  if(recipe) {
-    // Pré-charger dans getAllRecipes via saveToGlobalDB si pas encore en local
-    const existing = getGlobalRecipeDB();
-    if(!existing.some(r => r.id === id)) {
-      saveToGlobalDB([recipe]).catch(() => {});
-    }
+  if(!recipe) return;
+  if(!state.recipeBookmarks) state.recipeBookmarks = [];
+  const idx = state.recipeBookmarks.findIndex(function(b){ return b.id===id; });
+  if(idx >= 0) {
+    state.recipeBookmarks.splice(idx, 1);
+    showToast('☆','Retiré','Favori supprimé');
+  } else {
+    state.recipeBookmarks.push(recipe);
+    _jowSaveRecipe(recipe); // persistance locale
+    saveToGlobalDB([recipe]).catch(function(){}); // persistance Firestore partagee
+    showToast('⭐','Favori ajouté','Recette sauvegardée et partagée !');
   }
-  toggleBookmark(id);
-  // Mettre à jour les boutons Jow spécifiques
-  const isBm = (state.recipeBookmarks || []).some(b => b.id === id);
-  const btn = document.getElementById('jbm_' + id);
-  if(btn) btn.textContent = isBm ? '⭐' : '☆';
+  saveState();
+  // Mettre à jour le bouton dans la grille
+  const btn = document.getElementById('jbm_'+id);
+  if(btn) btn.textContent = idx>=0 ? '☆' : '⭐';
+  // Mettre à jour le bouton dans le modal si ouvert
   const modalBm = document.getElementById('jowModalBm');
-  if(modalBm) modalBm.textContent = isBm ? '⭐' : '☆';
+  if(modalBm) modalBm.textContent = idx>=0 ? '☆' : '⭐';
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -6301,12 +6542,12 @@ function getGlobalRecipeDB() {
 async function saveToGlobalDB(recipes) {
   if(!Array.isArray(recipes) || !recipes.length) return 0;
 
-  // Cache mémoire immédiat
+  // 1. Cache mémoire immédiat
   if(!window._jowCache) window._jowCache = {};
   for(const r of recipes) { if(r && r.id) window._jowCache[r.id] = r; }
 
-  // localStorage d'abord (synchrone, zéro latence perçue)
-  const existing = getGlobalRecipeDB();
+  // 2. localStorage (synchrone, zéro latence)
+  const existing    = getGlobalRecipeDB();
   const existingIds = new Set(existing.map(r => r.id));
   let added = 0;
   for(const r of recipes) {
@@ -6321,10 +6562,11 @@ async function saveToGlobalDB(recipes) {
   if(added > 0) {
     try { localStorage.setItem('sc_global_recipes', JSON.stringify(existing.slice(0, 2000))); }
     catch(e) { try { localStorage.setItem('sc_global_recipes', JSON.stringify(existing.slice(0, 500))); } catch(_) {} }
+    _invalidateRecipesCache();
     setTimeout(() => { try { renderRecipesGrid?.(); } catch(_) {} }, 500);
   }
 
-  // Firestore en arrière-plan — ne bloque PAS l'UI
+  // 3. Firestore en arrière-plan (fire-and-forget)
   if(typeof db !== 'undefined' && db && typeof currentUser !== 'undefined' && currentUser) {
     (async () => {
       try {
@@ -6336,7 +6578,8 @@ async function saveToGlobalDB(recipes) {
           delete fd._rawMeal;
           if(typeof fd.photo === 'string' && fd.photo.startsWith('data:')) delete fd.photo;
           batch.set(db.collection('recipes').doc(r.id), {
-            ...fd, savedBy: currentUser.uid,
+            ...fd,
+            savedBy: currentUser.uid,
             savedByEmail: currentUser.email || '',
             savedAt: firebase.firestore.FieldValue.serverTimestamp(),
           }, { merge: true });
@@ -6363,57 +6606,61 @@ function searchGlobalDB(query, filters) {
 }
 
 // Sync shared recipes from Firestore → local cache with real-time listener
+// ── Cache mémoire des recettes (évite les rechargements Firestore) ──
+let _recipesCache    = null;   // tableau de toutes les recettes
+let _recipesCacheTs  = 0;      // timestamp du dernier chargement
+const _RECIPES_TTL   = 5 * 60 * 1000; // 5 minutes
+
 let _recipesUnsub = null;
 async function syncGlobalRecipesFromFirestore() {
   if(typeof db === 'undefined' || !db) return;
+
+  // Déjà chargé récemment → ne rien faire
+  if(_recipesCache && Date.now() - _recipesCacheTs < _RECIPES_TTL) return;
+
+  // Annuler l'ancien onSnapshot (trop coûteux)
   if(_recipesUnsub) { _recipesUnsub(); _recipesUnsub = null; }
 
-  function applySnap(snap) {
-    const existing = getGlobalRecipeDB();
+  try {
+    // One-time get — pas de onSnapshot (évite le stream permanent)
+    const snap = await db.collection('recipes').limit(200).get();
+    const existing    = getGlobalRecipeDB();
     const existingIds = new Set(existing.map(r => r.id));
     let added = 0;
+
     snap.forEach(doc => {
-      const r = {id: doc.id, ...doc.data(), savedAt: undefined, savedBy: undefined};
-      if(!existingIds.has(r.id) && r.name) {
-        existing.push(r);
+      const r = {id: doc.id, ...doc.data()};
+      delete r.savedAt; delete r.savedBy; delete r.savedByEmail;
+      if(!r.name) return;
+      // Cache mémoire Jow
+      if(!window._jowCache) window._jowCache = {};
+      window._jowCache[r.id] = r;
+      if(!existingIds.has(r.id)) {
+        const lean = {...r};
+        delete lean.photo; delete lean.photoCandidates;
+        existing.push(lean);
         existingIds.add(r.id);
         added++;
-        // Si c'est une recette Jow, la mettre aussi dans le cache Jow
-        if(r.source === 'jow' && r.id) {
-          if(!window._jowCache) window._jowCache = {};
-          window._jowCache[r.id] = r;
-          if(typeof _jowSaveRecipe === 'function') _jowSaveRecipe(r);
-        }
       }
     });
-    if(added > 0) {
-      localStorage.setItem('sc_global_recipes', JSON.stringify(existing.slice(0, 2000)));
-      console.log('[Firestore] +' + added + ' recettes partagées (dont Jow)');
-      if(_menuTab === 'recipes') { try { (_myRecipesSubTab === 'favs' ? renderFavsGrid : renderRecipesGrid)(); } catch(e){} }
-    }
-  }
 
-  // Charger par lots de 500 (limite Firestore) pour récupérer toutes les recettes
-  const BATCH = 500;
-  try {
-    _recipesUnsub = db.collection('recipes').limit(BATCH).onSnapshot(
-      snap => {
-        applySnap(snap);
-        // Si on a atteint la limite, charger le prochain lot
-        if(snap.size === BATCH) {
-          const lastDoc = snap.docs[snap.docs.length - 1];
-          db.collection('recipes').startAfter(lastDoc).limit(BATCH).get()
-            .then(snap2 => applySnap(snap2)).catch(() => {});
-        }
-      },
-      err => {
-        console.warn('[Firestore] recipes onSnapshot error:', err.message);
-        db.collection('recipes').limit(BATCH).get().then(applySnap).catch(() => {});
-      }
-    );
+    if(added > 0) {
+      try { localStorage.setItem('sc_global_recipes', JSON.stringify(existing.slice(0, 2000))); } catch(e) {}
+    }
+
+    // Mettre à jour le cache mémoire global
+    _recipesCache   = existing;
+    _recipesCacheTs = Date.now();
+
   } catch(e) {
-    console.warn('[Firestore] syncGlobalRecipes setup error:', e.message);
+    console.warn('[Firestore] syncGlobalRecipes:', e.message);
   }
+}
+
+// Invalider le cache (appelé après saveToGlobalDB)
+function _invalidateRecipesCache() {
+  _recipesCache = null;
+  _recipesCacheTs = 0;
 }
 
 
@@ -7082,121 +7329,6 @@ function _previewMealSlot(day, slot) {
   document.addEventListener('touchend',   () => { if(_lpT) { clearTimeout(_lpT); _lpT = null; } }, { passive: true });
   document.addEventListener('touchcancel',() => { if(_lpT) { clearTimeout(_lpT); _lpT = null; } }, { passive: true });
 })();
-
-function applyAIMenuResult(data) {
-  if(!data.days) return;
-  const startDay = data.startDay || 1;
-  data.days.forEach((d,i) => {
-    const dn = startDay + i;
-    const fmt = m => {
-      if(!m) return null;
-      return {
-        name: (m.emoji || '🍽️') + ' ' + (m.name || ''),
-        kcal: m.kcal || 0, prot: m.prot || 0, carb: m.carb || 0, fat: m.fat || 0,
-        recipeId: m.jowId || null,
-        photo: m.photo || null,
-        source: m.jowId ? 'jow' : 'ai',
-        ingredients: (m.ingredients || []).slice(0, 12),
-      };
-    };
-    if(!state.weekMenu[dn]) state.weekMenu[dn] = {};
-    const wm = state.weekMenu[dn];
-    if(d.breakfast) { const fmtd = fmt(d.breakfast); wm.b = fmtd.name; wm.bData = fmtd; }
-    if(d.lunch)     { const fmtd = fmt(d.lunch);     wm.l = fmtd.name; wm.lData = fmtd; }
-    if(d.dinner)    { const fmtd = fmt(d.dinner);    wm.d = fmtd.name; wm.dData = fmtd; }
-    if(d.snack)     { const fmtd = fmt(d.snack);     wm.snack = fmtd.name; wm.snackData = fmtd; }
-    if(d.total_kcal || d.prot) {
-      wm.nutri = { kcal: d.total_kcal || 0, prot: d.prot || 0, carb: d.carb || 0, fat: d.fat || 0 };
-    }
-    if(d.quality) wm.quality = d.quality;
-    if(d.tip)     wm.tip = d.tip;
-  });
-  saveWeekMenu();
-  renderWeek && renderWeek();
-  renderDayDetail && renderDayDetail();
-  const zone = document.getElementById('aiMenuResultZone');
-  if(zone && data.summary) {
-    zone.innerHTML = '<div style="background:rgba(46,204,113,.08);border:1px solid rgba(46,204,113,.2);border-radius:var(--rs);padding:12px 14px;margin-bottom:14px;font-size:.8rem;color:var(--gn);font-weight:700;">✅ ' + data.summary + '</div>';
-  }
-}
-
-
-
-
-function applyDemoMenu(diet) {
-  const demos={
-    omnivore:[
-      {b:'☕ Café + toast avocat œuf poché',l:'🥗 Salade César poulet parmesan',d:'🍝 Spaghetti bolognaise maison',sn:'🍎 Pomme + amandes',kcal:1820,prot:98,carb:195,fat:62,q:'good',tip:'Journée idéalement équilibrée'},
-      {b:'🥣 Porridge avoine banane miel',l:'🍱 Bowl saumon quinoa avocat',d:'🍛 Curry de poulet lait de coco',sn:'🍶 Yaourt grec myrtilles',kcal:1890,prot:92,carb:205,fat:60,q:'good',tip:'Riche en oméga-3'},
-      {b:'🍳 Omelette 3 œufs tomates',l:'🥙 Wrap poulet légumes grillés',d:'🥘 Ratatouille riz basmati',sn:'🫐 Myrtilles + noix cajou',kcal:1750,prot:85,carb:180,fat:58,q:'ok',tip:'Bonne journée végétale'},
-      {b:'🥐 Croissant + jus orange pressé',l:'🍲 Soupe lentilles corail naan',d:'🥩 Steak haché purée maison',sn:'🧀 Fromage blanc',kcal:1950,prot:95,carb:215,fat:65,q:'ok',tip:'Attention glucides élevés'},
-      {b:'🫐 Smoothie bowl acaï granola',l:'🍜 Ramen légumes œuf mollet',d:'🍕 Pizza maison mozza roquette',sn:'🥜 Beurre cacahuète galette riz',kcal:1980,prot:78,carb:245,fat:72,q:'warn',tip:'Plaisir du vendredi !'},
-      {b:'🥞 Pancakes complets sirop érable',l:'🥗 Salade niçoise thon',d:'🦐 Crevettes sautées riz cantonais',sn:'🍊 Oranges',kcal:1860,prot:88,carb:210,fat:62,q:'good',tip:'Fruits de mer bénéfiques'},
-      {b:'🍞 Toast avocat tomates cerises',l:'🥘 Couscous royal traditionnel',d:'🍗 Rôti de poulet légumes rôtis',sn:'🍫 Carré chocolat noir 70%',kcal:1920,prot:96,carb:200,fat:65,q:'good',tip:'Dimanche en famille 🏡'},
-    ],
-    veg:[
-      {b:'🥣 Granola lait végétal fruits',l:'🥗 Salade quinoa feta grenade',d:'🍄 Risotto champignons parmesan',sn:'🍎 Pomme amandes',kcal:1780,prot:72,carb:205,fat:62,q:'good'},
-      {b:'🍳 Omelette épinards chèvre',l:'🧆 Falafel houmous pita',d:'🥘 Curry tofu patate douce',sn:'🍶 Yaourt grec miel',kcal:1840,prot:68,carb:215,fat:60,q:'good'},
-      {b:'🫐 Smoothie épinards banane',l:'🍝 Pâtes pesto basilic parmesan',d:'🥗 Salade de lentilles beluga',sn:'🌰 Dattes amandes',kcal:1720,prot:65,carb:198,fat:55,q:'ok'},
-      {b:'🥐 Tartine beurre confiture bio',l:'🌮 Tacos haricots noirs guac',d:'🍆 Moussaka végétarienne',sn:'🧀 Fromage blanc',kcal:1860,prot:70,carb:220,fat:62,q:'ok'},
-      {b:'🥞 Pancakes myrtilles érable',l:'🍜 Soupe miso tofu wakamé',d:'🫑 Ratatouille riz complet',sn:'🍫 Chocolat noir noix',kcal:1790,prot:62,carb:210,fat:58,q:'ok'},
-      {b:'🍓 Açaï bowl granola',l:'🥗 Salade betterave chèvre noix',d:'🍕 Pizza végétarienne mozzarella',sn:'🍊 Mandarine',kcal:1880,prot:68,carb:225,fat:65,q:'warn'},
-      {b:'🍞 Toast avocat œuf bio',l:'🥘 Dhal lentilles corail naan',d:'🥦 Gratin brocoli comté',sn:'🫐 Myrtilles',kcal:1820,prot:75,carb:205,fat:60,q:'good'},
-    ],
-    vegan:[
-      {b:'🫐 Smoothie bowl spiruline',l:'🥗 Buddha bowl houmous',d:'🍛 Dal lentilles corail',sn:'🌰 Noix mélangées',kcal:1750,prot:68,carb:210,fat:58,q:'good'},
-      {b:'🥣 Porridge lait coco chia',l:'🧆 Falafel taboulé pita',d:'🥕 Curry légumes coco',sn:'🍌 Banane beurre amande',kcal:1820,prot:62,carb:225,fat:60,q:'good'},
-      {b:'🍞 Toast avocat tomates',l:'🍝 Pâtes tomate basilic',d:'🥘 Wok tofu légumes',sn:'🍎 Pomme',kcal:1680,prot:58,carb:215,fat:52,q:'ok'},
-    ],
-    pesc:[
-      {b:'☕ Café toast sardines avocat',l:'🐟 Salade niçoise thon',d:'🦐 Crevettes sautées riz',sn:'🍊 Orange',kcal:1820,prot:95,carb:185,fat:60,q:'good'},
-      {b:'🥣 Porridge miel fruits',l:'🍱 Bowl saumon quinoa',d:'🐟 Cabillaud vapeur légumes',sn:'🫐 Myrtilles',kcal:1780,prot:88,carb:190,fat:58,q:'good'},
-      {b:'🍳 Omelette saumon fumé',l:'🥗 Salade César saumon',d:'🦐 Gambas thaïlandaises',sn:'🍶 Yaourt',kcal:1850,prot:98,carb:180,fat:65,q:'good'},
-    ],
-    keto:[
-      {b:'🍳 Œufs brouillés bacon avocat',l:'🥗 Salade saumon avocat œuf',d:'🥩 Entrecôte haricots beurre',sn:'🧀 Gouda',kcal:1750,prot:108,carb:22,fat:138,q:'good'},
-      {b:'☕ Café bulletproof œufs',l:'🐟 Saumon crème épinards',d:'🍗 Poulet parmesan courgettes',sn:'🌰 Noix macadamia',kcal:1820,prot:102,carb:20,fat:145,q:'good'},
-      {b:'🥚 Omelette fromage épinards',l:'🥗 Salade César (sans croutons)',d:'🥩 Steak haché salade',sn:'🥑 Avocat citron',kcal:1700,prot:98,carb:18,fat:132,q:'ok'},
-    ],
-    gluten:[
-      {b:'🥣 Flocons de riz lait fruits',l:'🥗 Salade riz poulet avocat',d:'🥔 Gratin quinoa légumes',sn:'🍎 Pomme noix',kcal:1780,prot:82,carb:195,fat:62,q:'good'},
-      {b:'🍳 Omelette jambon fromage',l:'🍛 Curry riz saumon',d:'🥩 Steak légumes vapeur',sn:'🍶 Yaourt grec',kcal:1820,prot:95,carb:185,fat:65,q:'good'},
-      {b:'🫐 Smoothie bowl chia',l:'🥗 Salade lentilles thon',d:'🐟 Pavé saumon riz pilaf',sn:'🌰 Amandes dattes',kcal:1750,prot:88,carb:200,fat:58,q:'good'},
-    ]
-  };
-  const pool = demos[diet]||demos.omnivore;
-  const todayNum = new Date().getDay() || 7; // 1=Lun … 7=Dim
-  pool.forEach((d,i) => {
-    const dn = i + 1;
-    if(dn < todayNum) return; // ne touche pas aux jours passés
-    if(!state.weekMenu[dn]) state.weekMenu[dn] = {};
-    // Uniquement déjeuner et dîner — le petit-déj et la collation restent libres
-    state.weekMenu[dn].l = d.l;
-    state.weekMenu[dn].d = d.d;
-    state.weekMenu[dn].nutri = {kcal:Math.round((d.kcal||0)*0.65), prot:Math.round((d.prot||0)*0.65), carb:Math.round((d.carb||0)*0.65), fat:Math.round((d.fat||0)*0.65)};
-    state.weekMenu[dn].quality = d.q || 'ok';
-    state.weekMenu[dn].tip = d.tip || '';
-  });
-  // Complète les jours restants si le pool est plus court que la semaine
-  for(let i = pool.length; i < 7; i++) {
-    const dn = i + 1;
-    if(dn < todayNum) continue;
-    if(!state.weekMenu[dn]) state.weekMenu[dn] = {};
-    const src = pool[i % pool.length];
-    state.weekMenu[dn].l = src.l;
-    state.weekMenu[dn].d = src.d;
-    state.weekMenu[dn].quality = src.q || 'ok';
-  }
-  saveWeekMenu(); renderWeek(); renderDayDetail();
-  const zone=document.getElementById('aiMenuResultZone');
-  if(zone) zone.innerHTML=`<div class="ai-menu-result" style="background:linear-gradient(135deg,rgba(255,107,107,.06),rgba(255,142,83,.04));border:1px solid rgba(255,107,107,.15);">
-    <div style="display:flex;align-items:center;gap:8px;">
-      <span style="font-size:1.2rem;">📋</span>
-      <div><div style="font-weight:900;font-size:.88rem;">Menu démonstration</div>
-      <div style="font-size:.7rem;color:var(--tx2);">Configurez votre clé API Claude pour un menu IA personnalisé</div></div>
-    </div>
-  </div>`;
-}
 
 // ── Semaine ─────────────────────────────────────────────────
 
@@ -8693,63 +8825,6 @@ function saveMealEdit(day, slot) {
 function closeMealEdit() { document.getElementById('mealEditOverlay')?.classList.remove('on'); }
 
 // ── Génération IA d'un jour ─────────────────────────────────
-async function regenDayAI(day) {
-  const btn = document.querySelector('[onclick*="regenDayAI"]');
-  if(btn) btn.disabled = true;
-  const p = state.profile || {};
-  const diet = state.selectedDiet[0] || p.diet || 'omnivore';
-  const query = _getMealQueriesForProfile(p, diet, '');
-  const settings = _readMenuFilterSettings();
-  const dietPrefix = _dietPrefixFor(diet);
-  let lunchQuery  = query.lunch.trim();
-  let dinnerQuery = query.dinner.trim();
-  if(settings.cuisine) {
-    lunchQuery  = (settings.cuisine + (dietPrefix ? ' ' + dietPrefix : '') + ' déjeuner').trim();
-    dinnerQuery = (settings.cuisine + (dietPrefix ? ' ' + dietPrefix : '') + ' dîner').trim();
-  }
-  const lunchFallback  = (settings.cuisine ? settings.cuisine + ' ' : '') + (dietPrefix ? dietPrefix + ' ' : '') + 'déjeuner';
-  const dinnerFallback = (settings.cuisine ? settings.cuisine + ' ' : '') + (dietPrefix ? dietPrefix + ' ' : '') + 'dîner';
-  const emptyDueToAllergen = [];
-
-  try {
-    showToast('⏳', 'Jow', 'Recherche de nouvelles recettes…');
-    const [lunchRecsRaw, dinnerRecsRaw] = await Promise.all([
-      _fetchJowWithFallback(lunchQuery, lunchFallback, 12, diet),
-      _fetchJowWithFallback(dinnerQuery, dinnerFallback, 12, diet),
-    ]);
-    const lunchRecs  = _applyMenuFilters(lunchRecsRaw, settings, 'déjeuner', emptyDueToAllergen);
-    const dinnerRecs = _applyMenuFilters(dinnerRecsRaw, settings, 'dîner', emptyDueToAllergen);
-    const wm = state.weekMenu[day] || {};
-    // Pick different recipes than currently selected
-    const curL = (wm.lData?.recipeId || '');
-    const curD = (wm.dData?.recipeId || '');
-    const newL = lunchRecs.find(r => r.id !== curL) || lunchRecs[0];
-    const newD = dinnerRecs.find(r => r.id !== curD) || dinnerRecs[0];
-    if(!state.weekMenu[day]) state.weekMenu[day] = {};
-    if(newL) {
-      state.weekMenu[day].l = newL.name;
-      state.weekMenu[day].lData = {name:newL.name, recipeId:newL.id, photo:newL.photo, kcal:newL.kcal, prot:newL.prot, carb:newL.carb, fat:newL.fat, source:'jow', ingredients:(newL.ingredients||[]).slice(0,12)};
-    }
-    if(newD) {
-      state.weekMenu[day].d = newD.name;
-      state.weekMenu[day].dData = {name:newD.name, recipeId:newD.id, photo:newD.photo, kcal:newD.kcal, prot:newD.prot, carb:newD.carb, fat:newD.fat, source:'jow', ingredients:(newD.ingredients||[]).slice(0,12)};
-    }
-    _refreshDayNutri(day);
-    saveWeekMenu();
-    renderWeek && renderWeek();
-    renderDayDetail && renderDayDetail();
-    if(emptyDueToAllergen.length) {
-      showToast('⚠️', 'Allergènes', 'Aucune recette sans ' + settings.selectedAllergens.join('/') + ' trouvée pour : ' + emptyDueToAllergen.join(', ') + '.');
-    } else {
-      showToast('✅', 'Menu mis à jour', 'Nouvelles recettes Jow sélectionnées');
-    }
-  } catch(e) {
-    showToast('⚠️', 'Erreur', e.message);
-  } finally {
-    if(btn) btn.disabled = false;
-  }
-}
-
 async function generateAIDayMenu(day) { regenDayAI(day); } // compat
 
 function generateDayMenu(day) {
@@ -8764,7 +8839,6 @@ function clearDayMenu(day) {
   saveWeekMenu(); renderWeek();
 }
 
-function generateWeekMenu() { generateAIMenuFull(); } // compat
 
 // ── Ingrédients du jour → liste ─────────────────────────────
 function addDayIngredients(day) {
@@ -9112,7 +9186,7 @@ function getAllRecipes() {
 }
 
 function filterRecipesView(q) {
-  window._recipeSearch = (q || '').toLowerCase();
+  _recipeSearch=q.toLowerCase();
   renderRecipesGrid();
 }
 
@@ -9165,21 +9239,14 @@ function renderRecipesGrid() {
     html += '</div>';
   }
 
-  // ── Base partagée (Firestore + Jow cache mémoire) ──
-  // Fusionner localStorage + cache Jow mémoire (avec les photos)
-  const jowCacheRecipes = window._jowCache ? Object.values(window._jowCache) : [];
-  const localIds = new Set(globalDB.map(r => r.id));
-  const mergedShared = [
-    ...globalDB,
-    ...jowCacheRecipes.filter(r => r && r.id && r.name && !localIds.has(r.id))
-  ];
-  const sharedFiltered = mergedShared.filter(r =>
+  // ── Base partagée (Firestore) ──
+  const sharedFiltered = globalDB.filter(r =>
     !customRecipes.some(c => c.id === r.id) && matchSearch(r)
   );
 
   if(sharedFiltered.length > 0) {
     html += `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-      <div style="font-size:.68rem;font-weight:800;color:var(--tl);text-transform:uppercase;letter-spacing:.8px;">☁️ Base de recettes (${sharedFiltered.length})</div>
+      <div style="font-size:.68rem;font-weight:800;color:var(--tl);text-transform:uppercase;letter-spacing:.8px;">☁️ Base commune (${sharedFiltered.length})</div>
       <div style="font-size:.6rem;color:var(--tx3);">Partagée entre tous les comptes</div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:18px;">`;

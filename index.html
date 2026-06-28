@@ -2117,9 +2117,16 @@ function dbg() {}
 // ═══════════════════════════════════════════════
 // LOCAL STORAGE
 // ═══════════════════════════════════════════════
-function saveState() {
+// saveState avec debounce 300ms — évite les écritures répétées
+let _saveStateTimer = null;
+function saveState(immediate) {
+  if(immediate) { _doSaveState(); return; }
+  if(_saveStateTimer) clearTimeout(_saveStateTimer);
+  _saveStateTimer = setTimeout(_doSaveState, 300);
+}
+function _doSaveState() {
+  _saveStateTimer = null;
   try {
-    // Exclude spoonCache (too large) from localStorage
     const {spoonCache, ...toSave} = state;
     localStorage.setItem('sc_state_v3', JSON.stringify(toSave));
   } catch(e) {}
@@ -2139,17 +2146,24 @@ function loadState() {
 // ═══════════════════════════════════════════════
 // FIRESTORE SYNC
 // ═══════════════════════════════════════════════
-async function syncToFirestore(key, value) {
-  if(!db || !currentUser) return;
-  try {
-    const docId = state.houseId || currentUser.uid;
-    await _writeFieldReplacing(db.collection('households').doc(docId), key, value);
-    // Always mirror personal data to users/{uid} so it survives logout/login without a household
-    const personalKeys = ['weekMenu', 'history', 'fridge', 'items', 'budget'];
-    if(personalKeys.includes(key)) {
-      await _writeFieldReplacing(db.collection('users').doc(currentUser.uid), key, value);
-    }
-  } catch(e) { console.warn('Sync error:', e); }
+// Debounce map pour éviter les écritures Firestore en rafale
+const _syncTimers = {};
+function syncToFirestore(key, value) {
+  // Retourne une Promise résolue immédiatement — ne bloque jamais l'UI
+  if(_syncTimers[key]) clearTimeout(_syncTimers[key]);
+  _syncTimers[key] = setTimeout(async () => {
+    delete _syncTimers[key];
+    if(!db || !currentUser) return;
+    try {
+      const docId = state.houseId || currentUser.uid;
+      await _writeFieldReplacing(db.collection('households').doc(docId), key, value);
+      const personalKeys = ['weekMenu', 'history', 'fridge', 'items', 'budget'];
+      if(personalKeys.includes(key)) {
+        await _writeFieldReplacing(db.collection('users').doc(currentUser.uid), key, value);
+      }
+    } catch(e) { console.warn('Sync error:', e.code || e.message); }
+  }, 600); // 600ms debounce — regroupe les appels rapprochés
+  return Promise.resolve();
 }
 
 // Écrit un champ en le REMPLAÇANT entièrement (pas de fusion récursive).
@@ -2793,24 +2807,25 @@ function fillProfileForm() {
 }
 
 
+let _renderAllTimer = null;
 function renderAll() {
-  // Save scroll positions before re-rendering
-  const scrollPositions = {};
-  document.querySelectorAll('.view.on .vb').forEach(vb => {
-    scrollPositions[vb.closest('.view')?.id] = vb.scrollTop;
-  });
-
-  renderList();
-  renderFridge();
-  renderWeek();
-
-  // Restore scroll positions after render
-  requestAnimationFrame(() => {
-    document.querySelectorAll('.view .vb').forEach(vb => {
-      const viewId = vb.closest('.view')?.id;
-      if(viewId && scrollPositions[viewId] !== undefined) {
-        vb.scrollTop = scrollPositions[viewId];
-      }
+  if(_renderAllTimer) cancelAnimationFrame(_renderAllTimer);
+  _renderAllTimer = requestAnimationFrame(() => {
+    _renderAllTimer = null;
+    const scrollPositions = {};
+    document.querySelectorAll('.view.on .vb').forEach(vb => {
+      scrollPositions[vb.closest('.view')?.id] = vb.scrollTop;
+    });
+    renderList();
+    renderFridge();
+    renderWeek();
+    requestAnimationFrame(() => {
+      document.querySelectorAll('.view .vb').forEach(vb => {
+        const viewId = vb.closest('.view')?.id;
+        if(viewId && scrollPositions[viewId] !== undefined) {
+          vb.scrollTop = scrollPositions[viewId];
+        }
+      });
     });
   });
 }
@@ -6286,75 +6301,55 @@ function getGlobalRecipeDB() {
 async function saveToGlobalDB(recipes) {
   if(!Array.isArray(recipes) || !recipes.length) return 0;
 
-  // ── Toujours mettre en cache mémoire (avec photos) ───────────────
+  // Cache mémoire immédiat
   if(!window._jowCache) window._jowCache = {};
-  for(const r of recipes) {
-    if(r && r.id) window._jowCache[r.id] = r;
-  }
+  for(const r of recipes) { if(r && r.id) window._jowCache[r.id] = r; }
 
-  // ── Écriture Firestore ────────────────────────────────────────────
-  let firestoreOk = false;
-  if(typeof db !== 'undefined' && db && typeof currentUser !== 'undefined' && currentUser) {
-    const batch = db.batch();
-    let batchCount = 0;
-    for(const r of recipes) {
-      if(!r.name || !r.id) continue;
-      const fd = {...r};
-      delete fd._rawMeal;
-      // Ne pas stocker les data: URLs (trop grandes pour Firestore 1MB/doc)
-      if(typeof fd.photo === 'string' && fd.photo.startsWith('data:')) delete fd.photo;
-      (fd.photoCandidates || []).forEach((p, i) => {
-        if(typeof p === 'string' && p.startsWith('data:')) fd.photoCandidates[i] = '';
-      });
-      const ref = db.collection('recipes').doc(r.id);
-      batch.set(ref, {
-        ...fd,
-        savedBy:      currentUser.uid,
-        savedByEmail: currentUser.email || '',
-        savedAt:      firebase.firestore.FieldValue.serverTimestamp(),
-      }, { merge: true });
-      batchCount++;
-      // Firestore batch max = 500 ops
-      if(batchCount >= 490) break;
-    }
-    if(batchCount > 0) {
-      try {
-        await batch.commit();
-        firestoreOk = true;
-        console.log('[DB] ✅ ' + batchCount + ' recettes sauvegardées dans Firestore');
-      } catch(e) {
-        console.warn('[DB] ❌ Firestore batch failed:', e.code, e.message);
-      }
-    }
-  }
-
-  // ── Mise à jour localStorage (sans photos pour économiser l'espace) ─
-  const existing    = getGlobalRecipeDB();
+  // localStorage d'abord (synchrone, zéro latence perçue)
+  const existing = getGlobalRecipeDB();
   const existingIds = new Set(existing.map(r => r.id));
   let added = 0;
   for(const r of recipes) {
     if(!r.name || !r.id || existingIds.has(r.id)) continue;
     const lean = {...r};
-    delete lean.photo;
-    delete lean.photoCandidates;
-    delete lean._rawMeal;
+    delete lean.photo; delete lean.photoCandidates; delete lean._rawMeal;
     lean._savedAt = Date.now();
     existing.unshift(lean);
     existingIds.add(r.id);
     added++;
   }
   if(added > 0) {
-    try {
-      localStorage.setItem('sc_global_recipes', JSON.stringify(existing.slice(0, 2000)));
-      console.log('[DB] 💾 ' + added + ' recette(s) ajoutée(s) en local — total: ' + existing.length);
-    } catch(e) {
-      try { localStorage.setItem('sc_global_recipes', JSON.stringify(existing.slice(0, 500))); } catch(_) {}
-    }
-    if(typeof renderRecipesGrid === 'function') setTimeout(() => { try { renderRecipesGrid(); } catch(_) {} }, 200);
+    try { localStorage.setItem('sc_global_recipes', JSON.stringify(existing.slice(0, 2000))); }
+    catch(e) { try { localStorage.setItem('sc_global_recipes', JSON.stringify(existing.slice(0, 500))); } catch(_) {} }
+    setTimeout(() => { try { renderRecipesGrid?.(); } catch(_) {} }, 500);
+  }
+
+  // Firestore en arrière-plan — ne bloque PAS l'UI
+  if(typeof db !== 'undefined' && db && typeof currentUser !== 'undefined' && currentUser) {
+    (async () => {
+      try {
+        const batch = db.batch();
+        let n = 0;
+        for(const r of recipes) {
+          if(!r.name || !r.id || n >= 490) break;
+          const fd = {...r};
+          delete fd._rawMeal;
+          if(typeof fd.photo === 'string' && fd.photo.startsWith('data:')) delete fd.photo;
+          batch.set(db.collection('recipes').doc(r.id), {
+            ...fd, savedBy: currentUser.uid,
+            savedByEmail: currentUser.email || '',
+            savedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          }, { merge: true });
+          n++;
+        }
+        if(n > 0) await batch.commit();
+      } catch(e) { console.warn('[DB]', e.code); }
+    })();
   }
 
   return added;
 }
+
 
 function searchGlobalDB(query, filters) {
   const localDB = getGlobalRecipeDB();

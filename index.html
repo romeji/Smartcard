@@ -1729,6 +1729,21 @@ body.offline-mode .offline-banner{display:block;}
           <button class="btn acc" onclick="explorerSearch()" style="flex-shrink:0;padding:10px 16px;border-radius:var(--rs);">Chercher</button>
         </div>
 
+        <!-- Filtre cuisine -->
+        <div style="display:flex;gap:8px;margin-bottom:10px;align-items:center;">
+          <select id="explorerCuisine" class="inp" style="flex:0 0 auto;padding:8px 10px;font-size:.78rem;border-radius:var(--rs);" onchange="explorerSearch()">
+            <option value="">🌍 Toutes cuisines</option>
+            <option value="française">🇫🇷 Française</option>
+            <option value="italienne">🇮🇹 Italienne</option>
+            <option value="asiatique">🥢 Asiatique</option>
+            <option value="japonaise">🇯🇵 Japonaise</option>
+            <option value="mexicaine">🌮 Mexicaine</option>
+            <option value="indienne">🍛 Indienne</option>
+            <option value="américaine">🇺🇸 Américaine</option>
+            <option value="méditerranéenne">🫒 Méditerranéenne</option>
+            <option value="thaïlandaise">🇹🇭 Thaïlandaise</option>
+          </select>
+        </div>
         <!-- Quick tags -->
         <div id="explorerTags" style="display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;margin-bottom:14px;">
           <button class="spoon-recipe-tag" onclick="explorerSearchQuery('pâtes carbonara')">🍝 Pâtes</button>
@@ -4774,9 +4789,12 @@ async function searchSpoonacularQuery(q) {
 // EXPLORER — fonctions unifiées
 // ─────────────────────────────────────────────────────
 function explorerSearch() {
-  const q = (document.getElementById('spoonSearchInp').value||'').trim();
-  if(!q) return;
-  searchJow(q);
+  const q       = (document.getElementById('spoonSearchInp')?.value || '').trim();
+  const cuisine = (document.getElementById('explorerCuisine')?.value || '').trim();
+  // Combiner cuisine + requête : "italienne poulet" → Jow comprend bien
+  const combined = [cuisine, q].filter(Boolean).join(' ');
+  if(!combined) return;
+  searchJow(combined);
 }
 
 // Map of shortcut queries → better Jow search terms
@@ -5030,12 +5048,18 @@ function _renderJowResults(rawList, query) {
 
   if(!window._jowCache) window._jowCache = {};
 
-  const cards = rawList.map(function(r) {
+  // Normaliser toutes les recettes d'abord
+  const normalized = rawList.map(r => {
     const recipe = _jowNormalize(r);
-    // Mise en cache mémoire + localStorage
     window._jowCache[recipe.id] = recipe;
     _jowSaveRecipe(recipe);
-    saveToGlobalDB([recipe]).catch(function(){}); // sauvegarde dans la base partagee Firestore
+    return recipe;
+  });
+
+  // UN SEUL batch de sauvegarde pour toutes les recettes (plus efficace)
+  saveToGlobalDB(normalized).catch(() => {});
+
+  const cards = normalized.map(function(recipe) {
 
     const habits  = recipe.eatingHabits || {};
     const nsBadge = _jowNSBadge(recipe.nutriScore);

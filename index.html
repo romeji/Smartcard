@@ -4466,9 +4466,9 @@ async function _queryRecipesForGeneration(settings, diet) {
 
   if(typeof db !== 'undefined' && db && typeof currentUser !== 'undefined' && currentUser) {
     try {
-      let q = db.collection('recipes').limit(60);
-      if(settings.cuisine) q = q.where('origin', '==', settings.cuisine);
-      const snap = await q.get();
+      // Pas de .where('origin') côté Firestore — la casse/variations rendent
+      // la comparaison stricte peu fiable. On filtre côté client à la place.
+      const snap = await db.collection('recipes').limit(300).get();
       const seen = new Set(pool.map(r => r.id));
       const extra = snap.docs
         .map(d => ({ id: d.id, ...d.data() }))
@@ -4483,7 +4483,7 @@ async function _queryRecipesForGeneration(settings, diet) {
 function _recipeMatchesFilters(r, settings, diet) {
   if(!r || !r.id) return false;
   const eh = r.eatingHabits || {};
-  if(settings.cuisine && r.origin !== settings.cuisine) return false;
+  if(settings.cuisine && (!r.origin || !r.origin.toLowerCase().includes(settings.cuisine.toLowerCase()))) return false;
   if(diet === 'veg'    && !eh.vegetarian)  return false;
   if(diet === 'vegan'  && !eh.vegan)       return false;
   if(diet === 'pesc'   && !eh.pescatarian) return false;
@@ -4546,6 +4546,18 @@ async function generateAIMenuFull() {
     // Etape 3 : filtres souples (temps, difficulte)
     const emptyDueToAllergen = [];
     pool = _applyMenuFilters(pool, settings, 'd\u00e9jeuner+d\u00eener', emptyDueToAllergen);
+
+    // Etape 3b : si la cuisine choisie ne donne pas assez de resultats,
+    // on l'assouplit plutot que d'afficher une erreur bloquante
+    if(pool.length < MIN_POOL && settings.cuisine) {
+      const withoutCuisine = await _queryRecipesForGeneration({...settings, cuisine: ''}, diet);
+      const seen2 = new Set(pool.map(r => r.id));
+      const extra2 = withoutCuisine.filter(r => !seen2.has(r.id));
+      if(pool.length + extra2.length >= MIN_POOL) {
+        pool = pool.concat(extra2);
+        showToast('\u2139\ufe0f', 'Cuisine \u00e9largie', 'Pas assez de recettes \"' + settings.cuisine + '\" \u2014 d\'autres cuisines ont \u00e9t\u00e9 ajout\u00e9es.');
+      }
+    }
 
     // Etape 4 : erreur claire si pool toujours insuffisant - AUCUN fallback random
     if(pool.length < MIN_POOL) {
@@ -9342,8 +9354,8 @@ function renderRecipesGrid() {
       const isBm = bookmarks.some(b=>b.id===r.id);
       return `<div style="background:var(--bg);border-radius:var(--rs);box-shadow:var(--so);overflow:hidden;position:relative;">
         <div onclick="openCustomRecipeDetail('${r.id}')" style="cursor:pointer;">
-          ${r.photo?`<img src="${r.photo}" style="width:100%;height:80px;object-fit:cover;" loading="lazy" onerror="_imgFallback(this,${JSON.stringify((r.photoCandidates||[]).slice(1))})">`
-                   :`<div style="height:64px;background:var(--bg2);display:flex;align-items:center;justify-content:center;font-size:1.8rem;">${r.emoji||'🍳'}</div>`}
+          ${r.photo?`<img src="${r.photo}" style="width:100%;aspect-ratio:4/3;object-fit:cover;object-position:center top;display:block;" loading="lazy" onerror="_imgFallback(this,${JSON.stringify((r.photoCandidates||[]).slice(1))})">`
+                   :`<div style="aspect-ratio:4/3;background:var(--bg2);display:flex;align-items:center;justify-content:center;font-size:1.8rem;">${r.emoji||'🍳'}</div>`}
           <div style="padding:8px 8px 4px;">
             <div style="font-size:.76rem;font-weight:800;line-height:1.3;">${r.name}</div>
             <div style="font-size:.6rem;color:var(--tx2);margin-top:2px;">${r.time?r.time+'min · ':''}${r.kcal?r.kcal+'kcal':''}</div>
@@ -9374,8 +9386,8 @@ function renderRecipesGrid() {
       const isBm = bookmarks.some(b=>b.id===r.id);
       return `<div style="background:var(--bg);border-radius:var(--rs);box-shadow:var(--so);overflow:hidden;position:relative;cursor:pointer;">
         <div onclick="openRecipeDetail('${(r.id||r.name).replace(/'/g,"\\'")}')">
-          ${r.photo&&!r.photo.startsWith('data:')?`<img src="${r.photo}" style="width:100%;height:80px;object-fit:cover;" onerror="this.style.display=&apos;none&apos;" loading="lazy">`
-                   :`<div style="height:64px;background:var(--bg2);display:flex;align-items:center;justify-content:center;font-size:1.8rem;">${r.emoji||'🍳'}</div>`}
+          ${r.photo&&!r.photo.startsWith('data:')?`<img src="${r.photo}" style="width:100%;aspect-ratio:4/3;object-fit:cover;object-position:center top;display:block;" onerror="this.style.display=&apos;none&apos;" loading="lazy">`
+                   :`<div style="aspect-ratio:4/3;background:var(--bg2);display:flex;align-items:center;justify-content:center;font-size:1.8rem;">${r.emoji||'🍳'}</div>`}
           <div style="padding:8px 8px 4px;">
             <div style="font-size:.76rem;font-weight:800;line-height:1.3;">${r.name}</div>
             <div style="font-size:.6rem;color:var(--tx2);margin-top:2px;">${r.source==='jow'?'🇫🇷 Jow':r.source==='ai'?'🤖 IA':r.source==='translated'?'🇫🇷 Traduite':''}${r.time?' · '+r.time+'min':''}${r.kcal?' · '+r.kcal+'kcal':''}</div>

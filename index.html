@@ -1729,6 +1729,22 @@ body.offline-mode .offline-banner{display:block;}
           <button class="btn acc" onclick="explorerSearch()" style="flex-shrink:0;padding:10px 16px;border-radius:var(--rs);">Chercher</button>
         </div>
 
+        <!-- Filtre cuisine -->
+        <div style="display:flex;gap:8px;margin-bottom:10px;align-items:center;">
+          <select id="explorerCuisine" class="inp" style="flex:0 0 auto;padding:8px 10px;font-size:.78rem;border-radius:var(--rs);" onchange="explorerSearch()">
+            <option value="">🌍 Toutes cuisines</option>
+            <option value="française">🇫🇷 Française</option>
+            <option value="italienne">🇮🇹 Italienne</option>
+            <option value="asiatique">🥢 Asiatique</option>
+            <option value="japonaise">🇯🇵 Japonaise</option>
+            <option value="mexicaine">🌮 Mexicaine</option>
+            <option value="indienne">🍛 Indienne</option>
+            <option value="américaine">🇺🇸 Américaine</option>
+            <option value="méditerranéenne">🫒 Méditerranéenne</option>
+            <option value="thaïlandaise">🇹🇭 Thaïlandaise</option>
+          </select>
+        </div>
+
         <!-- Quick tags -->
         <div id="explorerTags" style="display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;margin-bottom:14px;">
           <button class="spoon-recipe-tag" onclick="explorerSearchQuery('pâtes carbonara')">🍝 Pâtes</button>
@@ -4770,9 +4786,11 @@ async function searchSpoonacularQuery(q) {
 // EXPLORER — fonctions unifiées
 // ─────────────────────────────────────────────────────
 function explorerSearch() {
-  const q = (document.getElementById('spoonSearchInp').value||'').trim();
-  if(!q) return;
-  searchJow(q);
+  const q       = (document.getElementById('spoonSearchInp')?.value || '').trim();
+  const cuisine = (document.getElementById('explorerCuisine')?.value || '').trim();
+  const combined = [cuisine, q].filter(Boolean).join(' ');
+  if(!combined) return;
+  searchJow(combined);
 }
 
 // Map of shortcut queries → better Jow search terms
@@ -5026,13 +5044,18 @@ function _renderJowResults(rawList, query) {
 
   if(!window._jowCache) window._jowCache = {};
 
-  const cards = rawList.map(function(r) {
+  // Normaliser toutes les recettes d'abord
+  const normalized = rawList.map(r => {
     const recipe = _jowNormalize(r);
-    // Mise en cache mémoire + localStorage
     window._jowCache[recipe.id] = recipe;
     _jowSaveRecipe(recipe);
-    saveToGlobalDB([recipe]).catch(function(){}); // sauvegarde dans la base partagee Firestore
+    return recipe;
+  });
 
+  // UN SEUL batch pour toute la recherche
+  saveToGlobalDB(normalized).catch(() => {});
+
+  const cards = normalized.map(function(recipe) {
     const habits  = recipe.eatingHabits || {};
     const nsBadge = _jowNSBadge(recipe.nutriScore);
     const gsBadge = _jowGSBadge(recipe.greenScore);
@@ -6467,67 +6490,65 @@ function openStripeCheckout(plan) {
 }
 
 
+// ══ BASE DE DONNÉES RECETTES ══════════════════════════════════════
+// Source de vérité = Firestore collection "recipes" (illimitée, partagée
+// entre tous les utilisateurs). _jowCache = cache mémoire de session.
+// localStorage N'EST PLUS UTILISÉ pour stocker les recettes (quota 5MB
+// trop limité — c'est ce qui plafonnait la base à ~250-300 recettes).
+
 function getGlobalRecipeDB() {
-  try {
-    return JSON.parse(localStorage.getItem('sc_global_recipes') || '[]');
-  } catch(e) { return []; }
+  if(!window._jowCache) return [];
+  return Object.values(window._jowCache).filter(r => r && r.id && r.name);
 }
 
 async function saveToGlobalDB(recipes) {
   if(!Array.isArray(recipes) || !recipes.length) return 0;
-  const existing = getGlobalRecipeDB();
-  const existingIds = new Set(existing.map(r => r.id));
-  const existingNames = new Set(existing.map(r => (r.name||'').toLowerCase()));
+
+  // 1. Cache mémoire immédiat (zéro latence, avec photos)
+  if(!window._jowCache) window._jowCache = {};
   let added = 0;
-  const firestoreErrors = [];
-
   for(const r of recipes) {
-    if(!r.name || !r.id) continue;
-    // Skip if already in local cache (by ID or name)
-    if(existingIds.has(r.id) || existingNames.has(r.name.toLowerCase())) {
-      // Still try to push to Firestore in case it wasn't saved there yet
-    } else {
-      const clean = {...r};
-      delete clean._rawMeal;
-      clean._savedAt = Date.now();
-      existing.unshift(clean);
-      existingIds.add(r.id);
-      existingNames.add(r.name.toLowerCase());
-      added++;
-    }
-
-    // Always persist to Firestore shared collection
-    if(typeof db !== 'undefined' && db && typeof currentUser !== 'undefined' && currentUser) {
-      try {
-        const firestoreData = {...r};
-        delete firestoreData._rawMeal;
-        // Strip base64 photos — too large for Firestore (1MB doc limit)
-        if(firestoreData.photo && firestoreData.photo.startsWith('data:')) delete firestoreData.photo;
-        await db.collection('recipes').doc(r.id).set({
-          ...firestoreData,
-          savedBy: currentUser.uid,
-          savedByEmail: currentUser.email || '',
-          savedAt: firebase.firestore.FieldValue.serverTimestamp(),
-        }, {merge: true});
-        console.log('[DB] ✅ Recipe saved to Firestore:', r.name);
-      } catch(e) {
-        console.error('[DB] ❌ Firestore save failed for', r.name, ':', e.code, e.message);
-        firestoreErrors.push(e.message);
-      }
-    } else if(!currentUser) {
-      console.warn('[DB] Not logged in — recipe saved to local cache only');
-    }
+    if(!r?.id || !r?.name) continue;
+    if(!window._jowCache[r.id]) added++;
+    window._jowCache[r.id] = r;
   }
 
-  if(added > 0) localStorage.setItem('sc_global_recipes', JSON.stringify(existing.slice(0, 300)));
-  if(firestoreErrors.length) console.warn('[DB] Firestore errors:', firestoreErrors);
+  // 2. Firestore en arrière-plan — base partagée, illimitée
+  if(typeof db !== 'undefined' && db && typeof currentUser !== 'undefined' && currentUser) {
+    (async () => {
+      try {
+        const batch = db.batch();
+        let n = 0;
+        for(const r of recipes) {
+          if(!r?.id || !r?.name || n >= 490) break;
+          const fd = {...r};
+          delete fd._rawMeal;
+          if(typeof fd.photo === 'string' && fd.photo.startsWith('data:')) delete fd.photo;
+          batch.set(db.collection('recipes').doc(r.id), {
+            ...fd,
+            savedBy:      currentUser.uid,
+            savedByEmail: currentUser.email || '',
+            savedAt:      firebase.firestore.FieldValue.serverTimestamp(),
+          }, { merge: true });
+          n++;
+        }
+        if(n > 0) {
+          await batch.commit();
+          if(typeof renderRecipesGrid === 'function') {
+            setTimeout(() => { try { renderRecipesGrid(); } catch(_) {} }, 300);
+          }
+        }
+      } catch(e) { console.warn('[DB]', e.code || e.message); }
+    })();
+  }
+
   return added;
 }
 
 function searchGlobalDB(query, filters) {
   const localDB = getGlobalRecipeDB();
   if(!query && !filters) return localDB.slice(0, 20);
-  const q = (query||'').toLowerCase();
+  const q = (query || '').toLowerCase();
   return localDB.filter(r => {
     if(q && !r.name.toLowerCase().includes(q)) return false;
     if(filters?.diet && filters.diet !== 'all' && r.diet && r.diet !== filters.diet) return false;
@@ -6535,51 +6556,49 @@ function searchGlobalDB(query, filters) {
   }).slice(0, 20);
 }
 
-// Sync shared recipes from Firestore → local cache with real-time listener
-let _recipesUnsub = null;
+// Charge TOUTES les recettes Firestore dans _jowCache — sans limite.
+// Pagination automatique par lots de 500, non-bloquante, appelée une fois.
+let _recipesLoaded  = false;
+let _recipesLoading = false;
+let _recipesUnsub   = null; // compat (plus utilisé, onSnapshot supprimé)
+
 async function syncGlobalRecipesFromFirestore() {
+  if(_recipesLoaded || _recipesLoading) return;
   if(typeof db === 'undefined' || !db) return;
-  if(_recipesUnsub) { _recipesUnsub(); _recipesUnsub = null; }
+  _recipesLoading = true;
+  if(!window._jowCache) window._jowCache = {};
 
-  function applySnap(snap) {
-    const existing = getGlobalRecipeDB();
-    const existingIds = new Set(existing.map(r => r.id));
-    let added = 0;
-    snap.forEach(doc => {
-      const r = {id: doc.id, ...doc.data(), savedAt: undefined, savedBy: undefined};
-      if(!existingIds.has(r.id) && r.name) {
-        existing.push(r);
-        existingIds.add(r.id);
-        added++;
-        // Si c'est une recette Jow, la mettre aussi dans le cache Jow
-        if(r.source === 'jow' && r.id) {
-          if(!window._jowCache) window._jowCache = {};
-          window._jowCache[r.id] = r;
-          if(typeof _jowSaveRecipe === 'function') _jowSaveRecipe(r);
-        }
-      }
-    });
-    if(added > 0) {
-      localStorage.setItem('sc_global_recipes', JSON.stringify(existing.slice(0, 300)));
-      console.log('[Firestore] +' + added + ' recettes partagées (dont Jow)');
-      if(_menuTab === 'recipes') { try { (_myRecipesSubTab === 'favs' ? renderFavsGrid : renderRecipesGrid)(); } catch(e){} }
-    }
-  }
-
-  // Simple query without orderBy — avoids needing a composite index
   try {
-    _recipesUnsub = db.collection('recipes').limit(150).onSnapshot(
-      snap => applySnap(snap),
-      err  => {
-        console.warn('[Firestore] recipes onSnapshot error:', err.message);
-        // Fallback: one-time get
-        db.collection('recipes').limit(150).get().then(applySnap).catch(()=>{});
+    let lastDoc = null, total = 0, hasMore = true;
+    while(hasMore) {
+      let q = db.collection('recipes').limit(500);
+      if(lastDoc) q = q.startAfter(lastDoc);
+      const snap = await q.get();
+      if(snap.empty) { hasMore = false; break; }
+      snap.forEach(doc => {
+        const r = {id: doc.id, ...doc.data()};
+        if(r.name) { window._jowCache[r.id] = r; total++; }
+      });
+      lastDoc = snap.docs[snap.docs.length - 1];
+      hasMore = snap.size === 500;
+      if(typeof renderRecipesGrid === 'function') {
+        setTimeout(() => { try { renderRecipesGrid(); } catch(_) {} }, 0);
       }
-    );
+    }
+    _recipesLoaded = true;
+    console.log('[DB] ✅ ' + total + ' recettes chargées depuis Firestore');
   } catch(e) {
-    console.warn('[Firestore] syncGlobalRecipes setup error:', e.message);
-  }
+    console.warn('[Firestore]', e.message);
+    try {
+      const snap = await db.collection('recipes').limit(500).get();
+      snap.forEach(doc => { const r={id:doc.id,...doc.data()}; if(r.name) window._jowCache[r.id]=r; });
+      _recipesLoaded = true;
+    } catch(e2) {}
+  } finally { _recipesLoading = false; }
 }
+
+function _invalidateRecipesCache() { _recipesLoaded = false; _recipesLoading = false; }
+
 
 
 
@@ -9296,10 +9315,20 @@ function renderRecipesGrid() {
   const globalDB      = getGlobalRecipeDB ? getGlobalRecipeDB() : [];
   const q             = (window._recipeSearch || '').toLowerCase();
 
+  // Si le cache mémoire est vide, déclencher le chargement complet (non-bloquant)
+  if(globalDB.length === 0 && typeof syncGlobalRecipesFromFirestore === 'function') {
+    syncGlobalRecipesFromFirestore().catch(() => {});
+  }
+
   function matchSearch(r) {
     if(!q) return true;
-    return (r.name||'').toLowerCase().includes(q)
-      || (r.ingredients||[]).some(i => (typeof i==='string'?i:i.name||'').toLowerCase().includes(q));
+    const text = [
+      r.name || '',
+      r.origin || '',
+      ...(r.ingredients || []).map(i => typeof i==='string'?i:(i.name||'')),
+      ...(r.tags || []),
+    ].join(' ').toLowerCase();
+    return text.includes(q);
   }
 
   let html = '';

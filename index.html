@@ -4482,6 +4482,19 @@ async function _queryRecipesForGeneration(settings, diet) {
 // Vérifie si une recette respecte les filtres cuisine + diète + allergènes
 function _recipeMatchesFilters(r, settings, diet) {
   if(!r || !r.id) return false;
+
+  // Exclure les desserts, collations, entrées — on veut uniquement déjeuner/dîner
+  const mealTypes = r.mealTypes || [];
+  if(mealTypes.length > 0) {
+    const hasLunchOrDinner = mealTypes.some(t => t === 'l' || t === 'd');
+    if(!hasLunchOrDinner) return false;
+  }
+  // Exclure par tag si "dessert" ou "collation" dans le nom/tags
+  const nameLow = (r.name || '').toLowerCase();
+  const tags = (r.tags || []).map(t => t.toLowerCase());
+  if(nameLow.includes('dessert') || nameLow.includes('gâteau') || nameLow.includes('tarte sucrée')
+     || tags.includes('dessert') || tags.includes('sweet')) return false;
+
   const eh = r.eatingHabits || {};
   if(settings.cuisine && (!r.origin || !r.origin.toLowerCase().includes(settings.cuisine.toLowerCase()))) return false;
   if(diet === 'veg'    && !eh.vegetarian)  return false;
@@ -4513,7 +4526,13 @@ async function generateAIMenuFull() {
   if(txt) txt.innerHTML = spinner + 'Recherche dans votre base\u2026';
 
   const p = state.profile || {};
-  const diet = state.selectedDiet[0] || p.diet || 'omnivore';
+  // Lire le régime depuis le bouton actif dans le panneau menu
+  // state.selectedDiet[0] peut conserver un résidu d'une session précédente
+  const activeDietBtn = document.querySelector('[data-diet].on');
+  const diet = activeDietBtn?.dataset?.diet
+            || state.selectedDiet?.[0]
+            || p.diet
+            || 'omnivore';
   const cals = calculateDailyCalories(p);
   const ldTarget = cals ? Math.round(cals * 0.65) : 0;
   const settings = _readMenuFilterSettings();
@@ -4547,30 +4566,20 @@ async function generateAIMenuFull() {
     const emptyDueToAllergen = [];
     pool = _applyMenuFilters(pool, settings, 'd\u00e9jeuner+d\u00eener', emptyDueToAllergen);
 
-    // Etape 3b : si la cuisine choisie ne donne pas assez de resultats,
-    // on l'assouplit plutot que d'afficher une erreur bloquante
-    if(pool.length < MIN_POOL && settings.cuisine) {
-      const withoutCuisine = await _queryRecipesForGeneration({...settings, cuisine: ''}, diet);
-      const seen2 = new Set(pool.map(r => r.id));
-      const extra2 = withoutCuisine.filter(r => !seen2.has(r.id));
-      if(pool.length + extra2.length >= MIN_POOL) {
-        pool = pool.concat(extra2);
-        showToast('\u2139\ufe0f', 'Cuisine \u00e9largie', 'Pas assez de recettes \"' + settings.cuisine + '\" \u2014 d\'autres cuisines ont \u00e9t\u00e9 ajout\u00e9es.');
-      }
-    }
-
-    // Etape 4 : erreur claire si pool toujours insuffisant - AUCUN fallback random
+    // Etape 4 : erreur claire si pool insuffisant
     if(pool.length < MIN_POOL) {
       const what = [];
       if(settings.cuisine) what.push('cuisine ' + settings.cuisine);
-      if(diet !== 'omnivore') what.push('r\u00e9gime ' + diet);
+      // N'afficher le régime que s'il est vraiment différent d'omnivore
+      if(diet && diet !== 'omnivore') what.push('régime ' + diet);
       if(settings.maxTime) what.push('< ' + settings.maxTime + ' min');
-      if(settings.selectedAllergens.length) what.push('sans ' + settings.selectedAllergens.join('/'));
+      if((settings.selectedAllergens||[]).length) what.push('sans ' + settings.selectedAllergens.join('/'));
       const detail = what.length ? ' pour\u00a0: ' + what.join(', ') : '';
-      showToast('\u26a0\ufe0f', 'Recettes insuffisantes',
-        pool.length === 0
-          ? 'Aucune recette trouv\u00e9e' + detail + '. \u00c9largissez vos filtres ou explorez Jow d\u2019abord.'
-          : pool.length + ' recette(s) trouv\u00e9e(s)' + detail + ', il en faut ' + MIN_POOL + '. \u00c9largissez vos filtres.');
+      const need = MIN_POOL - pool.length;
+      const msg = pool.length === 0
+        ? 'Aucune recette trouvée' + detail + '.\nExplorez Jow dans l\'onglet Recettes pour en ajouter.'
+        : pool.length + ' recette(s) trouvée(s)' + detail + ', il en manque ' + need + '.\nExplorez Jow pour enrichir votre base ' + (settings.cuisine ? settings.cuisine : '') + '.';
+      showToast('⚠️', 'Recettes insuffisantes', msg);
       return;
     }
 
